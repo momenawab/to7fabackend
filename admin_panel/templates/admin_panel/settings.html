@@ -1,0 +1,509 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Settings - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <span>Settings Menu</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush" id="settings-tabs" role="tablist">
+                    <a class="list-group-item list-group-item-action active" id="general-tab" data-bs-toggle="list" href="#general" role="tab" aria-controls="general">
+                        <i class="fas fa-cog me-2"></i> General Settings
+                    </a>
+                    <a class="list-group-item list-group-item-action" id="notifications-tab" data-bs-toggle="list" href="#notifications" role="tab" aria-controls="notifications">
+                        <i class="fas fa-bell me-2"></i> Notification Settings
+                    </a>
+                    <a class="list-group-item list-group-item-action" id="api-tab" data-bs-toggle="list" href="#api" role="tab" aria-controls="api">
+                        <i class="fas fa-code me-2"></i> API Settings
+                    </a>
+                    <a class="list-group-item list-group-item-action" id="email-tab" data-bs-toggle="list" href="#email" role="tab" aria-controls="email">
+                        <i class="fas fa-envelope me-2"></i> Email Settings
+                    </a>
+                    <a class="list-group-item list-group-item-action" id="payment-tab" data-bs-toggle="list" href="#payment" role="tab" aria-controls="payment">
+                        <i class="fas fa-credit-card me-2"></i> Payment Settings
+                    </a>
+                    <a class="list-group-item list-group-item-action" id="security-tab" data-bs-toggle="list" href="#security" role="tab" aria-controls="security">
+                        <i class="fas fa-shield-alt me-2"></i> Security Settings
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <div class="tab-content">
+            <!-- General Settings -->
+            <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <span>General Settings</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="generalSettingsForm">
+                            <div class="mb-3">
+                                <label for="siteName" class="form-label">Site Name</label>
+                                <input type="text" class="form-control" id="siteName" name="site_name" value="To7fa">
+                            </div>
+                            <div class="mb-3">
+                                <label for="siteDescription" class="form-label">Site Description</label>
+                                <textarea class="form-control" id="siteDescription" name="site_description" rows="2">Your one-stop shop for handmade gifts and crafts</textarea>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="contactEmail" class="form-label">Contact Email</label>
+                                    <input type="email" class="form-control" id="contactEmail" name="contact_email" value="contact@to7fa.com">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="contactPhone" class="form-label">Contact Phone</label>
+                                    <input type="text" class="form-control" id="contactPhone" name="contact_phone" value="+1 (555) 123-4567">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="address" class="form-label">Business Address</label>
+                                <textarea class="form-control" id="address" name="address" rows="2">123 Main Street, Cairo, Egypt</textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="currency" class="form-label">Default Currency</label>
+                                <select class="form-select" id="currency" name="currency">
+                                    <option value="USD" selected>USD ($)</option>
+                                    <option value="EGP">EGP (E£)</option>
+                                    <option value="EUR">EUR (€)</option>
+                                    <option value="GBP">GBP (£)</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="timezone" class="form-label">Timezone</label>
+                                <select class="form-select" id="timezone" name="timezone">
+                                    <option value="UTC" selected>UTC</option>
+                                    <option value="Africa/Cairo">Africa/Cairo</option>
+                                    <option value="America/New_York">America/New_York</option>
+                                    <option value="Europe/London">Europe/London</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="maintenanceMode" name="maintenance_mode">
+                                    <label class="form-check-label" for="maintenanceMode">Maintenance Mode</label>
+                                </div>
+                                <div class="form-text">When enabled, the site will show a maintenance page to all non-admin users.</div>
+                            </div>
+                            <button type="submit" class="btn btn-purple">Save General Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notification Settings -->
+            <div class="tab-pane fade" id="notifications" role="tabpanel" aria-labelledby="notifications-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Notification Settings</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="notificationSettingsForm">
+                            <h5 class="mb-3">Admin Notifications</h5>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="newOrderNotification" name="new_order_notification" checked>
+                                    <label class="form-check-label" for="newOrderNotification">New Order Notifications</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="newUserNotification" name="new_user_notification" checked>
+                                    <label class="form-check-label" for="newUserNotification">New User Notifications</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="newSellerApplicationNotification" name="new_seller_application_notification" checked>
+                                    <label class="form-check-label" for="newSellerApplicationNotification">New Seller Application Notifications</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="lowStockNotification" name="low_stock_notification" checked>
+                                    <label class="form-check-label" for="lowStockNotification">Low Stock Notifications</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="lowStockThreshold" class="form-label">Low Stock Threshold</label>
+                                <input type="number" class="form-control" id="lowStockThreshold" name="low_stock_threshold" value="5">
+                                <div class="form-text">Notify when product stock falls below this number.</div>
+                            </div>
+                            
+                            <h5 class="mb-3 mt-4">User Notifications</h5>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="orderStatusNotification" name="order_status_notification" checked>
+                                    <label class="form-check-label" for="orderStatusNotification">Order Status Update Notifications</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="promotionalNotification" name="promotional_notification" checked>
+                                    <label class="form-check-label" for="promotionalNotification">Promotional Notifications</label>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-purple">Save Notification Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- API Settings -->
+            <div class="tab-pane fade" id="api" role="tabpanel" aria-labelledby="api-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <span>API Settings</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="apiSettingsForm">
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enableApi" name="enable_api" checked>
+                                    <label class="form-check-label" for="enableApi">Enable API</label>
+                                </div>
+                                <div class="form-text">When disabled, all API endpoints will return 403 Forbidden.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="apiRateLimit" class="form-label">API Rate Limit</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="apiRateLimit" name="api_rate_limit" value="60">
+                                    <span class="input-group-text">requests per minute</span>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="apiTokenExpiry" class="form-label">API Token Expiry</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="apiTokenExpiry" name="api_token_expiry" value="30">
+                                    <span class="input-group-text">days</span>
+                                </div>
+                                <div class="form-text">Set to 0 for non-expiring tokens (not recommended).</div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enableCors" name="enable_cors" checked>
+                                    <label class="form-check-label" for="enableCors">Enable CORS</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="allowedOrigins" class="form-label">Allowed Origins</label>
+                                <textarea class="form-control" id="allowedOrigins" name="allowed_origins" rows="3">https://to7fa.com
+https://www.to7fa.com
+http://localhost:3000</textarea>
+                                <div class="form-text">One origin per line. Leave empty to allow all origins.</div>
+                            </div>
+                            <button type="submit" class="btn btn-purple">Save API Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Email Settings -->
+            <div class="tab-pane fade" id="email" role="tabpanel" aria-labelledby="email-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Email Settings</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="emailSettingsForm">
+                            <div class="mb-3">
+                                <label for="emailProvider" class="form-label">Email Provider</label>
+                                <select class="form-select" id="emailProvider" name="email_provider">
+                                    <option value="smtp" selected>SMTP</option>
+                                    <option value="sendgrid">SendGrid</option>
+                                    <option value="mailgun">Mailgun</option>
+                                    <option value="ses">Amazon SES</option>
+                                </select>
+                            </div>
+                            
+                            <div id="smtpSettings">
+                                <div class="mb-3">
+                                    <label for="smtpHost" class="form-label">SMTP Host</label>
+                                    <input type="text" class="form-control" id="smtpHost" name="smtp_host" value="smtp.gmail.com">
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="smtpPort" class="form-label">SMTP Port</label>
+                                        <input type="number" class="form-control" id="smtpPort" name="smtp_port" value="587">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="smtpEncryption" class="form-label">Encryption</label>
+                                        <select class="form-select" id="smtpEncryption" name="smtp_encryption">
+                                            <option value="tls" selected>TLS</option>
+                                            <option value="ssl">SSL</option>
+                                            <option value="none">None</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="smtpUsername" class="form-label">SMTP Username</label>
+                                    <input type="text" class="form-control" id="smtpUsername" name="smtp_username" value="noreply@to7fa.com">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="smtpPassword" class="form-label">SMTP Password</label>
+                                    <input type="password" class="form-control" id="smtpPassword" name="smtp_password" value="********">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="fromName" class="form-label">From Name</label>
+                                <input type="text" class="form-control" id="fromName" name="from_name" value="To7fa">
+                            </div>
+                            <div class="mb-3">
+                                <label for="fromEmail" class="form-label">From Email</label>
+                                <input type="email" class="form-control" id="fromEmail" name="from_email" value="noreply@to7fa.com">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <button type="button" class="btn btn-outline-secondary" id="testEmail">
+                                    <i class="fas fa-paper-plane me-2"></i> Send Test Email
+                                </button>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-purple">Save Email Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Payment Settings -->
+            <div class="tab-pane fade" id="payment" role="tabpanel" aria-labelledby="payment-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Payment Settings</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="paymentSettingsForm">
+                            <h5 class="mb-3">Payment Methods</h5>
+                            
+                            <!-- Stripe -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="enableStripe" name="enable_stripe" checked>
+                                        <label class="form-check-label" for="enableStripe">Stripe</label>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="stripePublicKey" class="form-label">Stripe Public Key</label>
+                                        <input type="text" class="form-control" id="stripePublicKey" name="stripe_public_key" value="pk_test_...">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="stripeSecretKey" class="form-label">Stripe Secret Key</label>
+                                        <input type="password" class="form-control" id="stripeSecretKey" name="stripe_secret_key" value="sk_test_...">
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="stripeTestMode" name="stripe_test_mode" checked>
+                                        <label class="form-check-label" for="stripeTestMode">Test Mode</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- PayPal -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="enablePaypal" name="enable_paypal" checked>
+                                        <label class="form-check-label" for="enablePaypal">PayPal</label>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="paypalClientId" class="form-label">PayPal Client ID</label>
+                                        <input type="text" class="form-control" id="paypalClientId" name="paypal_client_id" value="client_id_...">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="paypalSecret" class="form-label">PayPal Secret</label>
+                                        <input type="password" class="form-control" id="paypalSecret" name="paypal_secret" value="secret_...">
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="paypalSandbox" name="paypal_sandbox" checked>
+                                        <label class="form-check-label" for="paypalSandbox">Sandbox Mode</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Cash on Delivery -->
+                            <div class="card mb-3">
+                                <div class="card-header">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="enableCod" name="enable_cod" checked>
+                                        <label class="form-check-label" for="enableCod">Cash on Delivery</label>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label for="codFee" class="form-label">Additional Fee</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="codFee" name="cod_fee" value="5">
+                                            <span class="input-group-text">$</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-purple">Save Payment Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Security Settings -->
+            <div class="tab-pane fade" id="security" role="tabpanel" aria-labelledby="security-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <span>Security Settings</span>
+                    </div>
+                    <div class="card-body">
+                        <form id="securitySettingsForm">
+                            <div class="mb-3">
+                                <label for="sessionTimeout" class="form-label">Session Timeout</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="sessionTimeout" name="session_timeout" value="30">
+                                    <span class="input-group-text">minutes</span>
+                                </div>
+                                <div class="form-text">Time of inactivity after which users will be logged out.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="maxLoginAttempts" class="form-label">Max Login Attempts</label>
+                                <input type="number" class="form-control" id="maxLoginAttempts" name="max_login_attempts" value="5">
+                                <div class="form-text">Number of failed login attempts before account is temporarily locked.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="lockoutDuration" class="form-label">Lockout Duration</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="lockoutDuration" name="lockout_duration" value="15">
+                                    <span class="input-group-text">minutes</span>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enforceStrongPasswords" name="enforce_strong_passwords" checked>
+                                    <label class="form-check-label" for="enforceStrongPasswords">Enforce Strong Passwords</label>
+                                </div>
+                                <div class="form-text">Require passwords to contain uppercase, lowercase, numbers, and special characters.</div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enableTwoFactor" name="enable_two_factor">
+                                    <label class="form-check-label" for="enableTwoFactor">Enable Two-Factor Authentication</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="enableCaptcha" name="enable_captcha" checked>
+                                    <label class="form-check-label" for="enableCaptcha">Enable CAPTCHA on Forms</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="recaptchaSiteKey" class="form-label">reCAPTCHA Site Key</label>
+                                <input type="text" class="form-control" id="recaptchaSiteKey" name="recaptcha_site_key" value="6LcXXX...">
+                            </div>
+                            <div class="mb-3">
+                                <label for="recaptchaSecretKey" class="form-label">reCAPTCHA Secret Key</label>
+                                <input type="password" class="form-control" id="recaptchaSecretKey" name="recaptcha_secret_key" value="6LcXXX...">
+                            </div>
+                            <button type="submit" class="btn btn-purple">Save Security Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Form submission handlers
+    $('#generalSettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings('general', $(this));
+    });
+    
+    $('#notificationSettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings('notifications', $(this));
+    });
+    
+    $('#apiSettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings('api', $(this));
+    });
+    
+    $('#emailSettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings('email', $(this));
+    });
+    
+    $('#paymentSettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings('payment', $(this));
+    });
+    
+    $('#securitySettingsForm').submit(function(e) {
+        e.preventDefault();
+        saveSettings('security', $(this));
+    });
+    
+    // Email provider change handler
+    $('#emailProvider').change(function() {
+        if ($(this).val() === 'smtp') {
+            $('#smtpSettings').show();
+        } else {
+            $('#smtpSettings').hide();
+        }
+    });
+    
+    // Test email button
+    $('#testEmail').click(function() {
+        $(this).prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i> Sending...');
+        
+        // Simulate API call
+        setTimeout(function() {
+            $('#testEmail').prop('disabled', false).html('<i class="fas fa-paper-plane me-2"></i> Send Test Email');
+            alert('Test email sent successfully!');
+        }, 2000);
+    });
+    
+    // Save settings function
+    function saveSettings(type, form) {
+        const submitBtn = form.find('button[type="submit"]');
+        const originalText = submitBtn.html();
+        
+        submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i> Saving...');
+        
+        // Serialize form data
+        const formData = form.serialize();
+        
+        // Simulate API call
+        setTimeout(function() {
+            submitBtn.prop('disabled', false).html(originalText);
+            
+            // Show success message
+            const alertHtml = `
+                <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+                    ${type.charAt(0).toUpperCase() + type.slice(1)} settings saved successfully!
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            form.append(alertHtml);
+            
+            // Remove alert after 3 seconds
+            setTimeout(function() {
+                form.find('.alert').alert('close');
+            }, 3000);
+        }, 1500);
+    }
+</script>
+{% endblock %} 

@@ -1,0 +1,544 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Reports - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Reports & Analytics{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Date Range</span>
+                <div>
+                    <select class="form-select" id="reportDateRange">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30" selected>Last 30 Days</option>
+                        <option value="90">Last 3 Months</option>
+                        <option value="180">Last 6 Months</option>
+                        <option value="365">Last Year</option>
+                        <option value="custom">Custom Range</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body" id="customDateRange" style="display: none;">
+                <div class="row">
+                    <div class="col-md-5">
+                        <div class="mb-3">
+                            <label for="startDate" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="startDate">
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <div class="mb-3">
+                            <label for="endDate" class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="endDate">
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button class="btn btn-purple w-100 mb-3" id="applyDateRange">Apply</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sales Overview -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <span>Sales Overview</span>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <h3 id="totalSales">$0</h3>
+                            <p>Total Sales</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <h3 id="totalOrders">0</h3>
+                            <p>Total Orders</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <h3 id="averageOrderValue">$0</h3>
+                            <p>Average Order Value</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="stats-card">
+                            <h3 id="conversionRate">0%</h3>
+                            <p>Conversion Rate</p>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <canvas id="salesChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- User Growth -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <span>User Growth</span>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="stats-card">
+                            <h3 id="totalUsers">0</h3>
+                            <p>Total Users</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stats-card">
+                            <h3 id="newUsers">0</h3>
+                            <p>New Users</p>
+                        </div>
+                    </div>
+                </div>
+                <canvas id="userGrowthChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- User Types Distribution -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <span>User Types Distribution</span>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-4">
+                        <div class="stats-card">
+                            <h3 id="customerCount">0</h3>
+                            <p>Customers</p>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stats-card">
+                            <h3 id="artistCount">0</h3>
+                            <p>Artists</p>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stats-card">
+                            <h3 id="storeCount">0</h3>
+                            <p>Stores</p>
+                        </div>
+                    </div>
+                </div>
+                <canvas id="userTypeChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Top Products -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <span>Top Selling Products</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Category</th>
+                                <th>Units Sold</th>
+                                <th>Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topProductsTable">
+                            <tr>
+                                <td colspan="4" class="text-center">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Top Categories -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <span>Top Categories</span>
+            </div>
+            <div class="card-body">
+                <canvas id="categoriesChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <!-- Order Status Distribution -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <span>Order Status Distribution</span>
+            </div>
+            <div class="card-body">
+                <canvas id="orderStatusChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Monthly Revenue Trend -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <span>Monthly Revenue Trend</span>
+            </div>
+            <div class="card-body">
+                <canvas id="revenueChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Date Range Selector
+    $('#reportDateRange').change(function() {
+        if ($(this).val() === 'custom') {
+            $('#customDateRange').slideDown();
+        } else {
+            $('#customDateRange').slideUp();
+            loadReportData($(this).val());
+        }
+    });
+    
+    $('#applyDateRange').click(function() {
+        const startDate = $('#startDate').val();
+        const endDate = $('#endDate').val();
+        
+        if (!startDate || !endDate) {
+            alert('Please select both start and end dates');
+            return;
+        }
+        
+        loadReportData('custom', startDate, endDate);
+    });
+    
+    // Load initial data
+    $(document).ready(function() {
+        loadReportData(30); // Default to 30 days
+    });
+    
+    function loadReportData(days, startDate = null, endDate = null) {
+        // Show loading indicators
+        $('#totalSales').text('Loading...');
+        $('#totalOrders').text('Loading...');
+        $('#averageOrderValue').text('Loading...');
+        $('#conversionRate').text('Loading...');
+        $('#totalUsers').text('Loading...');
+        $('#newUsers').text('Loading...');
+        $('#customerCount').text('Loading...');
+        $('#artistCount').text('Loading...');
+        $('#storeCount').text('Loading...');
+        $('#topProductsTable').html('<tr><td colspan="4" class="text-center">Loading data...</td></tr>');
+        
+        // API endpoint for reports
+        let url = '/api/admin/reports/summary/?days=' + days;
+        if (days === 'custom') {
+            url = `/api/admin/reports/summary/?start_date=${startDate}&end_date=${endDate}`;
+        }
+        
+        // Fetch report data
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                // Update summary stats
+                $('#totalSales').text('$' + data.sales.total_revenue.toFixed(2));
+                $('#totalOrders').text(data.sales.total_orders);
+                $('#averageOrderValue').text('$' + data.sales.average_order_value.toFixed(2));
+                $('#conversionRate').text(data.sales.conversion_rate.toFixed(2) + '%');
+                
+                $('#totalUsers').text(data.users.total);
+                $('#newUsers').text(data.users.new_users);
+                $('#customerCount').text(data.users.customers);
+                $('#artistCount').text(data.users.artists);
+                $('#storeCount').text(data.users.stores);
+                
+                // Render charts
+                renderSalesChart(data.sales.daily_data);
+                renderUserGrowthChart(data.users.growth_data);
+                renderUserTypeChart(data.users);
+                renderTopProductsTable(data.products.top_products);
+                renderCategoriesChart(data.products.top_categories);
+                renderOrderStatusChart(data.sales.status_distribution);
+                renderRevenueChart(data.sales.monthly_revenue);
+            })
+            .catch(error => {
+                console.error('Error loading report data:', error);
+                alert('Failed to load report data. Please try again later.');
+            });
+    }
+    
+    // Chart rendering functions
+    function renderSalesChart(data) {
+        const ctx = document.getElementById('salesChart').getContext('2d');
+        
+        // Destroy existing chart if it exists
+        if (window.salesChart) {
+            window.salesChart.destroy();
+        }
+        
+        window.salesChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(item => item.date),
+                datasets: [{
+                    label: 'Revenue',
+                    data: data.map(item => item.revenue),
+                    backgroundColor: 'rgba(94, 53, 177, 0.1)',
+                    borderColor: '#5e35b1',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true
+                }, {
+                    label: 'Orders',
+                    data: data.map(item => item.orders),
+                    backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                    borderColor: '#ff9800',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Revenue ($)'
+                        }
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        title: {
+                            display: true,
+                            text: 'Orders'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderUserGrowthChart(data) {
+        const ctx = document.getElementById('userGrowthChart').getContext('2d');
+        
+        if (window.userGrowthChart) {
+            window.userGrowthChart.destroy();
+        }
+        
+        window.userGrowthChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(item => item.date),
+                datasets: [{
+                    label: 'New Users',
+                    data: data.map(item => item.count),
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    borderColor: '#4caf50',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderUserTypeChart(data) {
+        const ctx = document.getElementById('userTypeChart').getContext('2d');
+        
+        if (window.userTypeChart) {
+            window.userTypeChart.destroy();
+        }
+        
+        window.userTypeChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Customers', 'Artists', 'Stores'],
+                datasets: [{
+                    data: [data.customers, data.artists, data.stores],
+                    backgroundColor: [
+                        '#5e35b1',
+                        '#ff9800',
+                        '#4caf50'
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderTopProductsTable(products) {
+        let html = '';
+        
+        if (products.length === 0) {
+            html = '<tr><td colspan="4" class="text-center">No data available</td></tr>';
+        } else {
+            products.forEach(product => {
+                html += `
+                    <tr>
+                        <td>${product.name}</td>
+                        <td>${product.category}</td>
+                        <td>${product.units_sold}</td>
+                        <td>$${product.revenue.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+        }
+        
+        $('#topProductsTable').html(html);
+    }
+    
+    function renderCategoriesChart(categories) {
+        const ctx = document.getElementById('categoriesChart').getContext('2d');
+        
+        if (window.categoriesChart) {
+            window.categoriesChart.destroy();
+        }
+        
+        window.categoriesChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: categories.map(item => item.name),
+                datasets: [{
+                    label: 'Revenue',
+                    data: categories.map(item => item.revenue),
+                    backgroundColor: '#5e35b1',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Revenue ($)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderOrderStatusChart(statusData) {
+        const ctx = document.getElementById('orderStatusChart').getContext('2d');
+        
+        if (window.orderStatusChart) {
+            window.orderStatusChart.destroy();
+        }
+        
+        const labels = Object.keys(statusData);
+        const data = Object.values(statusData);
+        const backgroundColors = {
+            'pending': '#ffc107',
+            'processing': '#17a2b8',
+            'shipped': '#007bff',
+            'delivered': '#28a745',
+            'cancelled': '#dc3545'
+        };
+        
+        window.orderStatusChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels.map(label => label.charAt(0).toUpperCase() + label.slice(1)),
+                datasets: [{
+                    data: data,
+                    backgroundColor: labels.map(label => backgroundColors[label] || '#6c757d'),
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+    
+    function renderRevenueChart(monthlyData) {
+        const ctx = document.getElementById('revenueChart').getContext('2d');
+        
+        if (window.revenueChart) {
+            window.revenueChart.destroy();
+        }
+        
+        window.revenueChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: monthlyData.map(item => item.month),
+                datasets: [{
+                    label: 'Revenue',
+                    data: monthlyData.map(item => item.revenue),
+                    backgroundColor: '#5e35b1',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Revenue ($)'
+                        }
+                    }
+                }
+            }
+        });
+    }
+</script>
+{% endblock %} 

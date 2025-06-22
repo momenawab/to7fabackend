@@ -1,0 +1,582 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}User Management - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}User Management{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Users</span>
+        <div class="d-flex">
+            <!-- Search Form -->
+            <form class="d-flex me-2">
+                <input type="text" name="q" class="form-control me-2" placeholder="Search users..." value="{{ search_query }}">
+                {% if user_type != 'all' %}
+                <input type="hidden" name="type" value="{{ user_type }}">
+                {% endif %}
+                {% if status != 'all' %}
+                <input type="hidden" name="status" value="{{ status }}">
+                {% endif %}
+                <button type="submit" class="btn btn-purple">
+                    <i class="fas fa-search"></i>
+                </button>
+            </form>
+            
+            <!-- Filter Dropdown -->
+            <div class="dropdown me-2">
+                <button class="btn btn-outline-purple dropdown-toggle" type="button" id="filterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    Type: {{ user_type|title|default:"All" }}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="filterDropdown">
+                    <li><a class="dropdown-item {% if user_type == 'all' %}active{% endif %}" href="?type=all{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">All Users</a></li>
+                    <li><a class="dropdown-item {% if user_type == 'customer' %}active{% endif %}" href="?type=customer{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Customers</a></li>
+                    <li><a class="dropdown-item {% if user_type == 'artist' %}active{% endif %}" href="?type=artist{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Artists</a></li>
+                    <li><a class="dropdown-item {% if user_type == 'store' %}active{% endif %}" href="?type=store{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Stores</a></li>
+                    <li><a class="dropdown-item {% if user_type == 'admin' %}active{% endif %}" href="?type=admin{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Admins</a></li>
+                </ul>
+            </div>
+            
+            <!-- Status Filter Dropdown -->
+            <div class="dropdown">
+                <button class="btn btn-outline-purple dropdown-toggle" type="button" id="statusDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    Status: {{ status|title|default:"All" }}
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="statusDropdown">
+                    <li><a class="dropdown-item {% if status == 'all' %}active{% endif %}" href="?status=all{% if user_type != 'all' %}&type={{ user_type }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">All Status</a></li>
+                    <li><a class="dropdown-item {% if status == 'active' %}active{% endif %}" href="?status=active{% if user_type != 'all' %}&type={{ user_type }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Active</a></li>
+                    <li><a class="dropdown-item {% if status == 'blocked' %}active{% endif %}" href="?status=blocked{% if user_type != 'all' %}&type={{ user_type }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Blocked</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Joined</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>#{{ user.id }}</td>
+                        <td>{{ user.email }}</td>
+                        <td>{{ user.first_name }} {{ user.last_name }}</td>
+                        <td>
+                            {% if user.user_type == 'customer' %}
+                            <span class="badge bg-secondary">Customer</span>
+                            {% elif user.user_type == 'artist' %}
+                            <span class="badge bg-purple">Artist</span>
+                            {% elif user.user_type == 'store' %}
+                            <span class="badge bg-orange">Store</span>
+                            {% elif user.is_staff or user.is_superuser %}
+                            <span class="badge bg-danger">Admin</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.date_joined|date:"M d, Y" }}</td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge bg-success">Active</span>
+                            {% else %}
+                            <span class="badge bg-danger">Blocked</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="actionDropdown{{ user.id }}" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Actions
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="actionDropdown{{ user.id }}">
+                                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#userDetailsModal" data-user-id="{{ user.id }}"><i class="fas fa-eye me-2"></i>View Details</a></li>
+                                    {% if user.is_active %}
+                                    <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#blockUserModal" data-user-id="{{ user.id }}" data-user-email="{{ user.email }}"><i class="fas fa-ban me-2"></i>Block User</a></li>
+                                    {% else %}
+                                    <li><a class="dropdown-item text-success" href="#" data-bs-toggle="modal" data-bs-target="#unblockUserModal" data-user-id="{{ user.id }}" data-user-email="{{ user.email }}"><i class="fas fa-check me-2"></i>Unblock User</a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center">No users found</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Pagination -->
+        {% if users.has_other_pages %}
+        <nav aria-label="Page navigation" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if users.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?type={{ user_type }}&status={{ status }}&page={{ users.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <a class="page-link" href="#" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% endif %}
+                
+                {% for i in users.paginator.page_range %}
+                    {% if users.number == i %}
+                    <li class="page-item active"><a class="page-link" href="#">{{ i }}</a></li>
+                    {% else %}
+                    <li class="page-item"><a class="page-link" href="?type={{ user_type }}&status={{ status }}&page={{ i }}{% if search_query %}&q={{ search_query }}{% endif %}">{{ i }}</a></li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if users.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?type={{ user_type }}&status={{ status }}&page={{ users.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <a class="page-link" href="#" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Block User Modal -->
+<div class="modal fade" id="blockUserModal" tabindex="-1" aria-labelledby="blockUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="blockUserModalLabel">Block User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to block this user? They will no longer be able to log in or use the platform.</p>
+                <p><strong>Email:</strong> <span id="blockUserEmail"></span></p>
+                <form id="blockUserForm" method="post" action="#">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="block">
+                    <div class="mb-3">
+                        <label for="blockReason" class="form-label">Reason for blocking (optional)</label>
+                        <textarea class="form-control" id="blockReason" name="reason" rows="3" placeholder="Enter reason for blocking this user"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmBlockBtn">Block User</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Unblock User Modal -->
+<div class="modal fade" id="unblockUserModal" tabindex="-1" aria-labelledby="unblockUserModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="unblockUserModalLabel">Unblock User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to unblock this user? They will be able to log in and use the platform again.</p>
+                <p><strong>Email:</strong> <span id="unblockUserEmail"></span></p>
+                <form id="unblockUserForm" method="post" action="#">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="unblock">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmUnblockBtn">Unblock User</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- User Details Modal -->
+<div class="modal fade" id="userDetailsModal" tabindex="-1" aria-labelledby="userDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="userDetailsModalLabel">User Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-4" id="userDetailsLoading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading user details...</p>
+                </div>
+                
+                <div id="userDetailsContent" style="display: none;">
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <h6>Basic Information</h6>
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th>ID</th>
+                                    <td id="userId"></td>
+                                </tr>
+                                <tr>
+                                    <th>Email</th>
+                                    <td id="userEmail"></td>
+                                </tr>
+                                <tr>
+                                    <th>Name</th>
+                                    <td id="userName"></td>
+                                </tr>
+                                <tr>
+                                    <th>User Type</th>
+                                    <td id="userType"></td>
+                                </tr>
+                                <tr>
+                                    <th>Status</th>
+                                    <td id="userStatus"></td>
+                                </tr>
+                                <tr>
+                                    <th>Joined Date</th>
+                                    <td id="userJoined"></td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <div class="col-md-6">
+                            <h6>Blocking Information</h6>
+                            <div id="blockingInfo">
+                                <table class="table table-bordered">
+                                    <tr>
+                                        <th>Blocked</th>
+                                        <td id="userBlocked"></td>
+                                    </tr>
+                                    <tr id="blockedAtRow">
+                                        <th>Blocked At</th>
+                                        <td id="userBlockedAt"></td>
+                                    </tr>
+                                    <tr id="blockedByRow">
+                                        <th>Blocked By</th>
+                                        <td id="userBlockedBy"></td>
+                                    </tr>
+                                    <tr id="blockReasonRow">
+                                        <th>Block Reason</th>
+                                        <td id="userBlockReason"></td>
+                                    </tr>
+                                    <tr id="unblockInfoHeader">
+                                        <th colspan="2" class="bg-light">Unblock Information</th>
+                                    </tr>
+                                    <tr id="unblockAtRow">
+                                        <th>Unblocked At</th>
+                                        <td id="userUnblockedAt"></td>
+                                    </tr>
+                                    <tr id="unblockByRow">
+                                        <th>Unblocked By</th>
+                                        <td id="userUnblockedBy"></td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div id="noBlockingInfo" style="display: none;">
+                                <div class="alert alert-info">
+                                    This user has never been blocked.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <h6>Actions</h6>
+                            <div id="userActionButtons">
+                                <a href="" class="btn btn-primary me-2" id="viewProfileBtn">
+                                    <i class="fas fa-user me-2"></i>View Profile in Admin
+                                </a>
+                                <button type="button" class="btn btn-danger me-2" id="blockUserBtn" style="display: none;">
+                                    <i class="fas fa-ban me-2"></i>Block User
+                                </button>
+                                <button type="button" class="btn btn-success me-2" id="unblockUserBtn" style="display: none;">
+                                    <i class="fas fa-check me-2"></i>Unblock User
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // User Details Modal
+    $('#userDetailsModal').on('show.bs.modal', function (event) {
+        var button = $(event.relatedTarget);
+        var userId = button.data('user-id');
+        var modal = $(this);
+        
+        // Show loading
+        $('#userDetailsLoading').show();
+        $('#userDetailsContent').hide();
+        
+        // Get CSRF token
+        const csrfToken = $('input[name="csrfmiddlewaretoken"]').val();
+        
+        // Fetch user details using fetch API instead of jQuery AJAX
+        fetch('/api/auth/api/users/' + userId + '/', {
+            method: 'GET',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            credentials: 'include'  // Include cookies for session authentication
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Basic information
+            $('#userId').text(data.id);
+            $('#userEmail').text(data.email);
+            $('#userName').text(data.first_name + ' ' + data.last_name);
+            $('#userType').text(data.user_type.charAt(0).toUpperCase() + data.user_type.slice(1));
+            
+            if (data.is_active) {
+                $('#userStatus').html('<span class="badge bg-success">Active</span>');
+                $('#blockUserBtn').show();
+                $('#unblockUserBtn').hide();
+            } else {
+                $('#userStatus').html('<span class="badge bg-danger">Blocked</span>');
+                $('#blockUserBtn').hide();
+                $('#unblockUserBtn').show();
+            }
+            
+            $('#userJoined').text(new Date(data.date_joined).toLocaleString());
+            
+            // Blocking information
+            if (data.blocked_at) {
+                $('#blockingInfo').show();
+                $('#noBlockingInfo').hide();
+                
+                $('#userBlocked').html('<span class="badge bg-danger">Yes</span>');
+                $('#userBlockedAt').text(new Date(data.blocked_at).toLocaleString());
+                $('#userBlockedBy').text(data.blocked_by_email || 'N/A');
+                $('#userBlockReason').text(data.block_reason || 'No reason provided');
+                
+                // Show/hide unblock information
+                if (data.unblocked_at) {
+                    $('#unblockInfoHeader').show();
+                    $('#unblockAtRow').show();
+                    $('#unblockByRow').show();
+                    $('#userUnblockedAt').text(new Date(data.unblocked_at).toLocaleString());
+                    $('#userUnblockedBy').text(data.unblocked_by_email || 'N/A');
+                } else {
+                    $('#unblockInfoHeader').hide();
+                    $('#unblockAtRow').hide();
+                    $('#unblockByRow').hide();
+                }
+            } else {
+                if (!data.is_active) {
+                    // User is blocked but no blocking info (legacy data)
+                    $('#blockingInfo').show();
+                    $('#noBlockingInfo').hide();
+                    $('#userBlocked').html('<span class="badge bg-danger">Yes</span>');
+                    $('#blockedAtRow').hide();
+                    $('#blockedByRow').hide();
+                    $('#blockReasonRow').hide();
+                    $('#unblockInfoHeader').hide();
+                    $('#unblockAtRow').hide();
+                    $('#unblockByRow').hide();
+                } else {
+                    // User was never blocked
+                    $('#blockingInfo').hide();
+                    $('#noBlockingInfo').show();
+                }
+            }
+            
+            // Set up action buttons
+            $('#blockUserBtn').off('click').on('click', function() {
+                $('#userDetailsModal').modal('hide');
+                $('#blockUserModal').modal('show');
+                $('#blockUserModal').find('#blockUserEmail').text(data.email);
+                $('#blockUserModal').find('#blockUserForm').attr('action', '/api/auth/api/users/' + data.id + '/block/');
+            });
+            
+            $('#unblockUserBtn').off('click').on('click', function() {
+                $('#userDetailsModal').modal('hide');
+                $('#unblockUserModal').modal('show');
+                $('#unblockUserModal').find('#unblockUserEmail').text(data.email);
+                $('#unblockUserModal').find('#unblockUserForm').attr('action', '/api/auth/api/users/' + data.id + '/block/');
+            });
+            
+            // Set up profile link
+            $('#viewProfileBtn').attr('href', '/dashboard/users/' + data.id + '/profile/');
+            
+            // Hide loading, show content
+            $('#userDetailsLoading').hide();
+            $('#userDetailsContent').show();
+        })
+        .catch(error => {
+            console.error('Error fetching user details:', error);
+            $('#userDetailsLoading').html(`
+                <div class="alert alert-danger">
+                    Error loading user details: ${error.message}
+                    <br>
+                    Please try refreshing the page or contact support.
+                </div>
+            `);
+        });
+    });
+
+    // Block User Modal
+    $('#blockUserModal').on('show.bs.modal', function (event) {
+        var button = $(event.relatedTarget);
+        var userId = button.data('user-id');
+        var userEmail = button.data('user-email');
+        
+        var modal = $(this);
+        modal.find('#blockUserEmail').text(userEmail);
+        modal.find('#blockUserForm').attr('action', '/api/auth/api/users/' + userId + '/block/');
+    });
+    
+    // Unblock User Modal
+    $('#unblockUserModal').on('show.bs.modal', function (event) {
+        var button = $(event.relatedTarget);
+        var userId = button.data('user-id');
+        var userEmail = button.data('user-email');
+        
+        var modal = $(this);
+        modal.find('#unblockUserEmail').text(userEmail);
+        modal.find('#unblockUserForm').attr('action', '/api/auth/api/users/' + userId + '/block/');
+    });
+    
+    // Submit block form with AJAX
+    $('#confirmBlockBtn').click(function() {
+        var form = $('#blockUserForm');
+        var url = form.attr('action');
+        var csrfToken = $('input[name="csrfmiddlewaretoken"]').val();
+        var reason = $('#blockReason').val();
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                'action': 'block',
+                'reason': reason
+            }),
+            credentials: 'include'  // Include cookies for session authentication
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || 'Failed to block user');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            $('#blockUserModal').modal('hide');
+            // Show success message
+            var alert = '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                        data.message +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                        '</div>';
+            $('.card-header').after(alert);
+            
+            // Reload page after a short delay
+            setTimeout(function() {
+                window.location.reload();
+            }, 1500);
+        })
+        .catch(error => {
+            console.error('Error blocking user:', error);
+            var errorMsg = error.message || 'An error occurred';
+            
+            var alert = '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                        errorMsg +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                        '</div>';
+            $('#blockUserForm').prepend(alert);
+        });
+    });
+    
+    // Submit unblock form with AJAX
+    $('#confirmUnblockBtn').click(function() {
+        var form = $('#unblockUserForm');
+        var url = form.attr('action');
+        var csrfToken = $('input[name="csrfmiddlewaretoken"]').val();
+        
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                'action': 'unblock'
+            }),
+            credentials: 'include'  // Include cookies for session authentication
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.error || 'Failed to unblock user');
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            $('#unblockUserModal').modal('hide');
+            // Show success message
+            var alert = '<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                        data.message +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                        '</div>';
+            $('.card-header').after(alert);
+            
+            // Reload page after a short delay
+            setTimeout(function() {
+                window.location.reload();
+            }, 1500);
+        })
+        .catch(error => {
+            console.error('Error unblocking user:', error);
+            var errorMsg = error.message || 'An error occurred';
+            
+            var alert = '<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                        errorMsg +
+                        '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
+                        '</div>';
+            $('#unblockUserForm').prepend(alert);
+        });
+    });
+</script>
+{% endblock %}

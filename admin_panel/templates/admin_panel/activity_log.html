@@ -1,0 +1,209 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Activity Log - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Activity Log{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Filters -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Filter Activities</h6>
+        </div>
+        <div class="card-body">
+            <form id="filterForm" class="row">
+                <div class="col-md-3 mb-3">
+                    <label for="adminFilter">Admin User</label>
+                    <select class="form-control" id="adminFilter">
+                        <option value="">All Admins</option>
+                        {% for admin in admins %}
+                            <option value="{{ admin.id }}">{{ admin.email }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="actionFilter">Action Type</label>
+                    <select class="form-control" id="actionFilter">
+                        <option value="">All Actions</option>
+                        <option value="login">Login</option>
+                        <option value="logout">Logout</option>
+                        <option value="create">Create</option>
+                        <option value="update">Update</option>
+                        <option value="delete">Delete</option>
+                        <option value="approve">Approve</option>
+                        <option value="reject">Reject</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="dateFrom">Date From</label>
+                    <input type="date" class="form-control" id="dateFrom">
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label for="dateTo">Date To</label>
+                    <input type="date" class="form-control" id="dateTo">
+                </div>
+                <div class="col-12 text-right">
+                    <button type="button" class="btn btn-primary" id="applyFilters">Apply Filters</button>
+                    <button type="button" class="btn btn-secondary" id="resetFilters">Reset</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Activity Log Table -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Admin Activity Log</h6>
+            <div>
+                <button class="btn btn-sm btn-outline-primary" id="exportCsv">Export CSV</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="activityTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Admin</th>
+                            <th>Action</th>
+                            <th>Description</th>
+                            <th>IP Address</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for activity in activities %}
+                        <tr>
+                            <td>{{ activity.admin.email }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if activity.action == 'login' %}badge-success
+                                    {% elif activity.action == 'logout' %}badge-secondary
+                                    {% elif activity.action == 'create' %}badge-info
+                                    {% elif activity.action == 'update' %}badge-primary
+                                    {% elif activity.action == 'delete' %}badge-danger
+                                    {% elif activity.action == 'approve' %}badge-success
+                                    {% elif activity.action == 'reject' %}badge-warning
+                                    {% else %}badge-dark
+                                    {% endif %}">
+                                    {{ activity.get_action_display }}
+                                </span>
+                            </td>
+                            <td>{{ activity.description }}</td>
+                            <td>{{ activity.ip_address }}</td>
+                            <td>{{ activity.timestamp|date:"Y-m-d H:i:s" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="5" class="text-center">No activity logs found</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            {% if activities.has_other_pages %}
+            <div class="d-flex justify-content-center mt-4">
+                <nav aria-label="Page navigation">
+                    <ul class="pagination">
+                        {% if activities.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ activities.previous_page_number }}" aria-label="Previous">
+                                <span aria-hidden="true">&laquo;</span>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link" aria-hidden="true">&laquo;</span>
+                        </li>
+                        {% endif %}
+                        
+                        {% for i in activities.paginator.page_range %}
+                            {% if activities.number == i %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ i }}</span>
+                            </li>
+                            {% else %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ i }}">{{ i }}</a>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if activities.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ activities.next_page_number }}" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link" aria-hidden="true">&raquo;</span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(document).ready(function() {
+    // Initialize datepicker if needed
+    
+    // Apply filters
+    $('#applyFilters').click(function() {
+        let adminId = $('#adminFilter').val();
+        let action = $('#actionFilter').val();
+        let dateFrom = $('#dateFrom').val();
+        let dateTo = $('#dateTo').val();
+        
+        // Build URL with query parameters
+        let url = window.location.pathname + '?';
+        if (adminId) url += 'admin=' + adminId + '&';
+        if (action) url += 'action=' + action + '&';
+        if (dateFrom) url += 'date_from=' + dateFrom + '&';
+        if (dateTo) url += 'date_to=' + dateTo + '&';
+        
+        // Remove trailing &
+        url = url.slice(0, -1);
+        
+        // Redirect to filtered page
+        window.location.href = url;
+    });
+    
+    // Reset filters
+    $('#resetFilters').click(function() {
+        window.location.href = window.location.pathname;
+    });
+    
+    // Export to CSV
+    $('#exportCsv').click(function() {
+        // Get current filters
+        let adminId = $('#adminFilter').val();
+        let action = $('#actionFilter').val();
+        let dateFrom = $('#dateFrom').val();
+        let dateTo = $('#dateTo').val();
+        
+        // Build URL with query parameters
+        let url = '/dashboard/api/activity-log/export/?';
+        if (adminId) url += 'admin=' + adminId + '&';
+        if (action) url += 'action=' + action + '&';
+        if (dateFrom) url += 'date_from=' + dateFrom + '&';
+        if (dateTo) url += 'date_to=' + dateTo + '&';
+        
+        // Remove trailing &
+        url = url.slice(0, -1);
+        
+        // Redirect to export endpoint
+        window.location.href = url;
+    });
+});
+</script>
+{% endblock %} 
