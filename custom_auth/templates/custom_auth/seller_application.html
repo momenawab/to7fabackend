@@ -1,0 +1,426 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Seller Application - To7fa{% endblock %}
+
+{% block extra_css %}
+<style>
+    .shipping-costs-container {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+    .form-section {
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .form-section h3 {
+        border-bottom: 2px solid #6c5ce7;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+        color: #333;
+    }
+    .required-field::after {
+        content: "*";
+        color: red;
+        margin-left: 4px;
+    }
+    .category-checkbox-group {
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    .preview-image {
+        max-width: 200px;
+        max-height: 200px;
+        display: block;
+        margin: 10px 0;
+        border-radius: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h2 class="mb-0">Seller Application</h2>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i> Your application will be reviewed by our team. You'll receive a notification once it's processed.
+                    </div>
+
+                    <form method="post" enctype="multipart/form-data" id="sellerApplicationForm">
+                        {% csrf_token %}
+                        
+                        <!-- Seller Type Selection -->
+                        <div class="form-section">
+                            <h3>Seller Type</h3>
+                            <div class="mb-3">
+                                <label class="form-label required-field">I want to register as:</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="user_type" id="artistType" value="artist" required>
+                                    <label class="form-check-label" for="artistType">
+                                        <i class="fas fa-paint-brush me-2"></i>Artist
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="user_type" id="storeType" value="store">
+                                    <label class="form-check-label" for="storeType">
+                                        <i class="fas fa-store me-2"></i>Store
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Basic Information -->
+                        <div class="form-section">
+                            <h3>Basic Information</h3>
+                            
+                            <div class="mb-3">
+                                <label for="name" class="form-label required-field">Full Name / Business Name</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="email" class="form-label required-field">Email Address</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="phone_number" class="form-label required-field">Phone Number</label>
+                                <input type="tel" class="form-control" id="phone_number" name="phone_number" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="photo" class="form-label">Profile Photo / Logo</label>
+                                <input type="file" class="form-control" id="photo" name="photo" accept="image/*">
+                                <small class="text-muted">Upload a clear photo of yourself or your business logo.</small>
+                                <div id="imagePreview"></div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="address" class="form-label required-field">Address</label>
+                                <textarea class="form-control" id="address" name="address" rows="3" required></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Artist Specific Information -->
+                        <div class="form-section" id="artistSection" style="display: none;">
+                            <h3>Artist Information</h3>
+                            
+                            <div class="mb-3">
+                                <label for="specialty" class="form-label required-field">Specialty</label>
+                                <input type="text" class="form-control" id="specialty" name="specialty">
+                                <small class="text-muted">E.g., Painting, Sculpture, Digital Art, etc.</small>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="bio" class="form-label required-field">Artist Bio</label>
+                                <textarea class="form-control" id="bio" name="bio" rows="4"></textarea>
+                                <small class="text-muted">Tell us about your artistic journey, style, and inspirations.</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Store Specific Information -->
+                        <div class="form-section" id="storeSection" style="display: none;">
+                            <h3>Store Information</h3>
+                            
+                            <div class="mb-3">
+                                <label for="store_name" class="form-label required-field">Store Name</label>
+                                <input type="text" class="form-control" id="store_name" name="store_name">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="tax_id" class="form-label">Tax ID / Business Registration Number</label>
+                                <input type="text" class="form-control" id="tax_id" name="tax_id">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="has_physical_store" name="has_physical_store">
+                                    <label class="form-check-label" for="has_physical_store">
+                                        I have a physical store location
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3" id="physicalAddressSection" style="display: none;">
+                                <label for="physical_address" class="form-label">Physical Store Address</label>
+                                <textarea class="form-control" id="physical_address" name="physical_address" rows="3"></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- Shipping Information -->
+                        <div class="form-section">
+                            <h3>Shipping Information</h3>
+                            
+                            <div class="mb-3">
+                                <label for="shipping_company" class="form-label required-field">Preferred Shipping Company</label>
+                                <input type="text" class="form-control" id="shipping_company" name="shipping_company" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label required-field">Shipping Costs per Governorate</label>
+                                <div class="shipping-costs-container">
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Governorate</label>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Cost (EGP)</label>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Egypt Governorates -->
+                                    {% for governorate in governorates %}
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" name="governorate_name_{{ forloop.counter }}" value="{{ governorate }}" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control shipping-cost" name="governorate_cost_{{ forloop.counter }}" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    {% empty %}
+                                    <!-- Fallback if governorates aren't provided -->
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" name="governorate_name_1" value="Cairo" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control shipping-cost" name="governorate_cost_1" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" name="governorate_name_2" value="Alexandria" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control shipping-cost" name="governorate_cost_2" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" name="governorate_name_3" value="Giza" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control shipping-cost" name="governorate_cost_3" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" name="governorate_name_4" value="Sharqia" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control shipping-cost" name="governorate_cost_4" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <input type="text" class="form-control" name="governorate_name_5" value="Dakahlia" readonly>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control shipping-cost" name="governorate_cost_5" min="0" step="0.01" required>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Product Categories -->
+                        <div class="form-section">
+                            <h3>Product Categories</h3>
+                            
+                            <div class="mb-3">
+                                <label class="form-label required-field">Select categories for your products:</label>
+                                <div class="category-checkbox-group">
+                                    {% for category in categories %}
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories" id="category_{{ category.id }}" value="{{ category.id }}">
+                                        <label class="form-check-label" for="category_{{ category.id }}">
+                                            {{ category.name }}
+                                        </label>
+                                    </div>
+                                    {% empty %}
+                                    <!-- Fallback if categories aren't provided -->
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories" id="category_1" value="1">
+                                        <label class="form-check-label" for="category_1">
+                                            Handmade Crafts
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories" id="category_2" value="2">
+                                        <label class="form-check-label" for="category_2">
+                                            Paintings
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories" id="category_3" value="3">
+                                        <label class="form-check-label" for="category_3">
+                                            Jewelry
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories" id="category_4" value="4">
+                                        <label class="form-check-label" for="category_4">
+                                            Home Decor
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories" id="category_5" value="5">
+                                        <label class="form-check-label" for="category_5">
+                                            Clothing
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                <small class="text-muted">Select at least one category that best describes your products.</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Additional Details -->
+                        <div class="form-section">
+                            <h3>Additional Details</h3>
+                            
+                            <div class="mb-3">
+                                <label for="details" class="form-label required-field">Tell us more about your products/services</label>
+                                <textarea class="form-control" id="details" name="details" rows="5" required></textarea>
+                                <small class="text-muted">Describe your products, your experience, and why customers should buy from you.</small>
+                            </div>
+                        </div>
+                        
+                        <!-- Terms and Conditions -->
+                        <div class="form-section">
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="termsAgreed" name="terms_agreed" required>
+                                    <label class="form-check-label required-field" for="termsAgreed">
+                                        I agree to the <a href="#" target="_blank">Terms and Conditions</a> for sellers
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">Submit Application</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Toggle sections based on seller type
+        const artistType = document.getElementById('artistType');
+        const storeType = document.getElementById('storeType');
+        const artistSection = document.getElementById('artistSection');
+        const storeSection = document.getElementById('storeSection');
+        
+        function toggleSections() {
+            if (artistType.checked) {
+                artistSection.style.display = 'block';
+                storeSection.style.display = 'none';
+                
+                // Make artist fields required
+                document.getElementById('specialty').setAttribute('required', '');
+                document.getElementById('bio').setAttribute('required', '');
+                
+                // Remove required from store fields
+                document.getElementById('store_name').removeAttribute('required');
+            } else if (storeType.checked) {
+                artistSection.style.display = 'none';
+                storeSection.style.display = 'block';
+                
+                // Make store fields required
+                document.getElementById('store_name').setAttribute('required', '');
+                
+                // Remove required from artist fields
+                document.getElementById('specialty').removeAttribute('required');
+                document.getElementById('bio').removeAttribute('required');
+            }
+        }
+        
+        artistType.addEventListener('change', toggleSections);
+        storeType.addEventListener('change', toggleSections);
+        
+        // Toggle physical store address section
+        const hasPhysicalStore = document.getElementById('has_physical_store');
+        const physicalAddressSection = document.getElementById('physicalAddressSection');
+        
+        hasPhysicalStore.addEventListener('change', function() {
+            physicalAddressSection.style.display = this.checked ? 'block' : 'none';
+            if (this.checked) {
+                document.getElementById('physical_address').setAttribute('required', '');
+            } else {
+                document.getElementById('physical_address').removeAttribute('required');
+            }
+        });
+        
+        // Image preview
+        const photoInput = document.getElementById('photo');
+        const imagePreview = document.getElementById('imagePreview');
+        
+        photoInput.addEventListener('change', function() {
+            imagePreview.innerHTML = '';
+            if (this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = document.createElement('img');
+                    img.src = e.target.result;
+                    img.classList.add('preview-image');
+                    imagePreview.appendChild(img);
+                }
+                reader.readAsDataURL(this.files[0]);
+            }
+        });
+        
+        // Form validation
+        const form = document.getElementById('sellerApplicationForm');
+        
+        form.addEventListener('submit', function(event) {
+            // Check if at least one category is selected
+            const categoryCheckboxes = document.querySelectorAll('input[name="categories"]:checked');
+            if (categoryCheckboxes.length === 0) {
+                event.preventDefault();
+                alert('Please select at least one product category.');
+                return;
+            }
+            
+            // Check if shipping costs are filled
+            const shippingCosts = document.querySelectorAll('.shipping-cost');
+            let allCostsFilled = true;
+            
+            shippingCosts.forEach(function(input) {
+                if (!input.value) {
+                    allCostsFilled = false;
+                }
+            });
+            
+            if (!allCostsFilled) {
+                event.preventDefault();
+                alert('Please provide shipping costs for all governorates.');
+                return;
+            }
+        });
+    });
+</script>
+{% endblock %} 

@@ -1,0 +1,279 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Application Details - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Seller Application Details{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- Application Details Card -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Application #{{ application.id }}</span>
+                <div>
+                    {% if application.status == 'pending' %}
+                    <span class="badge bg-warning">Pending</span>
+                    {% elif application.status == 'approved' %}
+                    <span class="badge bg-success">Approved</span>
+                    {% elif application.status == 'rejected' %}
+                    <span class="badge bg-danger">Rejected</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5 class="mb-3">Basic Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <th style="width: 120px;">Name:</th>
+                                <td>{{ application.name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Email:</th>
+                                <td>{{ application.email }}</td>
+                            </tr>
+                            <tr>
+                                <th>Phone:</th>
+                                <td>{{ application.phone_number }}</td>
+                            </tr>
+                            <tr>
+                                <th>Address:</th>
+                                <td>{{ application.address }}</td>
+                            </tr>
+                            <tr>
+                                <th>Type:</th>
+                                <td>{{ application.get_user_type_display }}</td>
+                            </tr>
+                            <tr>
+                                <th>Submitted:</th>
+                                <td>{{ application.submitted_at|date:"F d, Y H:i" }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="mb-3">Shipping Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <th style="width: 150px;">Shipping Company:</th>
+                                <td>{{ application.shipping_company }}</td>
+                            </tr>
+                            <tr>
+                                <th>Shipping Costs:</th>
+                                <td>
+                                    <ul class="list-unstyled">
+                                        {% for governorate, cost in application.shipping_costs.items %}
+                                        <li>{{ governorate }}: ${{ cost }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="mb-3">Details</h5>
+                        <p>{{ application.details }}</p>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <!-- User Type Specific Fields -->
+                {% if application.user_type == 'artist' %}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="mb-3">Artist Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <th style="width: 120px;">Specialty:</th>
+                                <td>{{ application.specialty }}</td>
+                            </tr>
+                            <tr>
+                                <th>Bio:</th>
+                                <td>{{ application.bio }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                {% elif application.user_type == 'store' %}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="mb-3">Store Information</h5>
+                        <table class="table table-borderless">
+                            <tr>
+                                <th style="width: 150px;">Store Name:</th>
+                                <td>{{ application.store_name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Tax ID:</th>
+                                <td>{{ application.tax_id }}</td>
+                            </tr>
+                            <tr>
+                                <th>Physical Store:</th>
+                                <td>{{ application.has_physical_store|yesno:"Yes,No" }}</td>
+                            </tr>
+                            {% if application.has_physical_store %}
+                            <tr>
+                                <th>Physical Address:</th>
+                                <td>{{ application.physical_address }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <hr>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="mb-3">Categories</h5>
+                        <div class="d-flex flex-wrap">
+                            {% for category_id in application.categories %}
+                            <span class="badge bg-purple me-2 mb-2 p-2">Category ID: {{ category_id }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                
+                {% if application.photo %}
+                <hr>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="mb-3">Photo</h5>
+                        <img src="{{ application.photo.url }}" alt="{{ application.name }}" class="img-fluid rounded" style="max-height: 300px;">
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if application.status == 'pending' %}
+                <hr>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <h5 class="mb-3">Process Application</h5>
+                        <form method="post" action="{% url 'admin_panel:process_application' application.id %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="notes" class="form-label">Admin Notes</label>
+                                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                            </div>
+                            <div class="d-flex">
+                                <button type="submit" name="action" value="approve" class="btn btn-success me-2">
+                                    <i class="fas fa-check me-1"></i> Approve
+                                </button>
+                                <button type="submit" name="action" value="reject" class="btn btn-danger">
+                                    <i class="fas fa-times me-1"></i> Reject
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <hr>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <h5 class="mb-3">Admin Notes</h5>
+                        <p>{{ application.admin_notes|default:"No notes provided" }}</p>
+                        <p class="text-muted">
+                            {% if application.processed_at %}
+                            Processed on {{ application.processed_at|date:"F d, Y H:i" }} by {{ application.processed_by.email }}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- User Information Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                User Information
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <i class="fas fa-user-circle fa-5x text-muted"></i>
+                </div>
+                <table class="table table-borderless">
+                    <tr>
+                        <th>Name:</th>
+                        <td>{{ application.user.first_name }} {{ application.user.last_name }}</td>
+                    </tr>
+                    <tr>
+                        <th>Email:</th>
+                        <td>{{ application.user.email }}</td>
+                    </tr>
+                    <tr>
+                        <th>Joined:</th>
+                        <td>{{ application.user.date_joined|date:"F d, Y" }}</td>
+                    </tr>
+                </table>
+                <a href="#" class="btn btn-outline-purple w-100">
+                    <i class="fas fa-user me-1"></i> View User Profile
+                </a>
+            </div>
+        </div>
+        
+        <!-- Actions Card -->
+        <div class="card">
+            <div class="card-header">
+                Actions
+            </div>
+            <div class="card-body">
+                <a href="{% url 'admin_panel:seller_applications' %}" class="btn btn-outline-secondary w-100 mb-2">
+                    <i class="fas fa-arrow-left me-1"></i> Back to Applications
+                </a>
+                
+                {% if application.status == 'rejected' %}
+                <button class="btn btn-outline-success w-100 mb-2" data-bs-toggle="modal" data-bs-target="#reconsiderModal">
+                    <i class="fas fa-sync-alt me-1"></i> Reconsider Application
+                </button>
+                {% endif %}
+                
+                <button class="btn btn-outline-danger w-100">
+                    <i class="fas fa-trash-alt me-1"></i> Delete Application
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reconsider Modal -->
+{% if application.status == 'rejected' %}
+<div class="modal fade" id="reconsiderModal" tabindex="-1" aria-labelledby="reconsiderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reconsiderModalLabel">Reconsider Application</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to reconsider this application? This will reset the status to 'pending'.</p>
+                <form method="post" action="#">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="reconsiderNotes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="reconsiderNotes" name="notes" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %} 

@@ -1,0 +1,699 @@
+{
+  "info": {
+    "name": "To7fa API Collection",
+    "description": "API collection for the To7fa e-commerce platform",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login (Get Token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"your_username\",\n    \"password\": \"your_password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/token/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "token", ""]
+            },
+            "description": "Get JWT token for authentication"
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refresh\": \"your_refresh_token\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/token/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "token", "refresh", ""]
+            },
+            "description": "Refresh JWT token"
+          }
+        },
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"new_user\",\n    \"email\": \"user@example.com\",\n    \"password\": \"secure_password\",\n    \"first_name\": \"First\",\n    \"last_name\": \"Last\",\n    \"phone\": \"1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register", ""]
+            },
+            "description": "Register a new user"
+          }
+        },
+        {
+          "name": "User Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "profile", ""]
+            },
+            "description": "Get user profile information"
+          }
+        },
+        {
+          "name": "Register Seller",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"business_name\": \"My Store\",\n    \"business_address\": \"123 Main St\",\n    \"business_description\": \"Selling handmade crafts\",\n    \"tax_id\": \"TAX12345\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/seller/register/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "seller", "register", ""]
+            },
+            "description": "Register as a seller"
+          }
+        },
+        {
+          "name": "Password Reset Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/password/reset/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "password", "reset", ""]
+            },
+            "description": "Request password reset"
+          }
+        },
+        {
+          "name": "Password Reset Confirm",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"token\": \"reset_token\",\n    \"password\": \"new_password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/password/reset/confirm/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "password", "reset", "confirm", ""]
+            },
+            "description": "Confirm password reset"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Get All Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/products/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", ""]
+            },
+            "description": "Get list of all products"
+          }
+        },
+        {
+          "name": "Get Product Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/products/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "1", ""]
+            },
+            "description": "Get details of a specific product"
+          }
+        },
+        {
+          "name": "Get All Categories",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/products/categories/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "categories", ""]
+            },
+            "description": "Get list of all product categories"
+          }
+        },
+        {
+          "name": "Get Category Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/products/categories/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "categories", "1", ""]
+            },
+            "description": "Get details of a specific category"
+          }
+        },
+        {
+          "name": "Search Products",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/products/search/?query=gift",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "search", ""],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "gift"
+                }
+              ]
+            },
+            "description": "Search for products"
+          }
+        },
+        {
+          "name": "Get Product Reviews",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/products/1/reviews/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "1", "reviews", ""]
+            },
+            "description": "Get reviews for a specific product"
+          }
+        },
+        {
+          "name": "Get Seller Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/seller/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "seller", ""]
+            },
+            "description": "Get products for the authenticated seller"
+          }
+        },
+        {
+          "name": "Get Seller Product Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/seller/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "seller", "1", ""]
+            },
+            "description": "Get details of a specific seller product"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Get All Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", ""]
+            },
+            "description": "Get list of all orders for the authenticated user"
+          }
+        },
+        {
+          "name": "Get Order Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "1", ""]
+            },
+            "description": "Get details of a specific order"
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"items\": [\n        {\n            \"product_id\": 1,\n            \"quantity\": 2\n        },\n        {\n            \"product_id\": 3,\n            \"quantity\": 1\n        }\n    ],\n    \"shipping_address\": \"123 Main St, City, Country\",\n    \"payment_method_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/orders/create/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "create", ""]
+            },
+            "description": "Create a new order"
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/1/cancel/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "1", "cancel", ""]
+            },
+            "description": "Cancel an existing order"
+          }
+        },
+        {
+          "name": "Get Seller Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/orders/seller/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "seller", ""]
+            },
+            "description": "Get orders for the authenticated seller"
+          }
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"shipped\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/orders/seller/1/status/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "orders", "seller", "1", "status", ""]
+            },
+            "description": "Update the status of an order"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get Wallet Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/wallet/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", ""]
+            },
+            "description": "Get wallet details for the authenticated user"
+          }
+        },
+        {
+          "name": "Deposit Funds",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"amount\": 100,\n    \"payment_method_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/wallet/deposit/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "deposit", ""]
+            },
+            "description": "Deposit funds into the wallet"
+          }
+        },
+        {
+          "name": "Withdraw Funds",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"amount\": 50,\n    \"bank_account\": \"Bank account details\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/wallet/withdraw/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "withdraw", ""]
+            },
+            "description": "Withdraw funds from the wallet"
+          }
+        },
+        {
+          "name": "Get Transaction History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/wallet/transactions/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "transactions", ""]
+            },
+            "description": "Get transaction history for the authenticated user"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Process Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"order_id\": 1,\n    \"payment_method_id\": 1,\n    \"amount\": 150\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments/process/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "process", ""]
+            },
+            "description": "Process a payment for an order"
+          }
+        },
+        {
+          "name": "Get Payment Methods",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/payments/methods/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "methods", ""]
+            },
+            "description": "Get available payment methods"
+          }
+        },
+        {
+          "name": "Get Payment Method Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/payments/methods/1/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "methods", "1", ""]
+            },
+            "description": "Get details of a specific payment method"
+          }
+        },
+        {
+          "name": "Verify Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"payment_id\": \"payment_123\",\n    \"verification_code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments/verify/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "verify", ""]
+            },
+            "description": "Verify a payment"
+          }
+        },
+        {
+          "name": "Refund Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"payment_id\": \"payment_123\",\n    \"reason\": \"Item returned\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments/refund/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "payments", "refund", ""]
+            },
+            "description": "Request a refund for a payment"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get All Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", ""]
+            },
+            "description": "Get all notifications for the authenticated user"
+          }
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/1/read/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", "1", "read", ""]
+            },
+            "description": "Mark a notification as read"
+          }
+        },
+        {
+          "name": "Mark All Notifications as Read",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/notifications/read-all/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "notifications", "read-all", ""]
+            },
+            "description": "Mark all notifications as read"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_access_token_here",
+      "type": "string"
+    }
+  ]
+} 
