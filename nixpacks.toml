@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ['python310']
+
+[phases.install]
+cmds = [
+    'pip install --upgrade pip',
+    'pip install --no-cache-dir --prefer-binary -r requirements.txt'
+]
+
+[phases.build]
+cmds = [
+    'python manage.py collectstatic --noinput'
+]
+
+[start]
+cmd = 'python manage.py migrate && gunicorn to7fabackend.wsgi:application --bind 0.0.0.0:$PORT' 

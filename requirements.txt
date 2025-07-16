@@ -1,28 +1,11 @@
-# Core Django Framework
 django==5.2.3
-
-# Django REST Framework for API
 djangorestframework==3.16.0
 djangorestframework-simplejwt==5.5.0
-
-# Database - Using PyMySQL instead of mysqlclient for better compatibility
 PyMySQL==1.1.0
 dj-database-url==2.1.0
-
-# CORS handling
 django-cors-headers==4.7.0
-
-# Image processing
 Pillow==10.4.0
-
-# Environment variables
 python-dotenv==1.0.1
-
-# Production server
 gunicorn==21.2.0
-
-# Static files handling
 whitenoise==6.6.0
-
-# Additional utilities
 sqlparse==0.5.3 
