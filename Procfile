@@ -1,0 +1,1 @@
+web: python manage.py migrate && python manage.py collectstatic --noinput && gunicorn to7fabackend.wsgi:application --bind 0.0.0.0:$PORT 
