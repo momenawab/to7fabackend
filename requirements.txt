@@ -1,7 +1,23 @@
+# Core Django Framework
 django==5.2.3
+
+# Django REST Framework for API
 djangorestframework==3.16.0
 djangorestframework-simplejwt==5.5.0
-django-cors-headers==4.7.0
+
+# Database
 mysqlclient==2.2.7
+mysql-connector-python==8.2.0
+
+# CORS handling
+django-cors-headers==4.7.0
+
+# Image processing
 pillow==11.2.1
-python-dotenv==1.0.1 
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Additional production dependencies
+gunicorn==21.2.0
+whitenoise==6.6.0 
