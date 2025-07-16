@@ -1,4 +1,4 @@
-import mysql.connector
+import pymysql
 import os
 import sys
 import subprocess
@@ -7,7 +7,7 @@ def create_database():
     """Create the MySQL database if it doesn't exist"""
     try:
         # Connect to MySQL server
-        conn = mysql.connector.connect(
+        conn = pymysql.connect(
             host="localhost",
             user="root",
             password=""
@@ -25,42 +25,58 @@ def create_database():
         conn.close()
         
         return True
-    except mysql.connector.Error as err:
+    except pymysql.Error as err:
+        print(f"Error: {err}")
+        return False
+
+def create_user():
+    """Create a Django user for the database"""
+    try:
+        # Connect to MySQL server as root
+        conn = pymysql.connect(
+            host="localhost",
+            user="root",
+            password=""
+        )
+        
+        cursor = conn.cursor()
+        
+        # Create user and grant privileges
+        cursor.execute("CREATE USER IF NOT EXISTS 'django_user'@'localhost' IDENTIFIED BY 'strongpass'")
+        cursor.execute("GRANT ALL PRIVILEGES ON to7fa_db.* TO 'django_user'@'localhost'")
+        cursor.execute("FLUSH PRIVILEGES")
+        
+        print("Django user created successfully or already exists.")
+        
+        # Close connection
+        cursor.close()
+        conn.close()
+        
+        return True
+    except pymysql.Error as err:
         print(f"Error: {err}")
         return False
 
 def run_migrations():
     """Run Django migrations"""
     try:
-        # Run migrations
         subprocess.run([sys.executable, "manage.py", "migrate"], check=True)
         print("Migrations completed successfully.")
-        
         return True
     except subprocess.CalledProcessError as err:
         print(f"Error running migrations: {err}")
         return False
 
-def create_superuser():
-    """Create a superuser if needed"""
-    try:
-        # Check if we want to create a superuser
-        create = input("Do you want to create a superuser? (y/n): ").lower()
-        
-        if create == 'y':
-            subprocess.run([sys.executable, "manage.py", "createsuperuser"], check=False)
-            print("Superuser creation process completed.")
-        
-        return True
-    except Exception as err:
-        print(f"Error creating superuser: {err}")
-        return False
-
 if __name__ == "__main__":
-    print("Setting up MySQL database for Tohfa Backend...")
+    print("Setting up MySQL database for To7fa backend...")
     
     if create_database():
-        if run_migrations():
-            create_superuser()
-    
-    print("Setup process completed.") 
+        if create_user():
+            if run_migrations():
+                print("Database setup completed successfully!")
+            else:
+                print("Failed to run migrations.")
+        else:
+            print("Failed to create Django user.")
+    else:
+        print("Failed to create database.") 
