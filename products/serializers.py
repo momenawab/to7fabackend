@@ -10,9 +10,19 @@ class CategorySerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'description', 'parent', 'image', 'is_active')
 
 class ProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+    
     class Meta:
         model = ProductImage
         fields = ('id', 'image', 'is_primary')
+    
+    def get_image(self, obj):
+        if obj.image and hasattr(obj.image, 'url'):
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
 
 class ReviewSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()

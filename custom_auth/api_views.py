@@ -1,9 +1,10 @@
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Q
 from .models import User, Artist, Store
 from .serializers import UserSerializer
 from admin_panel.models import AdminActivity, SellerApplication, AdminNotification
@@ -186,4 +187,205 @@ def submit_seller_application(request):
         return Response({
             'status': 'error',
             'message': f'Error processing your application: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Artist and Store endpoints for admin content management
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def top_artists(request):
+    """Get top/featured artists"""
+    from products.models import ContentSettings
+    from django.db.models import Count
+    
+    limit = request.query_params.get('limit', 8)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 8
+    
+    # Get settings to check if this section should be shown
+    settings = ContentSettings.get_settings()
+    if not settings.show_top_artists:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Top artists section is currently disabled'
+        })
+    
+    # Get verified artists with products, ordered by product count
+    artists = Artist.objects.filter(
+        is_verified=True,
+        user__products__isnull=False
+    ).annotate(
+        product_count=Count('user__products', distinct=True)
+    ).filter(
+        product_count__gt=0
+    ).order_by('-product_count', '-created_at')[:min(limit, settings.max_artists_to_show)]
+    
+    artist_data = []
+    for artist in artists:
+        artist_data.append({
+            'id': str(artist.user.id),
+            'name': f"{artist.user.first_name} {artist.user.last_name}".strip() or artist.user.email.split('@')[0],
+            'email': artist.user.email,
+            'specialty': artist.specialty,
+            'bio': artist.bio,
+            'profilePicture': artist.profile_picture.url if artist.profile_picture else None,
+            'isVerified': artist.is_verified,
+            'productCount': artist.product_count,
+            'socialMedia': artist.social_media,
+            'joinedAt': artist.created_at.isoformat()
+        })
+    
+    return Response({
+        'results': artist_data,
+        'count': len(artist_data),
+        'settings': {
+            'max_artists': settings.max_artists_to_show,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def featured_artists(request):
+    """Get featured artists - same as top for now"""
+    return top_artists(request)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def top_stores(request):
+    """Get top/featured stores"""
+    from products.models import ContentSettings
+    from django.db.models import Count
+    
+    limit = request.query_params.get('limit', 6)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 6
+    
+    # Get settings to check if this section should be shown
+    settings = ContentSettings.get_settings()
+    if not settings.show_top_stores:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Top stores section is currently disabled'
+        })
+    
+    # Get verified stores with products, ordered by product count
+    stores = Store.objects.filter(
+        is_verified=True,
+        user__products__isnull=False
+    ).annotate(
+        product_count=Count('user__products', distinct=True)
+    ).filter(
+        product_count__gt=0
+    ).order_by('-product_count', '-created_at')[:min(limit, settings.max_stores_to_show)]
+    
+    store_data = []
+    for store in stores:
+        store_data.append({
+            'id': str(store.user.id),
+            'name': store.store_name,
+            'email': store.user.email,
+            'logo': store.logo.url if store.logo else None,
+            'taxId': store.tax_id,
+            'hasPhysicalStore': store.has_physical_store,
+            'physicalAddress': store.physical_address,
+            'isVerified': store.is_verified,
+            'productCount': store.product_count,
+            'socialMedia': store.social_media,
+            'joinedAt': store.created_at.isoformat()
+        })
+    
+    return Response({
+        'results': store_data,
+        'count': len(store_data),
+        'settings': {
+            'max_stores': settings.max_stores_to_show,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def featured_stores(request):
+    """Get featured stores - same as top for now"""
+    return top_stores(request)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_artists(request):
+    """Search artists by name or specialty"""
+    query = request.query_params.get('q', '')
+    if not query:
+        return Response({
+            "error": "Search query parameter 'q' is required"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Search in user name and artist specialty
+    artists = Artist.objects.filter(
+        Q(user__first_name__icontains=query) | 
+        Q(user__last_name__icontains=query) | 
+        Q(specialty__icontains=query),
+        is_verified=True
+    ).order_by('-created_at')
+    
+    artist_data = []
+    for artist in artists:
+        artist_data.append({
+            'id': str(artist.user.id),
+            'name': f"{artist.user.first_name} {artist.user.last_name}".strip() or artist.user.email.split('@')[0],
+            'email': artist.user.email,
+            'specialty': artist.specialty,
+            'bio': artist.bio,
+            'profilePicture': artist.profile_picture.url if artist.profile_picture else None,
+            'isVerified': artist.is_verified,
+            'socialMedia': artist.social_media,
+            'joinedAt': artist.created_at.isoformat()
+        })
+    
+    return Response({
+        "query": query,
+        "results_count": len(artist_data),
+        "results": artist_data
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_stores(request):
+    """Search stores by name"""
+    query = request.query_params.get('q', '')
+    if not query:
+        return Response({
+            "error": "Search query parameter 'q' is required"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Search in store name
+    stores = Store.objects.filter(
+        store_name__icontains=query,
+        is_verified=True
+    ).order_by('-created_at')
+    
+    store_data = []
+    for store in stores:
+        store_data.append({
+            'id': str(store.user.id),
+            'name': store.store_name,
+            'email': store.user.email,
+            'logo': store.logo.url if store.logo else None,
+            'hasPhysicalStore': store.has_physical_store,
+            'physicalAddress': store.physical_address,
+            'isVerified': store.is_verified,
+            'socialMedia': store.social_media,
+            'joinedAt': store.created_at.isoformat()
+        })
+    
+    return Response({
+        "query": query,
+        "results_count": len(store_data),
+        "results": store_data
+    }) 

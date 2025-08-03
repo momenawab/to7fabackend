@@ -42,6 +42,10 @@ urlpatterns = [
     
     # Admin API endpoints
     path('api/admin/', include('admin_panel.api_urls')),
+    
+    # Direct access to artists and stores endpoints
+    path('api/artists/', include('custom_auth.artist_store_urls')),
+    path('api/stores/', include('custom_auth.store_urls')),
 ]
 
 # Serve media files in development

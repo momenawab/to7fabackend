@@ -14,10 +14,6 @@ from pathlib import Path
 import os
 from datetime import timedelta
 
-# Configure PyMySQL to work with Django
-import pymysql
-pymysql.install_as_MySQLdb()
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -31,7 +27,7 @@ SECRET_KEY = 'django-insecure-q2(^inryyn2zv9pky+rr+us=!bn2tph!^m&5bx2hiie)zreg4y
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.96', '192.168.1.109','192.168.88.254','0.0.0.0','200.200.200.29']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.96', '192.168.1.109','192.168.88.254','0.0.0.0','200.200.200.29','192.168.1.115']
 
 
 # Application definition
@@ -62,7 +58,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -181,20 +176,3 @@ LOGIN_URL = '/dashboard/login/'
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True  # For development only, change in production
 CORS_ALLOW_CREDENTIALS = True
-
-# Production settings
-import os
-if os.environ.get('RAILWAY_ENVIRONMENT'):
-    DEBUG = False
-    ALLOWED_HOSTS = ['*']  # Railway will handle the domain
-    
-    # Database configuration for Railway
-    if os.environ.get('DATABASE_URL'):
-        import dj_database_url
-        DATABASES = {
-            'default': dj_database_url.parse(os.environ.get('DATABASE_URL'))
-        }
-    
-    # Static files configuration for production
-    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

@@ -345,6 +345,24 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'ads_control' %}active{% endif %}" href="{% url 'admin_panel:ads_control' %}">
+                    <i class="fas fa-ad"></i>
+                    <span>Ads Control</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'artists_stores' %}active{% endif %}" href="{% url 'admin_panel:artists_stores' %}">
+                    <i class="fas fa-users"></i>
+                    <span>Artists & Stores</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'featured_products' %}active{% endif %}" href="{% url 'admin_panel:featured_products' %}">
+                    <i class="fas fa-star"></i>
+                    <span>Featured Products</span>
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {% if active_tab == 'settings' %}active{% endif %}" href="{% url 'admin_panel:settings' %}">
                     <i class="fas fa-cog"></i>
                     <span>Settings</span>
