@@ -30,6 +30,15 @@ urlpatterns = [
     # Reports
     path('reports/', views.reports, name='reports'),
     
+    # Ads Control
+    path('ads/', views.ads_control, name='ads_control'),
+    
+    # Artists and Stores Management
+    path('artists-stores/', views.artists_stores, name='artists_stores'),
+    
+    # Featured Products Management
+    path('featured-products/', views.featured_products, name='featured_products'),
+    
     # Settings
     path('settings/', views.settings, name='settings'),
     

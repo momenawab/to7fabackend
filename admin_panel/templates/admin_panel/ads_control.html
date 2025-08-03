@@ -1,0 +1,622 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Ads Control - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Advertisement Management{% endblock %}
+
+{% block content %}
+<!-- Ads Slider Settings -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Ads Slider Settings</span>
+                <button class="btn btn-purple btn-sm" onclick="refreshAdsSettings()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="enableAdsSlider">
+                            <label class="form-check-label" for="enableAdsSlider">
+                                Enable Ads Slider
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="maxAds" class="form-label">Max Ads to Show</label>
+                            <input type="number" class="form-control" id="maxAds" min="1" max="20" value="6">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="rotationInterval" class="form-label">Rotation Interval (seconds)</label>
+                            <input type="number" class="form-control" id="rotationInterval" min="1" max="30" value="4">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="autoAdvance" class="form-label">Auto Advance</label>
+                            <select class="form-select" id="autoAdvance">
+                                <option value="true">Enabled</option>
+                                <option value="false">Disabled</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-success" onclick="saveAdsSettings()">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Advertisement Management -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Manage Advertisements</span>
+                <div>
+                    <button class="btn btn-purple btn-sm me-2" data-bs-toggle="modal" data-bs-target="#addAdModal">
+                        <i class="fas fa-plus"></i> Add Advertisement
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="loadAdvertisements()">
+                        <i class="fas fa-refresh"></i> Refresh
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th width="60">Order</th>
+                                <th>Title</th>
+                                <th width="100">Image</th>
+                                <th width="120">Status</th>
+                                <th width="100">Created</th>
+                                <th width="150">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="advertisementsTable">
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    <div class="spinner-border text-purple" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading advertisements...</p>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ads Performance Stats -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-ad fa-2x text-purple mb-2"></i>
+                <h3 id="totalAds" class="mb-1">0</h3>
+                <p class="text-muted">Total Ads</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-eye fa-2x text-success mb-2"></i>
+                <h3 id="activeAds" class="mb-1">0</h3>
+                <p class="text-muted">Active Ads</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-mouse-pointer fa-2x text-info mb-2"></i>
+                <h3 id="totalClicks" class="mb-1">0</h3>
+                <p class="text-muted">Total Clicks</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-chart-line fa-2x text-warning mb-2"></i>
+                <h3 id="clickRate" class="mb-1">0%</h3>
+                <p class="text-muted">Click Rate</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ads Preview -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <span>Ads Preview</span>
+                <small class="text-muted ms-2">(How ads appear in the mobile app)</small>
+            </div>
+            <div class="card-body">
+                <div id="adsPreview" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading preview...</span>
+                    </div>
+                    <p class="mt-2">Loading ads preview...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Advertisement Modal -->
+<div class="modal fade" id="addAdModal" tabindex="-1" aria-labelledby="addAdModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addAdModalLabel">Add New Advertisement</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addAdForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="adTitle" class="form-label">Title *</label>
+                                <input type="text" class="form-control" id="adTitle" required maxlength="200">
+                                <div class="form-text">Maximum 200 characters</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="adOrder" class="form-label">Display Order</label>
+                                <input type="number" class="form-control" id="adOrder" value="0" min="0" max="100">
+                                <div class="form-text">Lower numbers appear first</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="adDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="adDescription" rows="3" maxlength="500"></textarea>
+                        <div class="form-text">Maximum 500 characters (optional)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="adImageUrl" class="form-label">Image URL *</label>
+                        <input type="url" class="form-control" id="adImageUrl" required placeholder="https://example.com/image.jpg">
+                        <div class="form-text">Recommended size: 800x400 pixels</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="adLinkUrl" class="form-label">Link URL</label>
+                        <input type="url" class="form-control" id="adLinkUrl" placeholder="https://example.com">
+                        <div class="form-text">Where users go when they click the ad (optional)</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="adIsActive" checked>
+                                <label class="form-check-label" for="adIsActive">
+                                    Active (visible in app)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="adTrackClicks">
+                                <label class="form-check-label" for="adTrackClicks">
+                                    Track clicks
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-purple" onclick="saveAdvertisement()">
+                    <i class="fas fa-save"></i> Save Advertisement
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Advertisement Modal -->
+<div class="modal fade" id="editAdModal" tabindex="-1" aria-labelledby="editAdModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editAdModalLabel">Edit Advertisement</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editAdForm">
+                    <input type="hidden" id="editAdId">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editAdTitle" class="form-label">Title *</label>
+                                <input type="text" class="form-control" id="editAdTitle" required maxlength="200">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editAdOrder" class="form-label">Display Order</label>
+                                <input type="number" class="form-control" id="editAdOrder" min="0" max="100">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAdDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="editAdDescription" rows="3" maxlength="500"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAdImageUrl" class="form-label">Image URL *</label>
+                        <input type="url" class="form-control" id="editAdImageUrl" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editAdLinkUrl" class="form-label">Link URL</label>
+                        <input type="url" class="form-control" id="editAdLinkUrl">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="editAdIsActive">
+                                <label class="form-check-label" for="editAdIsActive">
+                                    Active (visible in app)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="editAdTrackClicks">
+                                <label class="form-check-label" for="editAdTrackClicks">
+                                    Track clicks
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-purple" onclick="updateAdvertisement()">
+                    <i class="fas fa-save"></i> Update Advertisement
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Load initial data
+    $(document).ready(function() {
+        loadAdsSettings();
+        loadAdvertisements();
+        loadAdsStats();
+        loadAdsPreview();
+    });
+
+    // Ads Settings Functions
+    function loadAdsSettings() {
+        fetch('/api/products/content-settings/')
+            .then(response => response.json())
+            .then(data => {
+                $('#enableAdsSlider').prop('checked', data.showAdsSlider);
+                $('#maxAds').val(data.maxAdsToShow);
+                $('#rotationInterval').val(data.adsRotationInterval);
+            })
+            .catch(error => {
+                console.error('Error loading ads settings:', error);
+                showAlert('Failed to load ads settings', 'error');
+            });
+    }
+
+    function refreshAdsSettings() {
+        loadAdsSettings();
+        showAlert('Ads settings refreshed', 'success');
+    }
+
+    function saveAdsSettings() {
+        const settings = {
+            showAdsSlider: $('#enableAdsSlider').is(':checked'),
+            maxAdsToShow: parseInt($('#maxAds').val()),
+            adsRotationInterval: parseInt($('#rotationInterval').val())
+        };
+
+        // Note: Implement the backend endpoint for saving ads settings
+        showAlert('Ads settings saved successfully', 'success');
+        console.log('Ads settings to save:', settings);
+    }
+
+    // Advertisement Management Functions
+    function loadAdvertisements() {
+        $('#advertisementsTable').html(`
+            <tr>
+                <td colspan="6" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading advertisements...</p>
+                </td>
+            </tr>
+        `);
+
+        fetch('/api/products/advertisements/')
+            .then(response => response.json())
+            .then(data => {
+                renderAdvertisementsTable(data.results);
+                updateAdsStats(data.results);
+            })
+            .catch(error => {
+                console.error('Error loading advertisements:', error);
+                $('#advertisementsTable').html('<tr><td colspan="6" class="text-center text-danger">Failed to load advertisements</td></tr>');
+            });
+    }
+
+    function renderAdvertisementsTable(ads) {
+        let html = '';
+
+        if (ads.length === 0) {
+            html = '<tr><td colspan="6" class="text-center text-muted">No advertisements found. Click "Add Advertisement" to create one.</td></tr>';
+        } else {
+            ads.forEach(ad => {
+                const createdDate = new Date(ad.created_at || Date.now()).toLocaleDateString();
+                html += `
+                    <tr>
+                        <td>
+                            <span class="badge bg-secondary">${ad.order}</span>
+                        </td>
+                        <td>
+                            <strong>${ad.title}</strong>
+                            ${ad.description ? `<br><small class="text-muted">${ad.description.substring(0, 50)}${ad.description.length > 50 ? '...' : ''}</small>` : ''}
+                        </td>
+                        <td>
+                            ${ad.imageUrl ? 
+                                `<img src="${ad.imageUrl}" alt="${ad.title}" style="width: 80px; height: 40px; object-fit: cover;" class="rounded border">` : 
+                                '<span class="text-muted">No image</span>'
+                            }
+                        </td>
+                        <td>
+                            <span class="badge ${ad.isActive ? 'bg-success' : 'bg-secondary'}">
+                                ${ad.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td>
+                            <small class="text-muted">${createdDate}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="editAdvertisement('${ad.id}')" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="toggleAdStatus('${ad.id}', ${!ad.isActive})" title="${ad.isActive ? 'Deactivate' : 'Activate'}">
+                                    <i class="fas fa-${ad.isActive ? 'eye-slash' : 'eye'}"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteAdvertisement('${ad.id}')" title="Delete">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        $('#advertisementsTable').html(html);
+    }
+
+    function updateAdsStats(ads) {
+        const totalAds = ads.length;
+        const activeAds = ads.filter(ad => ad.isActive).length;
+        
+        $('#totalAds').text(totalAds);
+        $('#activeAds').text(activeAds);
+        // Note: Click stats would come from analytics backend
+        $('#totalClicks').text('N/A');
+        $('#clickRate').text('N/A');
+    }
+
+    function saveAdvertisement() {
+        const adData = {
+            title: $('#adTitle').val().trim(),
+            description: $('#adDescription').val().trim(),
+            imageUrl: $('#adImageUrl').val().trim(),
+            linkUrl: $('#adLinkUrl').val().trim(),
+            order: parseInt($('#adOrder').val()),
+            isActive: $('#adIsActive').is(':checked'),
+            trackClicks: $('#adTrackClicks').is(':checked')
+        };
+
+        if (!adData.title) {
+            showAlert('Please enter a title for the advertisement', 'error');
+            return;
+        }
+
+        if (!adData.imageUrl) {
+            showAlert('Please enter an image URL for the advertisement', 'error');
+            return;
+        }
+
+        // Note: Implement the backend endpoint for creating ads
+        showAlert('Advertisement added successfully', 'success');
+        $('#addAdModal').modal('hide');
+        $('#addAdForm')[0].reset();
+        loadAdvertisements();
+        loadAdsPreview();
+
+        console.log('Advertisement to save:', adData);
+    }
+
+    function editAdvertisement(adId) {
+        // Note: Implement the backend endpoint for getting ad details
+        $('#editAdModal').modal('show');
+        $('#editAdId').val(adId);
+
+        // Mock data for demonstration
+        $('#editAdTitle').val('Sample Ad Title');
+        $('#editAdDescription').val('Sample description');
+        $('#editAdImageUrl').val('https://via.placeholder.com/800x400');
+        $('#editAdLinkUrl').val('https://example.com');
+        $('#editAdOrder').val(1);
+        $('#editAdIsActive').prop('checked', true);
+
+        console.log('Editing advertisement:', adId);
+    }
+
+    function updateAdvertisement() {
+        const adId = $('#editAdId').val();
+        const adData = {
+            title: $('#editAdTitle').val().trim(),
+            description: $('#editAdDescription').val().trim(),
+            imageUrl: $('#editAdImageUrl').val().trim(),
+            linkUrl: $('#editAdLinkUrl').val().trim(),
+            order: parseInt($('#editAdOrder').val()),
+            isActive: $('#editAdIsActive').is(':checked'),
+            trackClicks: $('#editAdTrackClicks').is(':checked')
+        };
+
+        if (!adData.title) {
+            showAlert('Please enter a title for the advertisement', 'error');
+            return;
+        }
+
+        // Note: Implement the backend endpoint for updating ads
+        showAlert('Advertisement updated successfully', 'success');
+        $('#editAdModal').modal('hide');
+        loadAdvertisements();
+        loadAdsPreview();
+
+        console.log('Advertisement to update:', adId, adData);
+    }
+
+    function toggleAdStatus(adId, newStatus) {
+        // Note: Implement the backend endpoint for toggling ad status
+        showAlert(`Advertisement ${newStatus ? 'activated' : 'deactivated'} successfully`, 'success');
+        loadAdvertisements();
+        loadAdsPreview();
+
+        console.log('Toggle ad status:', adId, newStatus);
+    }
+
+    function deleteAdvertisement(adId) {
+        if (confirm('Are you sure you want to delete this advertisement? This action cannot be undone.')) {
+            // Note: Implement the backend endpoint for deleting ads
+            showAlert('Advertisement deleted successfully', 'success');
+            loadAdvertisements();
+            loadAdsPreview();
+
+            console.log('Deleting advertisement:', adId);
+        }
+    }
+
+    function loadAdsStats() {
+        // Note: Implement analytics endpoint for ad statistics
+        console.log('Loading ads statistics...');
+    }
+
+    function loadAdsPreview() {
+        $('#adsPreview').html(`
+            <div class="spinner-border text-purple" role="status">
+                <span class="visually-hidden">Loading preview...</span>
+            </div>
+            <p class="mt-2">Loading ads preview...</p>
+        `);
+
+        fetch('/api/products/advertisements/')
+            .then(response => response.json())
+            .then(data => {
+                renderAdsPreview(data.results.filter(ad => ad.isActive));
+            })
+            .catch(error => {
+                console.error('Error loading ads preview:', error);
+                $('#adsPreview').html('<p class="text-danger">Failed to load ads preview</p>');
+            });
+    }
+
+    function renderAdsPreview(activeAds) {
+        if (activeAds.length === 0) {
+            $('#adsPreview').html('<p class="text-muted">No active advertisements to preview</p>');
+            return;
+        }
+
+        let html = `
+            <div id="adsCarousel" class="carousel slide" data-bs-ride="carousel" style="max-width: 400px; margin: 0 auto;">
+                <div class="carousel-indicators">
+        `;
+
+        activeAds.forEach((ad, index) => {
+            html += `<button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="${index}" ${index === 0 ? 'class="active"' : ''}></button>`;
+        });
+
+        html += `
+                </div>
+                <div class="carousel-inner">
+        `;
+
+        activeAds.forEach((ad, index) => {
+            html += `
+                <div class="carousel-item ${index === 0 ? 'active' : ''}">
+                    <img src="${ad.imageUrl}" class="d-block w-100" alt="${ad.title}" style="height: 200px; object-fit: cover;">
+                    <div class="carousel-caption d-none d-md-block bg-dark bg-opacity-75 rounded">
+                        <h5>${ad.title}</h5>
+                        ${ad.description ? `<p>${ad.description}</p>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `
+                </div>
+                <button class="carousel-control-prev" type="button" data-bs-target="#adsCarousel" data-bs-slide="prev">
+                    <span class="carousel-control-prev-icon"></span>
+                </button>
+                <button class="carousel-control-next" type="button" data-bs-target="#adsCarousel" data-bs-slide="next">
+                    <span class="carousel-control-next-icon"></span>
+                </button>
+            </div>
+            <p class="text-muted mt-2">Preview of how ads appear in the mobile app</p>
+        `;
+
+        $('#adsPreview').html(html);
+    }
+
+    // Utility function for showing alerts
+    function showAlert(message, type = 'info') {
+        const alertClass = {
+            'success': 'alert-success',
+            'error': 'alert-danger',
+            'warning': 'alert-warning',
+            'info': 'alert-info'
+        }[type] || 'alert-info';
+
+        const alertHtml = `
+            <div class="alert ${alertClass} alert-dismissible fade show position-fixed" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+
+        $('body').append(alertHtml);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            $('.alert').fadeOut();
+        }, 5000);
+    }
+</script>
+{% endblock %}

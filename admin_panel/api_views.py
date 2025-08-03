@@ -647,4 +647,46 @@ def export_activity_log(request):
             activity.timestamp.strftime('%Y-%m-%d %H:%M:%S')
         ])
     
-    return response 
+    return response
+
+@api_view(['GET'])
+@permission_classes([])  # Allow any user to access ads
+def get_active_ads(request):
+    """API endpoint to get active advertisements"""
+    from products.models import Advertisement, ContentSettings
+    
+    # Get settings to check if ads should be shown
+    settings = ContentSettings.get_settings()
+    if not settings.show_ads_slider:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Ads slider is currently disabled'
+        })
+    
+    # Get active ads ordered by display order
+    ads = Advertisement.objects.filter(
+        is_active=True
+    ).order_by('order', '-created_at')[:settings.max_ads_to_show]
+    
+    ads_data = []
+    for ad in ads:
+        ads_data.append({
+            'id': ad.id,
+            'title': ad.title,
+            'description': ad.description,
+            'image': ad.image_display_url,
+            'linkUrl': ad.link_url,
+            'order': ad.order,
+            'createdAt': ad.created_at.isoformat()
+        })
+    
+    return Response({
+        'results': ads_data,
+        'count': len(ads_data),
+        'settings': {
+            'max_ads': settings.max_ads_to_show,
+            'rotation_interval': settings.ads_rotation_interval,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    }) 

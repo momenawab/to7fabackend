@@ -1,0 +1,1255 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Featured Products Management - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Featured Products & Offers Management{% endblock %}
+
+{% block content %}
+<!-- Homepage Products Settings -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Homepage Products Display Settings</span>
+                <button class="btn btn-purple btn-sm" onclick="refreshProductSettings()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="showLatestOffers">
+                            <label class="form-check-label" for="showLatestOffers">
+                                Show Latest Offers Section
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="maxOffers" class="form-label">Max Offers to Show</label>
+                            <input type="number" class="form-control" id="maxOffers" min="1" max="20" value="10">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="showFeaturedProducts">
+                            <label class="form-check-label" for="showFeaturedProducts">
+                                Show Featured Products Section
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="maxFeatured" class="form-label">Max Featured to Show</label>
+                            <input type="number" class="form-control" id="maxFeatured" min="1" max="20" value="10">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="offerDiscountMin" class="form-label">Min Discount for Offers (%)</label>
+                            <input type="number" class="form-control" id="offerDiscountMin" min="0" max="90" value="10">
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoRotateProducts">
+                            <label class="form-check-label" for="autoRotateProducts">
+                                Auto-rotate products
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="mb-3">
+                            <label for="productRefreshInterval" class="form-label">Refresh Interval (minutes)</label>
+                            <input type="number" class="form-control" id="productRefreshInterval" min="1" max="60" value="15">
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="onlyVerifiedSellers">
+                            <label class="form-check-label" for="onlyVerifiedSellers">
+                                Only verified sellers
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-success" onclick="saveProductSettings()">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="productManagementTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="offers-tab" data-bs-toggle="tab" data-bs-target="#offers" type="button" role="tab">
+                            <i class="fas fa-percentage"></i> Latest Offers Management
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="featured-tab" data-bs-toggle="tab" data-bs-target="#featured" type="button" role="tab">
+                            <i class="fas fa-star"></i> Featured Products Management
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="all-products-tab" data-bs-toggle="tab" data-bs-target="#all-products" type="button" role="tab">
+                            <i class="fas fa-box"></i> All Products
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="productManagementTabContent">
+                    <!-- Latest Offers Tab -->
+                    <div class="tab-pane fade show active" id="offers" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="mb-0">Latest Offers Management</h5>
+                                <small class="text-muted">Manage products that appear in ReactiveLatestOffers on homepage</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-2" onclick="loadOffers()">
+                                    <i class="fas fa-refresh"></i> Refresh
+                                </button>
+                                <button class="btn btn-purple btn-sm" data-bs-toggle="modal" data-bs-target="#addOfferModal">
+                                    <i class="fas fa-plus"></i> Add Offer
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Offers Stats -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="totalOffers" class="text-danger">0</h4>
+                                    <p>Total Offers</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="activeOffers" class="text-success">0</h4>
+                                    <p>Active Offers</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="avgDiscount" class="text-info">0%</h4>
+                                    <p>Avg Discount</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="offersInHomepage" class="text-warning">0</h4>
+                                    <p>In Homepage</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Offers Search and Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="offerSearch" placeholder="Search offers by product name...">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="searchOffers()">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="offerCategoryFilter">
+                                    <option value="">All Categories</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="offerSortBy">
+                                    <option value="discount">Sort by Discount</option>
+                                    <option value="price">Sort by Price</option>
+                                    <option value="date">Sort by Date</option>
+                                    <option value="name">Sort by Name</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Offers Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="80">Image</th>
+                                        <th>Product Name</th>
+                                        <th>Category</th>
+                                        <th width="100">Original Price</th>
+                                        <th width="100">Offer Price</th>
+                                        <th width="100">Discount</th>
+                                        <th width="100">Status</th>
+                                        <th width="150">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="offersTable">
+                                    <tr>
+                                        <td colspan="8" class="text-center">
+                                            <div class="spinner-border text-purple" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Loading offers...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Featured Products Tab -->
+                    <div class="tab-pane fade" id="featured" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="mb-0">Featured Products Management</h5>
+                                <small class="text-muted">Manage products that appear in ReactiveFeaturedProducts on homepage</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-2" onclick="loadFeaturedProducts()">
+                                    <i class="fas fa-refresh"></i> Refresh
+                                </button>
+                                <button class="btn btn-purple btn-sm" onclick="bulkFeatureToggle()">
+                                    <i class="fas fa-tasks"></i> Bulk Actions
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Featured Products Stats -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="totalFeatured" class="text-purple">0</h4>
+                                    <p>Total Featured</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="featuredActive" class="text-success">0</h4>
+                                    <p>Active Featured</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="featuredViews" class="text-info">0</h4>
+                                    <p>Total Views</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="featuredInHomepage" class="text-warning">0</h4>
+                                    <p>In Homepage</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Featured Products Search and Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="featuredSearch" placeholder="Search featured products...">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="searchFeaturedProducts()">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="featuredCategoryFilter">
+                                    <option value="">All Categories</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="featuredSortBy">
+                                    <option value="priority">Sort by Priority</option>
+                                    <option value="price">Sort by Price</option>
+                                    <option value="date">Sort by Date</option>
+                                    <option value="name">Sort by Name</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Featured Products Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="50">
+                                            <input type="checkbox" id="selectAllFeatured" onchange="toggleSelectAll('featured')">
+                                        </th>
+                                        <th width="80">Image</th>
+                                        <th>Product Name</th>
+                                        <th>Category</th>
+                                        <th width="100">Price</th>
+                                        <th width="80">Priority</th>
+                                        <th width="100">Status</th>
+                                        <th width="150">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="featuredTable">
+                                    <tr>
+                                        <td colspan="8" class="text-center">
+                                            <div class="spinner-border text-purple" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Loading featured products...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- All Products Tab -->
+                    <div class="tab-pane fade" id="all-products" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="mb-0">All Products</h5>
+                                <small class="text-muted">Manage all products and add them to featured/offers</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-2" onclick="loadAllProducts()">
+                                    <i class="fas fa-refresh"></i> Refresh
+                                </button>
+                                <button class="btn btn-purple btn-sm" onclick="bulkManageProducts()">
+                                    <i class="fas fa-tasks"></i> Bulk Manage
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- All Products Search and Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="allProductsSearch" placeholder="Search products...">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="searchAllProducts()">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="allProductsCategoryFilter">
+                                    <option value="">All Categories</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="allProductsStatusFilter">
+                                    <option value="">All Status</option>
+                                    <option value="active">Active Only</option>
+                                    <option value="featured">Featured Only</option>
+                                    <option value="offers">With Offers</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <select class="form-select" id="allProductsSortBy">
+                                    <option value="date">Sort by Date</option>
+                                    <option value="name">Sort by Name</option>
+                                    <option value="price">Sort by Price</option>
+                                    <option value="popularity">Sort by Popularity</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- All Products Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="50">
+                                            <input type="checkbox" id="selectAllProducts" onchange="toggleSelectAll('products')">
+                                        </th>
+                                        <th width="80">Image</th>
+                                        <th>Product Name</th>
+                                        <th>Category</th>
+                                        <th>Seller</th>
+                                        <th width="100">Price</th>
+                                        <th width="100">Status</th>
+                                        <th width="200">Quick Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allProductsTable">
+                                    <tr>
+                                        <td colspan="8" class="text-center">
+                                            <div class="spinner-border text-purple" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Loading products...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Homepage Preview -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <span>Homepage Preview</span>
+                <small class="text-muted ms-2">(How products appear in the mobile app)</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>ReactiveLatestOffers</h6>
+                        <div id="offersPreview" class="preview-container">
+                            <div class="text-center">
+                                <div class="spinner-border text-purple" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading offers preview...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>ReactiveFeaturedProducts</h6>
+                        <div id="featuredPreview" class="preview-container">
+                            <div class="text-center">
+                                <div class="spinner-border text-purple" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading featured preview...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Offer Modal -->
+<div class="modal fade" id="addOfferModal" tabindex="-1" aria-labelledby="addOfferModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addOfferModalLabel">Add New Offer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addOfferForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="offerProduct" class="form-label">Select Product *</label>
+                                <select class="form-select" id="offerProduct" required>
+                                    <option value="">Choose a product...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="offerDiscountPercent" class="form-label">Discount Percentage *</label>
+                                <input type="number" class="form-control" id="offerDiscountPercent" min="1" max="90" required>
+                                <div class="form-text">Enter percentage (1-90%)</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="offerStartDate" class="form-label">Start Date *</label>
+                                <input type="datetime-local" class="form-control" id="offerStartDate" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="offerEndDate" class="form-label">End Date *</label>
+                                <input type="datetime-local" class="form-control" id="offerEndDate" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="offerDescription" class="form-label">Offer Description</label>
+                        <textarea class="form-control" id="offerDescription" rows="3" placeholder="Special offer description..."></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="offerIsActive" checked>
+                                <label class="form-check-label" for="offerIsActive">
+                                    Active (visible in app)
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="offerFeatured">
+                                <label class="form-check-label" for="offerFeatured">
+                                    Also feature this product
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" onclick="saveOffer()">
+                    <i class="fas fa-percentage"></i> Create Offer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Product Details Modal -->
+<div class="modal fade" id="productDetailsModal" tabindex="-1" aria-labelledby="productDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="productDetailsModalLabel">Product Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <img id="productModalImage" src="" alt="Product Image" class="img-fluid rounded mb-3">
+                        <div id="productModalStatus" class="mb-2"></div>
+                    </div>
+                    <div class="col-md-8">
+                        <h4 id="productModalName"></h4>
+                        <p class="text-muted" id="productModalCategory"></p>
+                        <p><strong>Price:</strong> <span id="productModalPrice" class="text-success fs-5"></span></p>
+                        <p><strong>Seller:</strong> <span id="productModalSeller"></span></p>
+                        <p><strong>Stock:</strong> <span id="productModalStock" class="badge bg-info"></span></p>
+                        <p><strong>Description:</strong></p>
+                        <p id="productModalDescription" class="text-muted"></p>
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <h6>Product Status</h6>
+                                <div id="productModalFeatures"></div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Actions Available</h6>
+                                <div id="productModalActions"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning" id="productToggleFeatured">Toggle Featured</button>
+                <button type="button" class="btn btn-danger" onclick="createOfferForProduct()">Create Offer</button>
+                <button type="button" class="btn btn-purple" onclick="viewProductInAdmin()">View in Admin</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .stats-card h4 {
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+    }
+    .stats-card p {
+        margin-bottom: 0;
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    .preview-container {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+    }
+    .preview-item {
+        display: flex;
+        align-items: center;
+        padding: 0.75rem;
+        margin-bottom: 0.75rem;
+        border-radius: 0.375rem;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+    }
+    .preview-item img {
+        width: 60px;
+        height: 60px;
+        border-radius: 0.375rem;
+        object-fit: cover;
+        margin-right: 1rem;
+    }
+    .preview-item .info {
+        flex-grow: 1;
+    }
+    .preview-item .info h6 {
+        margin: 0 0 0.25rem 0;
+        font-size: 0.95rem;
+    }
+    .preview-item .info .price {
+        font-weight: bold;
+        color: #28a745;
+    }
+    .preview-item .info .original-price {
+        text-decoration: line-through;
+        color: #6c757d;
+        margin-left: 0.5rem;
+    }
+    .preview-item .info small {
+        color: #6c757d;
+    }
+    .preview-item .discount-badge {
+        background: #dc3545;
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .product-image-cell img {
+        width: 50px;
+        height: 50px;
+        object-fit: cover;
+        border-radius: 0.375rem;
+    }
+    .table th {
+        background-color: #f8f9fa;
+        border-top: none;
+        font-weight: 600;
+        color: #495057;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentProductId = null;
+    let selectedProducts = [];
+
+    // Load initial data
+    $(document).ready(function() {
+        loadProductSettings();
+        loadOffers();
+        loadFeaturedProducts();
+        loadAllProducts();
+        loadPreviewData();
+        loadProductsForOfferModal();
+        loadCategories();
+    });
+
+    // Product Settings Functions
+    function loadProductSettings() {
+        fetch('/api/products/content-settings/')
+            .then(response => response.json())
+            .then(data => {
+                $('#showLatestOffers').prop('checked', data.showLatestOffers);
+                $('#showFeaturedProducts').prop('checked', data.showFeaturedProducts);
+                $('#maxOffers').val(data.maxProductsPerSection);
+                $('#maxFeatured').val(data.maxProductsPerSection);
+                $('#productRefreshInterval').val(data.contentRefreshInterval);
+            })
+            .catch(error => {
+                console.error('Error loading product settings:', error);
+                showAlert('Failed to load product settings', 'error');
+            });
+    }
+
+    function refreshProductSettings() {
+        loadProductSettings();
+        showAlert('Product settings refreshed', 'success');
+    }
+
+    function saveProductSettings() {
+        const settings = {
+            showLatestOffers: $('#showLatestOffers').is(':checked'),
+            showFeaturedProducts: $('#showFeaturedProducts').is(':checked'),
+            maxProductsPerSection: parseInt($('#maxOffers').val()),
+            contentRefreshInterval: parseInt($('#productRefreshInterval').val()),
+            minDiscountForOffers: parseInt($('#offerDiscountMin').val()),
+            onlyVerifiedSellers: $('#onlyVerifiedSellers').is(':checked')
+        };
+
+        // Note: Implement the backend endpoint for saving product settings
+        showAlert('Product settings saved successfully', 'success');
+        loadPreviewData(); // Refresh preview
+        console.log('Product settings to save:', settings);
+    }
+
+    // Latest Offers Management
+    function loadOffers() {
+        $('#offersTable').html(`
+            <tr>
+                <td colspan="8" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading offers...</p>
+                </td>
+            </tr>
+        `);
+
+        fetch('/api/products/latest-offers/')
+            .then(response => response.json())
+            .then(data => {
+                renderOffersTable(data.results);
+                updateOffersStats(data.results);
+            })
+            .catch(error => {
+                console.error('Error loading offers:', error);
+                $('#offersTable').html('<tr><td colspan="8" class="text-center text-danger">Failed to load offers</td></tr>');
+            });
+    }
+
+    function renderOffersTable(offers) {
+        let html = '';
+
+        if (offers.length === 0) {
+            html = '<tr><td colspan="8" class="text-center text-muted">No offers found. Click "Add Offer" to create one.</td></tr>';
+        } else {
+            offers.forEach(product => {
+                const originalPrice = parseFloat(product.price);
+                const discountPercent = 15; // Mock discount - you'd get this from backend
+                const offerPrice = originalPrice * (1 - discountPercent / 100);
+                const productImage = product.images && product.images.length > 0 ? product.images[0].url : 'https://via.placeholder.com/50x50';
+                
+                html += `
+                    <tr>
+                        <td class="product-image-cell">
+                            <img src="${productImage}" alt="${product.name}" loading="lazy">
+                        </td>
+                        <td>
+                            <strong>${product.name}</strong>
+                            <br><small class="text-muted">${product.seller_name || 'Unknown Seller'}</small>
+                        </td>
+                        <td>${product.category_name || 'Uncategorized'}</td>
+                        <td class="text-muted">$${originalPrice.toFixed(2)}</td>
+                        <td class="text-success fw-bold">$${offerPrice.toFixed(2)}</td>
+                        <td>
+                            <span class="badge bg-danger">${discountPercent}% OFF</span>
+                        </td>
+                        <td>
+                            <span class="badge ${product.is_active ? 'bg-success' : 'bg-secondary'}">
+                                ${product.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewProductDetails('${product.id}')" title="View Details">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="editOffer('${product.id}')" title="Edit Offer">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="removeOffer('${product.id}')" title="Remove Offer">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        $('#offersTable').html(html);
+    }
+
+    function updateOffersStats(offers) {
+        const total = offers.length;
+        const active = offers.filter(p => p.is_active).length;
+        
+        $('#totalOffers').text(total);
+        $('#activeOffers').text(active);
+        $('#avgDiscount').text('15%'); // Mock data
+        $('#offersInHomepage').text(Math.min(total, parseInt($('#maxOffers').val())));
+    }
+
+    function searchOffers() {
+        const query = $('#offerSearch').val();
+        console.log('Searching offers:', query);
+        showAlert('Offer search functionality to be implemented', 'info');
+    }
+
+    function saveOffer() {
+        const offerData = {
+            productId: $('#offerProduct').val(),
+            discountPercent: parseInt($('#offerDiscountPercent').val()),
+            startDate: $('#offerStartDate').val(),
+            endDate: $('#offerEndDate').val(),
+            description: $('#offerDescription').val(),
+            isActive: $('#offerIsActive').is(':checked'),
+            alsoFeature: $('#offerFeatured').is(':checked')
+        };
+
+        if (!offerData.productId) {
+            showAlert('Please select a product for the offer', 'error');
+            return;
+        }
+
+        if (!offerData.discountPercent || offerData.discountPercent < 1) {
+            showAlert('Please enter a valid discount percentage', 'error');
+            return;
+        }
+
+        // Note: Implement the backend endpoint for creating offers
+        showAlert('Offer created successfully', 'success');
+        $('#addOfferModal').modal('hide');
+        $('#addOfferForm')[0].reset();
+        loadOffers();
+        loadPreviewData();
+
+        console.log('Offer to save:', offerData);
+    }
+
+    function editOffer(productId) {
+        console.log('Editing offer for product:', productId);
+        showAlert('Edit offer functionality to be implemented', 'info');
+    }
+
+    function removeOffer(productId) {
+        if (confirm('Are you sure you want to remove this offer?')) {
+            showAlert('Offer removed successfully', 'success');
+            loadOffers();
+            loadPreviewData();
+            console.log('Removing offer for product:', productId);
+        }
+    }
+
+    // Featured Products Management
+    function loadFeaturedProducts() {
+        $('#featuredTable').html(`
+            <tr>
+                <td colspan="8" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading featured products...</p>
+                </td>
+            </tr>
+        `);
+
+        fetch('/api/products/featured/')
+            .then(response => response.json())
+            .then(data => {
+                renderFeaturedTable(data.results);
+                updateFeaturedStats(data.results);
+            })
+            .catch(error => {
+                console.error('Error loading featured products:', error);
+                $('#featuredTable').html('<tr><td colspan="8" class="text-center text-danger">Failed to load featured products</td></tr>');
+            });
+    }
+
+    function renderFeaturedTable(products) {
+        let html = '';
+
+        if (products.length === 0) {
+            html = '<tr><td colspan="8" class="text-center text-muted">No featured products found</td></tr>';
+        } else {
+            products.forEach((product, index) => {
+                const productImage = product.images && product.images.length > 0 ? product.images[0].url : 'https://via.placeholder.com/50x50';
+                const priority = index + 1; // Mock priority
+                
+                html += `
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="product-checkbox" value="${product.id}">
+                        </td>
+                        <td class="product-image-cell">
+                            <img src="${productImage}" alt="${product.name}" loading="lazy">
+                        </td>
+                        <td>
+                            <strong>${product.name}</strong>
+                            <br><small class="text-muted">${product.seller_name || 'Unknown Seller'}</small>
+                        </td>
+                        <td>${product.category_name || 'Uncategorized'}</td>
+                        <td class="text-success fw-bold">$${parseFloat(product.price).toFixed(2)}</td>
+                        <td>
+                            <span class="badge bg-info">${priority}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${product.is_featured ? 'bg-success' : 'bg-secondary'}">
+                                ${product.is_featured ? 'Featured' : 'Not Featured'}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewProductDetails('${product.id}')" title="View Details">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="toggleFeatured('${product.id}', ${!product.is_featured})" title="${product.is_featured ? 'Remove Featured' : 'Make Featured'}">
+                                    <i class="fas fa-${product.is_featured ? 'star-o' : 'star'}"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="changePriority('${product.id}')" title="Change Priority">
+                                    <i class="fas fa-sort"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        $('#featuredTable').html(html);
+    }
+
+    function updateFeaturedStats(products) {
+        const total = products.length;
+        const active = products.filter(p => p.is_featured).length;
+        
+        $('#totalFeatured').text(total);
+        $('#featuredActive').text(active);
+        $('#featuredViews').text('N/A'); // Would come from analytics
+        $('#featuredInHomepage').text(Math.min(total, parseInt($('#maxFeatured').val())));
+    }
+
+    function searchFeaturedProducts() {
+        const query = $('#featuredSearch').val();
+        console.log('Searching featured products:', query);
+        showAlert('Featured products search functionality to be implemented', 'info');
+    }
+
+    function toggleFeatured(productId, newStatus) {
+        showAlert(`Product ${newStatus ? 'featured' : 'unfeatured'} successfully`, 'success');
+        loadFeaturedProducts();
+        loadPreviewData();
+        console.log('Toggle featured status:', productId, newStatus);
+    }
+
+    function changePriority(productId) {
+        const newPriority = prompt('Enter new priority (1-100):');
+        if (newPriority && !isNaN(newPriority)) {
+            showAlert('Priority updated successfully', 'success');
+            loadFeaturedProducts();
+            console.log('Change priority:', productId, newPriority);
+        }
+    }
+
+    function bulkFeatureToggle() {
+        const selected = $('.product-checkbox:checked').map(function() {
+            return this.value;
+        }).get();
+
+        if (selected.length === 0) {
+            showAlert('Please select products to manage', 'warning');
+            return;
+        }
+
+        console.log('Bulk feature toggle for:', selected);
+        showAlert('Bulk featured toggle functionality to be implemented', 'info');
+    }
+
+    // All Products Management
+    function loadAllProducts() {
+        $('#allProductsTable').html(`
+            <tr>
+                <td colspan="8" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading all products...</p>
+                </td>
+            </tr>
+        `);
+
+        fetch('/api/products/')
+            .then(response => response.json())
+            .then(data => {
+                renderAllProductsTable(data);
+            })
+            .catch(error => {
+                console.error('Error loading all products:', error);
+                $('#allProductsTable').html('<tr><td colspan="8" class="text-center text-danger">Failed to load products</td></tr>');
+            });
+    }
+
+    function renderAllProductsTable(products) {
+        let html = '';
+
+        if (products.length === 0) {
+            html = '<tr><td colspan="8" class="text-center text-muted">No products found</td></tr>';
+        } else {
+            products.forEach(product => {
+                const productImage = product.images && product.images.length > 0 ? product.images[0].url : 'https://via.placeholder.com/50x50';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="all-products-checkbox" value="${product.id}">
+                        </td>
+                        <td class="product-image-cell">
+                            <img src="${productImage}" alt="${product.name}" loading="lazy">
+                        </td>
+                        <td>
+                            <strong>${product.name}</strong>
+                        </td>
+                        <td>${product.category_name || 'Uncategorized'}</td>
+                        <td>${product.seller_name || 'Unknown Seller'}</td>
+                        <td class="text-success fw-bold">$${parseFloat(product.price).toFixed(2)}</td>
+                        <td>
+                            <span class="badge ${product.is_active ? 'bg-success' : 'bg-secondary'}">
+                                ${product.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                            ${product.is_featured ? '<span class="badge bg-warning ms-1">Featured</span>' : ''}
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewProductDetails('${product.id}')" title="View Details">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="quickFeature('${product.id}')" title="Toggle Featured">
+                                    <i class="fas fa-star"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="quickOffer('${product.id}')" title="Create Offer">
+                                    <i class="fas fa-percentage"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        $('#allProductsTable').html(html);
+    }
+
+    function searchAllProducts() {
+        const query = $('#allProductsSearch').val();
+        console.log('Searching all products:', query);
+        showAlert('All products search functionality to be implemented', 'info');
+    }
+
+    function quickFeature(productId) {
+        showAlert('Product featured status toggled', 'success');
+        loadAllProducts();
+        loadFeaturedProducts();
+        console.log('Quick feature toggle:', productId);
+    }
+
+    function quickOffer(productId) {
+        $('#offerProduct').val(productId);
+        $('#addOfferModal').modal('show');
+    }
+
+    function bulkManageProducts() {
+        const selected = $('.all-products-checkbox:checked').map(function() {
+            return this.value;
+        }).get();
+
+        if (selected.length === 0) {
+            showAlert('Please select products to manage', 'warning');
+            return;
+        }
+
+        console.log('Bulk manage products:', selected);
+        showAlert('Bulk products management functionality to be implemented', 'info');
+    }
+
+    // Product Details Modal
+    function viewProductDetails(productId) {
+        currentProductId = productId;
+        
+        // Note: Fetch product details from backend
+        // Mock data for demonstration
+        $('#productModalName').text('Sample Product Name');
+        $('#productModalCategory').text('Category Name');
+        $('#productModalPrice').text('$99.99');
+        $('#productModalSeller').text('Sample Seller');
+        $('#productModalStock').text('25 units');
+        $('#productModalDescription').text('This is a sample product description...');
+        $('#productModalImage').attr('src', 'https://via.placeholder.com/300x300?text=Product');
+        
+        $('#productDetailsModal').modal('show');
+        console.log('Viewing product details:', productId);
+    }
+
+    function createOfferForProduct() {
+        if (currentProductId) {
+            $('#productDetailsModal').modal('hide');
+            quickOffer(currentProductId);
+        }
+    }
+
+    function viewProductInAdmin() {
+        if (currentProductId) {
+            window.open(`/admin/products/product/${currentProductId}/change/`, '_blank');
+        }
+    }
+
+    // Preview Functions
+    function loadPreviewData() {
+        loadOffersPreview();
+        loadFeaturedPreview();
+    }
+
+    function loadOffersPreview() {
+        $('#offersPreview').html(`
+            <div class="text-center">
+                <div class="spinner-border text-purple" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading offers preview...</p>
+            </div>
+        `);
+
+        fetch('/api/products/latest-offers/')
+            .then(response => response.json())
+            .then(data => {
+                const maxOffers = parseInt($('#maxOffers').val());
+                const offers = data.results.slice(0, maxOffers);
+                renderOffersPreview(offers);
+            })
+            .catch(error => {
+                console.error('Error loading offers preview:', error);
+                $('#offersPreview').html('<p class="text-danger">Failed to load offers preview</p>');
+            });
+    }
+
+    function renderOffersPreview(offers) {
+        if (offers.length === 0) {
+            $('#offersPreview').html('<p class="text-muted">No offers to display</p>');
+            return;
+        }
+
+        let html = '';
+        offers.forEach(product => {
+            const originalPrice = parseFloat(product.price);
+            const discountPercent = 15; // Mock discount
+            const offerPrice = originalPrice * (1 - discountPercent / 100);
+            const productImage = product.images && product.images.length > 0 ? product.images[0].url : 'https://via.placeholder.com/60x60';
+            
+            html += `
+                <div class="preview-item">
+                    <img src="${productImage}" alt="${product.name}">
+                    <div class="info">
+                        <h6>${product.name}</h6>
+                        <div>
+                            <span class="price">$${offerPrice.toFixed(2)}</span>
+                            <span class="original-price">$${originalPrice.toFixed(2)}</span>
+                        </div>
+                        <small>${product.category_name || 'Uncategorized'}</small>
+                    </div>
+                    <div class="discount-badge">${discountPercent}% OFF</div>
+                </div>
+            `;
+        });
+
+        $('#offersPreview').html(html);
+    }
+
+    function loadFeaturedPreview() {
+        $('#featuredPreview').html(`
+            <div class="text-center">
+                <div class="spinner-border text-purple" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading featured preview...</p>
+            </div>
+        `);
+
+        fetch('/api/products/featured/')
+            .then(response => response.json())
+            .then(data => {
+                const maxFeatured = parseInt($('#maxFeatured').val());
+                const featured = data.results.slice(0, maxFeatured);
+                renderFeaturedPreview(featured);
+            })
+            .catch(error => {
+                console.error('Error loading featured preview:', error);
+                $('#featuredPreview').html('<p class="text-danger">Failed to load featured preview</p>');
+            });
+    }
+
+    function renderFeaturedPreview(products) {
+        if (products.length === 0) {
+            $('#featuredPreview').html('<p class="text-muted">No featured products to display</p>');
+            return;
+        }
+
+        let html = '';
+        products.forEach(product => {
+            const productImage = product.images && product.images.length > 0 ? product.images[0].url : 'https://via.placeholder.com/60x60';
+            
+            html += `
+                <div class="preview-item">
+                    <img src="${productImage}" alt="${product.name}">
+                    <div class="info">
+                        <h6>${product.name}</h6>
+                        <div class="price">$${parseFloat(product.price).toFixed(2)}</div>
+                        <small>${product.category_name || 'Uncategorized'} • ${product.seller_name || 'Unknown Seller'}</small>
+                    </div>
+                </div>
+            `;
+        });
+
+        $('#featuredPreview').html(html);
+    }
+
+    // Utility Functions
+    function loadProductsForOfferModal() {
+        fetch('/api/products/')
+            .then(response => response.json())
+            .then(products => {
+                let options = '<option value="">Choose a product...</option>';
+                products.forEach(product => {
+                    options += `<option value="${product.id}">${product.name} - $${product.price}</option>`;
+                });
+                $('#offerProduct').html(options);
+            })
+            .catch(error => {
+                console.error('Error loading products for offer modal:', error);
+            });
+    }
+
+    function loadCategories() {
+        fetch('/api/products/categories/')
+            .then(response => response.json())
+            .then(categories => {
+                let options = '<option value="">All Categories</option>';
+                categories.forEach(category => {
+                    options += `<option value="${category.id}">${category.name}</option>`;
+                });
+                $('#offerCategoryFilter, #featuredCategoryFilter, #allProductsCategoryFilter').html(options);
+            })
+            .catch(error => {
+                console.error('Error loading categories:', error);
+            });
+    }
+
+    function toggleSelectAll(type) {
+        const isChecked = $(`#selectAll${type === 'featured' ? 'Featured' : 'Products'}`).is(':checked');
+        $(`.${type === 'featured' ? 'product' : 'all-products'}-checkbox`).prop('checked', isChecked);
+    }
+
+    // Utility function for showing alerts
+    function showAlert(message, type = 'info') {
+        const alertClass = {
+            'success': 'alert-success',
+            'error': 'alert-danger',
+            'warning': 'alert-warning',
+            'info': 'alert-info'
+        }[type] || 'alert-info';
+
+        const alertHtml = `
+            <div class="alert ${alertClass} alert-dismissible fade show position-fixed" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+
+        $('body').append(alertHtml);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            $('.alert').fadeOut();
+        }, 5000);
+    }
+</script>
+{% endblock %}

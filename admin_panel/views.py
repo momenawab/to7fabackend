@@ -562,3 +562,36 @@ def view_order(request, order_id):
     
     # Redirect to the order admin page
     return redirect(f'/admin/orders/order/{order.id}/change/')
+
+# Ads Control
+@login_required
+@user_passes_test(is_admin)
+def ads_control(request):
+    """View for ads control and management"""
+    context = {
+        'active_tab': 'ads_control'
+    }
+    
+    return render(request, 'admin_panel/ads_control.html', context)
+
+# Artists and Stores Management
+@login_required
+@user_passes_test(is_admin)
+def artists_stores(request):
+    """View for managing artists and stores that appear in homepage lists"""
+    context = {
+        'active_tab': 'artists_stores'
+    }
+    
+    return render(request, 'admin_panel/artists_stores.html', context)
+
+# Featured Products Management
+@login_required
+@user_passes_test(is_admin)
+def featured_products(request):
+    """View for managing featured products and offers that appear in homepage"""
+    context = {
+        'active_tab': 'featured_products'
+    }
+    
+    return render(request, 'admin_panel/featured_products.html', context)
