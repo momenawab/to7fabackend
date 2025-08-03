@@ -17,4 +17,12 @@ urlpatterns = [
     path('api/users/<int:user_id>/', api_views.get_user_details, name='get_user_details'),
     path('api/users/<int:user_id>/block/', api_views.block_unblock_user, name='block_unblock_user'),
     path('api/seller/apply/', api_views.submit_seller_application, name='api_seller_apply'),
+    
+    # Artist and Store endpoints for admin content management
+    path('api/artists/top/', api_views.top_artists, name='top_artists'),
+    path('api/artists/featured/', api_views.featured_artists, name='featured_artists'),
+    path('api/artists/search/', api_views.search_artists, name='search_artists'),
+    path('api/stores/top/', api_views.top_stores, name='top_stores'),
+    path('api/stores/featured/', api_views.featured_stores, name='featured_stores'),
+    path('api/stores/search/', api_views.search_stores, name='search_stores'),
 ] 

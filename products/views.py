@@ -3,9 +3,10 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import Product, Category, Review
+from .models import Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct
 from .serializers import ProductSerializer, ProductDetailSerializer, CategorySerializer, ReviewSerializer
-from django.db.models import Q
+from django.db.models import Q, Count
+from django.utils import timezone
 
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])  # GET is public, POST requires authentication (handled in view)
@@ -243,3 +244,500 @@ def seller_product_detail(request, pk):
     elif request.method == 'DELETE':
         product.delete()
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+
+# New admin-controlled content endpoints
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def latest_offers(request):
+    """Get latest products with offers/discounts"""
+    limit = request.query_params.get('limit', 10)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 10
+    
+    # Get settings to check if this section should be shown
+    settings = ContentSettings.get_settings()
+    if not settings.show_latest_offers:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Latest offers section is currently disabled'
+        })
+    
+    # Get current active offers
+    now = timezone.now()
+    offers = ProductOffer.objects.filter(
+        is_active=True,
+        start_date__lte=now,
+        end_date__gte=now,
+        product__is_active=True
+    ).select_related('product', 'product__category').order_by('-created_at')[:min(limit, settings.max_products_per_section)]
+    
+    # Serialize the products with offer information
+    results = []
+    for offer in offers:
+        product_data = ProductSerializer(offer.product, context={'request': request}).data
+        # Add offer-specific data for Flutter app
+        product_data.update({
+            'offer_id': offer.id,
+            'original_price': float(offer.product.price),
+            'offer_price': float(offer.offer_price),
+            'discount_percentage': offer.discount_percentage,
+            'savings_amount': float(offer.savings_amount),
+            'offer_description': offer.description,
+            'offer_end_date': offer.end_date.isoformat(),
+            'is_offer': True
+        })
+        results.append(product_data)
+    
+    return Response({
+        'results': results,
+        'count': len(results),
+        'settings': {
+            'max_items': settings.max_products_per_section,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def featured_products(request):
+    """Get featured products"""
+    limit = request.query_params.get('limit', 10)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 10
+    
+    # Get settings to check if this section should be shown
+    settings = ContentSettings.get_settings()
+    if not settings.show_featured_products:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Featured products section is currently disabled'
+        })
+    
+    # Get current featured products from FeaturedProduct model
+    now = timezone.now()
+    featured_products = FeaturedProduct.objects.filter(
+        is_active=True,
+        product__is_active=True
+    ).filter(
+        Q(featured_until__isnull=True) | Q(featured_until__gte=now)
+    ).select_related('product', 'product__category').order_by('priority', '-featured_since')[:min(limit, settings.max_products_per_section)]
+    
+    # Serialize the products with featured information
+    results = []
+    for featured in featured_products:
+        product_data = ProductSerializer(featured.product, context={'request': request}).data
+        # Add featured-specific data for Flutter app
+        product_data.update({
+            'featured_id': featured.id,
+            'featured_since': featured.featured_since.isoformat(),
+            'featured_until': featured.featured_until.isoformat() if featured.featured_until else None,
+            'featured_reason': featured.reason,
+            'featured_priority': featured.priority,
+            'is_featured': True
+        })
+        
+        # Check if this product also has an active offer
+        active_offer = ProductOffer.objects.filter(
+            product=featured.product,
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).first()
+        
+        if active_offer:
+            product_data.update({
+                'offer_id': active_offer.id,
+                'original_price': float(featured.product.price),
+                'offer_price': float(active_offer.offer_price),
+                'discount_percentage': active_offer.discount_percentage,
+                'savings_amount': float(active_offer.savings_amount),
+                'offer_description': active_offer.description,
+                'offer_end_date': active_offer.end_date.isoformat(),
+                'is_offer': True,
+                'has_both_featured_and_offer': True
+            })
+        
+        results.append(product_data)
+    
+    return Response({
+        'results': results,
+        'count': len(results),
+        'settings': {
+            'max_items': settings.max_products_per_section,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def top_rated_products(request):
+    """Get top rated products"""
+    limit = request.query_params.get('limit', 10)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 10
+    
+    # Get settings
+    settings = ContentSettings.get_settings()
+    
+    # Get products with reviews and order by average rating
+    products = Product.objects.filter(
+        is_active=True,
+        reviews__isnull=False
+    ).annotate(
+        review_count=Count('reviews')
+    ).filter(
+        review_count__gt=0
+    ).order_by('-created_at')[:min(limit, settings.max_products_per_section)]
+    
+    serializer = ProductSerializer(products, many=True)
+    return Response({
+        'results': serializer.data,
+        'count': products.count(),
+        'settings': {
+            'max_items': settings.max_products_per_section,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def advertisements(request):
+    """Get active advertisements for slider"""
+    # Get settings to check if ads should be shown
+    settings = ContentSettings.get_settings()
+    if not settings.show_ads_slider:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Ads slider is currently disabled'
+        })
+    
+    ads = Advertisement.objects.filter(
+        is_active=True
+    ).order_by('order', '-created_at')[:settings.max_ads_to_show]
+    
+    ads_data = []
+    for ad in ads:
+        ads_data.append({
+            'id': str(ad.id),
+            'title': ad.title,
+            'description': ad.description,
+            'imageUrl': ad.image_display_url,
+            'linkUrl': ad.link_url,
+            'isActive': ad.is_active,
+            'order': ad.order
+        })
+    
+    return Response({
+        'results': ads_data,
+        'count': ads.count(),
+        'settings': {
+            'max_ads': settings.max_ads_to_show,
+            'rotation_interval': settings.ads_rotation_interval,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def content_settings(request):
+    """Get content display settings"""
+    settings = ContentSettings.get_settings()
+    
+    return Response({
+        'showLatestOffers': settings.show_latest_offers,
+        'showFeaturedProducts': settings.show_featured_products,
+        'showTopArtists': settings.show_top_artists,
+        'showTopStores': settings.show_top_stores,
+        'showAdsSlider': settings.show_ads_slider,
+        'maxProductsPerSection': settings.max_products_per_section,
+        'maxArtistsToShow': settings.max_artists_to_show,
+        'maxStoresToShow': settings.max_stores_to_show,
+        'maxAdsToShow': settings.max_ads_to_show,
+        'adsRotationInterval': settings.ads_rotation_interval,
+        'contentRefreshInterval': settings.content_refresh_interval,
+        'enableContentCache': settings.enable_content_cache,
+        'cacheDuration': settings.cache_duration
+    })
+
+# Admin management endpoints for offers and featured products
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def manage_offers(request):
+    """Manage product offers for admin dashboard"""
+    if request.method == 'GET':
+        # Get all offers with product details
+        offers = ProductOffer.objects.select_related('product', 'product__category').order_by('-created_at')
+        
+        results = []
+        for offer in offers:
+            product_data = ProductSerializer(offer.product).data
+            product_data.update({
+                'offer_id': offer.id,
+                'original_price': float(offer.product.price),
+                'offer_price': float(offer.offer_price),
+                'discount_percentage': offer.discount_percentage,
+                'savings_amount': float(offer.savings_amount),
+                'offer_description': offer.description,
+                'start_date': offer.start_date.isoformat(),
+                'end_date': offer.end_date.isoformat(),
+                'is_offer_active': offer.is_active,
+                'is_offer_valid': offer.is_valid,
+                'created_at': offer.created_at.isoformat()
+            })
+            results.append(product_data)
+        
+        return Response({
+            'results': results,
+            'count': len(results)
+        })
+    
+    elif request.method == 'POST':
+        # Create new offer
+        try:
+            product_id = request.data.get('product_id')
+            product = Product.objects.get(id=product_id, is_active=True)
+            
+            # Check if product already has an active offer
+            existing_offer = ProductOffer.objects.filter(
+                product=product,
+                is_active=True
+            ).first()
+            
+            if existing_offer:
+                return Response({
+                    'error': 'This product already has an active offer'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            offer = ProductOffer.objects.create(
+                product=product,
+                discount_percentage=request.data.get('discount_percentage'),
+                start_date=request.data.get('start_date'),
+                end_date=request.data.get('end_date'),
+                description=request.data.get('description', ''),
+                is_active=request.data.get('is_active', True)
+            )
+            
+            # Also feature the product if requested
+            if request.data.get('also_feature', False):
+                featured, created = FeaturedProduct.objects.get_or_create(
+                    product=product,
+                    defaults={
+                        'priority': request.data.get('featured_priority', 0),
+                        'reason': f"Featured with offer - {offer.discount_percentage}% OFF",
+                        'is_active': True
+                    }
+                )
+            
+            return Response({
+                'message': 'Offer created successfully',
+                'offer_id': offer.id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Product.DoesNotExist:
+            return Response({
+                'error': 'Product not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def manage_offer_detail(request, offer_id):
+    """Manage individual offer"""
+    try:
+        offer = ProductOffer.objects.get(id=offer_id)
+    except ProductOffer.DoesNotExist:
+        return Response({
+            'error': 'Offer not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        product_data = ProductSerializer(offer.product).data
+        product_data.update({
+            'offer_id': offer.id,
+            'original_price': float(offer.product.price),
+            'offer_price': float(offer.offer_price),
+            'discount_percentage': offer.discount_percentage,
+            'savings_amount': float(offer.savings_amount),
+            'offer_description': offer.description,
+            'start_date': offer.start_date.isoformat(),
+            'end_date': offer.end_date.isoformat(),
+            'is_offer_active': offer.is_active,
+            'is_offer_valid': offer.is_valid
+        })
+        return Response(product_data)
+    
+    elif request.method == 'PUT':
+        # Update offer
+        offer.discount_percentage = request.data.get('discount_percentage', offer.discount_percentage)
+        offer.start_date = request.data.get('start_date', offer.start_date)
+        offer.end_date = request.data.get('end_date', offer.end_date)
+        offer.description = request.data.get('description', offer.description)
+        offer.is_active = request.data.get('is_active', offer.is_active)
+        offer.save()
+        
+        return Response({
+            'message': 'Offer updated successfully'
+        })
+    
+    elif request.method == 'DELETE':
+        offer.delete()
+        return Response({
+            'message': 'Offer deleted successfully'
+        })
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def manage_featured_products(request):
+    """Manage featured products for admin dashboard"""
+    if request.method == 'GET':
+        # Get all featured products
+        featured_products = FeaturedProduct.objects.select_related('product', 'product__category').order_by('priority', '-featured_since')
+        
+        results = []
+        for featured in featured_products:
+            product_data = ProductSerializer(featured.product).data
+            product_data.update({
+                'featured_id': featured.id,
+                'featured_since': featured.featured_since.isoformat(),
+                'featured_until': featured.featured_until.isoformat() if featured.featured_until else None,
+                'featured_reason': featured.reason,
+                'featured_priority': featured.priority,
+                'is_featured_active': featured.is_active,
+                'is_featured_valid': featured.is_valid
+            })
+            results.append(product_data)
+        
+        return Response({
+            'results': results,
+            'count': len(results)
+        })
+    
+    elif request.method == 'POST':
+        # Feature a product
+        try:
+            product_id = request.data.get('product_id')
+            product = Product.objects.get(id=product_id, is_active=True)
+            
+            # Check if product is already featured
+            existing_featured = FeaturedProduct.objects.filter(
+                product=product,
+                is_active=True
+            ).first()
+            
+            if existing_featured:
+                return Response({
+                    'error': 'This product is already featured'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            featured = FeaturedProduct.objects.create(
+                product=product,
+                priority=request.data.get('priority', 0),
+                featured_until=request.data.get('featured_until'),
+                reason=request.data.get('reason', ''),
+                is_active=request.data.get('is_active', True)
+            )
+            
+            return Response({
+                'message': 'Product featured successfully',
+                'featured_id': featured.id
+            }, status=status.HTTP_201_CREATED)
+            
+        except Product.DoesNotExist:
+            return Response({
+                'error': 'Product not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def manage_featured_detail(request, featured_id):
+    """Manage individual featured product"""
+    try:
+        featured = FeaturedProduct.objects.get(id=featured_id)
+    except FeaturedProduct.DoesNotExist:
+        return Response({
+            'error': 'Featured product not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        product_data = ProductSerializer(featured.product).data
+        product_data.update({
+            'featured_id': featured.id,
+            'featured_since': featured.featured_since.isoformat(),
+            'featured_until': featured.featured_until.isoformat() if featured.featured_until else None,
+            'featured_reason': featured.reason,
+            'featured_priority': featured.priority,
+            'is_featured_active': featured.is_active,
+            'is_featured_valid': featured.is_valid
+        })
+        return Response(product_data)
+    
+    elif request.method == 'PUT':
+        # Update featured product
+        featured.priority = request.data.get('priority', featured.priority)
+        featured.featured_until = request.data.get('featured_until', featured.featured_until)
+        featured.reason = request.data.get('reason', featured.reason)
+        featured.is_active = request.data.get('is_active', featured.is_active)
+        featured.save()
+        
+        return Response({
+            'message': 'Featured product updated successfully'
+        })
+    
+    elif request.method == 'DELETE':
+        featured.delete()
+        return Response({
+            'message': 'Featured product removed successfully'
+        })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def toggle_product_featured(request, product_id):
+    """Toggle featured status of a product"""
+    try:
+        product = Product.objects.get(id=product_id, is_active=True)
+        
+        featured = FeaturedProduct.objects.filter(product=product).first()
+        
+        if featured:
+            # Remove from featured
+            featured.delete()
+            message = 'Product removed from featured'
+            is_featured = False
+        else:
+            # Add to featured
+            FeaturedProduct.objects.create(
+                product=product,
+                priority=request.data.get('priority', 0),
+                reason=request.data.get('reason', 'Admin featured'),
+                is_active=True
+            )
+            message = 'Product added to featured'
+            is_featured = True
+        
+        return Response({
+            'message': message,
+            'is_featured': is_featured
+        })
+        
+    except Product.DoesNotExist:
+        return Response({
+            'error': 'Product not found'
+        }, status=status.HTTP_404_NOT_FOUND)
