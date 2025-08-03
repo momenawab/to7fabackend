@@ -1,0 +1,893 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Artists & Stores Management - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Artists & Stores Management{% endblock %}
+
+{% block content %}
+<!-- Content Visibility Settings -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Homepage Display Settings</span>
+                <button class="btn btn-purple btn-sm" onclick="refreshDisplaySettings()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="showTopArtists">
+                            <label class="form-check-label" for="showTopArtists">
+                                Show Top Artists Section
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="maxArtists" class="form-label">Max Artists to Show</label>
+                            <input type="number" class="form-control" id="maxArtists" min="1" max="20" value="8">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="showTopStores">
+                            <label class="form-check-label" for="showTopStores">
+                                Show Top Stores Section
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="maxStores" class="form-label">Max Stores to Show</label>
+                            <input type="number" class="form-control" id="maxStores" min="1" max="20" value="6">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="listRefreshInterval" class="form-label">Refresh Interval (minutes)</label>
+                            <input type="number" class="form-control" id="listRefreshInterval" min="1" max="60" value="15">
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoRefreshLists">
+                            <label class="form-check-label" for="autoRefreshLists">
+                                Auto-refresh lists
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-success" onclick="saveDisplaySettings()">
+                        <i class="fas fa-save"></i> Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" id="artistStoreTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="artists-tab" data-bs-toggle="tab" data-bs-target="#artists" type="button" role="tab">
+                            <i class="fas fa-palette"></i> Artists Management
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="stores-tab" data-bs-toggle="tab" data-bs-target="#stores" type="button" role="tab">
+                            <i class="fas fa-store"></i> Stores Management
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="artistStoreTabContent">
+                    <!-- Artists Tab -->
+                    <div class="tab-pane fade show active" id="artists" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="mb-0">Artists Management</h5>
+                                <small class="text-muted">Manage artists that appear in ReactiveArtistList on homepage</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-2" onclick="loadArtists()">
+                                    <i class="fas fa-refresh"></i> Refresh
+                                </button>
+                                <button class="btn btn-purple btn-sm" data-bs-toggle="modal" data-bs-target="#artistFilterModal">
+                                    <i class="fas fa-filter"></i> Filters
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Artists Stats -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="totalArtists" class="text-purple">0</h4>
+                                    <p>Total Artists</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="verifiedArtists" class="text-success">0</h4>
+                                    <p>Verified Artists</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="activeArtists" class="text-info">0</h4>
+                                    <p>Active Artists</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="featuredArtists" class="text-warning">0</h4>
+                                    <p>In Homepage</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Artists Search and Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="artistSearch" placeholder="Search artists by name or specialty...">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="searchArtists()">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <select class="form-select" id="artistStatusFilter">
+                                            <option value="">All Status</option>
+                                            <option value="verified">Verified Only</option>
+                                            <option value="unverified">Unverified Only</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <select class="form-select" id="artistSortBy">
+                                            <option value="name">Sort by Name</option>
+                                            <option value="products">Sort by Products</option>
+                                            <option value="joined">Sort by Join Date</option>
+                                            <option value="specialty">Sort by Specialty</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Artists Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="80">Avatar</th>
+                                        <th>Name</th>
+                                        <th>Specialty</th>
+                                        <th width="100">Products</th>
+                                        <th width="100">Status</th>
+                                        <th width="120">Joined</th>
+                                        <th width="150">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="artistsTable">
+                                    <tr>
+                                        <td colspan="7" class="text-center">
+                                            <div class="spinner-border text-purple" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Loading artists...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Stores Tab -->
+                    <div class="tab-pane fade" id="stores" role="tabpanel">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <h5 class="mb-0">Stores Management</h5>
+                                <small class="text-muted">Manage stores that appear in ReactiveStoreList on homepage</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-outline-secondary btn-sm me-2" onclick="loadStores()">
+                                    <i class="fas fa-refresh"></i> Refresh
+                                </button>
+                                <button class="btn btn-purple btn-sm" data-bs-toggle="modal" data-bs-target="#storeFilterModal">
+                                    <i class="fas fa-filter"></i> Filters
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Stores Stats -->
+                        <div class="row mb-4">
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="totalStores" class="text-purple">0</h4>
+                                    <p>Total Stores</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="verifiedStores" class="text-success">0</h4>
+                                    <p>Verified Stores</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="physicalStores" class="text-info">0</h4>
+                                    <p>Physical Stores</p>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="stats-card">
+                                    <h4 id="featuredStores" class="text-warning">0</h4>
+                                    <p>In Homepage</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stores Search and Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="storeSearch" placeholder="Search stores by name...">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="searchStores()">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <select class="form-select" id="storeTypeFilter">
+                                            <option value="">All Types</option>
+                                            <option value="physical">Physical Stores</option>
+                                            <option value="online">Online Only</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <select class="form-select" id="storeSortBy">
+                                            <option value="name">Sort by Name</option>
+                                            <option value="products">Sort by Products</option>
+                                            <option value="joined">Sort by Join Date</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stores Table -->
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th width="80">Logo</th>
+                                        <th>Store Name</th>
+                                        <th>Type</th>
+                                        <th width="100">Products</th>
+                                        <th width="100">Status</th>
+                                        <th width="120">Joined</th>
+                                        <th width="150">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="storesTable">
+                                    <tr>
+                                        <td colspan="7" class="text-center">
+                                            <div class="spinner-border text-purple" role="status">
+                                                <span class="visually-hidden">Loading...</span>
+                                            </div>
+                                            <p class="mt-2">Loading stores...</p>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Homepage Preview -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <span>Homepage Preview</span>
+                <small class="text-muted ms-2">(How artists and stores appear in the mobile app)</small>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Top Artists</h6>
+                        <div id="artistsPreview" class="preview-container">
+                            <div class="text-center">
+                                <div class="spinner-border text-purple" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading artists preview...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Top Stores</h6>
+                        <div id="storesPreview" class="preview-container">
+                            <div class="text-center">
+                                <div class="spinner-border text-purple" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2">Loading stores preview...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Artist Details Modal -->
+<div class="modal fade" id="artistDetailsModal" tabindex="-1" aria-labelledby="artistDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="artistDetailsModalLabel">Artist Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <img id="artistModalAvatar" src="" alt="Artist Avatar" class="rounded-circle mb-3" style="width: 120px; height: 120px; object-fit: cover;">
+                        <div id="artistModalVerification" class="mb-2"></div>
+                    </div>
+                    <div class="col-md-8">
+                        <h5 id="artistModalName"></h5>
+                        <p class="text-muted" id="artistModalEmail"></p>
+                        <p><strong>Specialty:</strong> <span id="artistModalSpecialty"></span></p>
+                        <p><strong>Bio:</strong></p>
+                        <p id="artistModalBio" class="text-muted"></p>
+                        <p><strong>Products:</strong> <span id="artistModalProducts" class="badge bg-purple"></span></p>
+                        <p><strong>Joined:</strong> <span id="artistModalJoined"></span></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning" id="artistToggleVerification">Toggle Verification</button>
+                <button type="button" class="btn btn-purple" onclick="viewArtistProducts()">View Products</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Store Details Modal -->
+<div class="modal fade" id="storeDetailsModal" tabindex="-1" aria-labelledby="storeDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="storeDetailsModalLabel">Store Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4 text-center">
+                        <img id="storeModalLogo" src="" alt="Store Logo" class="rounded mb-3" style="width: 120px; height: 120px; object-fit: cover;">
+                        <div id="storeModalVerification" class="mb-2"></div>
+                    </div>
+                    <div class="col-md-8">
+                        <h5 id="storeModalName"></h5>
+                        <p class="text-muted" id="storeModalEmail"></p>
+                        <p><strong>Tax ID:</strong> <span id="storeModalTaxId"></span></p>
+                        <p><strong>Type:</strong> <span id="storeModalType"></span></p>
+                        <p><strong>Address:</strong></p>
+                        <p id="storeModalAddress" class="text-muted"></p>
+                        <p><strong>Products:</strong> <span id="storeModalProducts" class="badge bg-purple"></span></p>
+                        <p><strong>Joined:</strong> <span id="storeModalJoined"></span></p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-warning" id="storeToggleVerification">Toggle Verification</button>
+                <button type="button" class="btn btn-purple" onclick="viewStoreProducts()">View Products</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .stats-card h4 {
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+    }
+    .stats-card p {
+        margin-bottom: 0;
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+    .preview-container {
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+    }
+    .preview-item {
+        display: flex;
+        align-items: center;
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+        border-radius: 0.375rem;
+        background: #f8f9fa;
+    }
+    .preview-item img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        margin-right: 0.75rem;
+    }
+    .preview-item .info {
+        flex-grow: 1;
+    }
+    .preview-item .info h6 {
+        margin: 0;
+        font-size: 0.9rem;
+    }
+    .preview-item .info small {
+        color: #6c757d;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentArtistId = null;
+    let currentStoreId = null;
+
+    // Load initial data
+    $(document).ready(function() {
+        loadDisplaySettings();
+        loadArtists();
+        loadStores();
+        loadPreviewData();
+    });
+
+    // Display Settings Functions
+    function loadDisplaySettings() {
+        fetch('/api/products/content-settings/')
+            .then(response => response.json())
+            .then(data => {
+                $('#showTopArtists').prop('checked', data.showTopArtists);
+                $('#showTopStores').prop('checked', data.showTopStores);
+                $('#maxArtists').val(data.maxArtistsToShow);
+                $('#maxStores').val(data.maxStoresToShow);
+                $('#listRefreshInterval').val(data.contentRefreshInterval);
+            })
+            .catch(error => {
+                console.error('Error loading display settings:', error);
+                showAlert('Failed to load display settings', 'error');
+            });
+    }
+
+    function refreshDisplaySettings() {
+        loadDisplaySettings();
+        showAlert('Display settings refreshed', 'success');
+    }
+
+    function saveDisplaySettings() {
+        const settings = {
+            showTopArtists: $('#showTopArtists').is(':checked'),
+            showTopStores: $('#showTopStores').is(':checked'),
+            maxArtistsToShow: parseInt($('#maxArtists').val()),
+            maxStoresToShow: parseInt($('#maxStores').val()),
+            contentRefreshInterval: parseInt($('#listRefreshInterval').val())
+        };
+
+        // Note: Implement the backend endpoint for saving display settings
+        showAlert('Display settings saved successfully', 'success');
+        loadPreviewData(); // Refresh preview
+        console.log('Display settings to save:', settings);
+    }
+
+    // Artists Management Functions
+    function loadArtists() {
+        $('#artistsTable').html(`
+            <tr>
+                <td colspan="7" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading artists...</p>
+                </td>
+            </tr>
+        `);
+
+        fetch('/api/auth/api/artists/top/')
+            .then(response => response.json())
+            .then(data => {
+                renderArtistsTable(data.results);
+                updateArtistsStats(data.results);
+            })
+            .catch(error => {
+                console.error('Error loading artists:', error);
+                $('#artistsTable').html('<tr><td colspan="7" class="text-center text-danger">Failed to load artists</td></tr>');
+            });
+    }
+
+    function renderArtistsTable(artists) {
+        let html = '';
+
+        if (artists.length === 0) {
+            html = '<tr><td colspan="7" class="text-center text-muted">No artists found</td></tr>';
+        } else {
+            artists.forEach(artist => {
+                const joinedDate = new Date(artist.joinedAt).toLocaleDateString();
+                const avatarUrl = artist.profilePicture || 'https://via.placeholder.com/40x40?text=A';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <img src="${avatarUrl}" alt="${artist.name}" class="rounded-circle" style="width: 40px; height: 40px; object-fit: cover;">
+                        </td>
+                        <td>
+                            <strong>${artist.name}</strong>
+                            <br><small class="text-muted">${artist.email}</small>
+                        </td>
+                        <td>${artist.specialty || 'Not specified'}</td>
+                        <td>
+                            <span class="badge bg-purple">${artist.productCount || 0}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${artist.isVerified ? 'bg-success' : 'bg-secondary'}">
+                                ${artist.isVerified ? 'Verified' : 'Unverified'}
+                            </span>
+                        </td>
+                        <td>
+                            <small>${joinedDate}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewArtistDetails('${artist.id}')" title="View Details">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="toggleArtistVerification('${artist.id}', ${!artist.isVerified})" title="${artist.isVerified ? 'Remove Verification' : 'Verify Artist'}">
+                                    <i class="fas fa-${artist.isVerified ? 'times' : 'check'}"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="viewArtistProducts('${artist.id}')" title="View Products">
+                                    <i class="fas fa-box"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        $('#artistsTable').html(html);
+    }
+
+    function updateArtistsStats(artists) {
+        const total = artists.length;
+        const verified = artists.filter(a => a.isVerified).length;
+        const active = artists.filter(a => (a.productCount || 0) > 0).length;
+        
+        $('#totalArtists').text(total);
+        $('#verifiedArtists').text(verified);
+        $('#activeArtists').text(active);
+        $('#featuredArtists').text(Math.min(total, parseInt($('#maxArtists').val())));
+    }
+
+    function searchArtists() {
+        const query = $('#artistSearch').val();
+        // Note: Implement search functionality
+        console.log('Searching artists:', query);
+        showAlert('Artist search functionality to be implemented', 'info');
+    }
+
+    function viewArtistDetails(artistId) {
+        currentArtistId = artistId;
+        
+        // Note: Fetch artist details from backend
+        // Mock data for demonstration
+        $('#artistModalName').text('John Doe');
+        $('#artistModalEmail').text('john@example.com');
+        $('#artistModalSpecialty').text('Digital Art');
+        $('#artistModalBio').text('Passionate digital artist with 5+ years of experience...');
+        $('#artistModalProducts').text('12');
+        $('#artistModalJoined').text('January 2023');
+        $('#artistModalAvatar').attr('src', 'https://via.placeholder.com/120x120?text=JD');
+        $('#artistModalVerification').html('<span class="badge bg-success">Verified</span>');
+        
+        $('#artistDetailsModal').modal('show');
+        console.log('Viewing artist details:', artistId);
+    }
+
+    function toggleArtistVerification(artistId, newStatus) {
+        // Note: Implement artist verification toggle
+        showAlert(`Artist ${newStatus ? 'verified' : 'unverified'} successfully`, 'success');
+        loadArtists();
+        loadPreviewData();
+        console.log('Toggle artist verification:', artistId, newStatus);
+    }
+
+    function viewArtistProducts(artistId = null) {
+        const id = artistId || currentArtistId;
+        // Note: Navigate to products page filtered by artist
+        showAlert('Redirecting to artist products...', 'info');
+        console.log('View artist products:', id);
+    }
+
+    // Stores Management Functions
+    function loadStores() {
+        $('#storesTable').html(`
+            <tr>
+                <td colspan="7" class="text-center">
+                    <div class="spinner-border text-purple" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading stores...</p>
+                </td>
+            </tr>
+        `);
+
+        fetch('/api/auth/api/stores/top/')
+            .then(response => response.json())
+            .then(data => {
+                renderStoresTable(data.results);
+                updateStoresStats(data.results);
+            })
+            .catch(error => {
+                console.error('Error loading stores:', error);
+                $('#storesTable').html('<tr><td colspan="7" class="text-center text-danger">Failed to load stores</td></tr>');
+            });
+    }
+
+    function renderStoresTable(stores) {
+        let html = '';
+
+        if (stores.length === 0) {
+            html = '<tr><td colspan="7" class="text-center text-muted">No stores found</td></tr>';
+        } else {
+            stores.forEach(store => {
+                const joinedDate = new Date(store.joinedAt).toLocaleDateString();
+                const logoUrl = store.logo || 'https://via.placeholder.com/40x40?text=S';
+                const storeType = store.hasPhysicalStore ? 'Physical' : 'Online Only';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <img src="${logoUrl}" alt="${store.name}" class="rounded" style="width: 40px; height: 40px; object-fit: cover;">
+                        </td>
+                        <td>
+                            <strong>${store.name}</strong>
+                            <br><small class="text-muted">${store.email}</small>
+                        </td>
+                        <td>
+                            <span class="badge ${store.hasPhysicalStore ? 'bg-info' : 'bg-secondary'}">${storeType}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-purple">${store.productCount || 0}</span>
+                        </td>
+                        <td>
+                            <span class="badge ${store.isVerified ? 'bg-success' : 'bg-secondary'}">
+                                ${store.isVerified ? 'Verified' : 'Unverified'}
+                            </span>
+                        </td>
+                        <td>
+                            <small>${joinedDate}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewStoreDetails('${store.id}')" title="View Details">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-warning" onclick="toggleStoreVerification('${store.id}', ${!store.isVerified})" title="${store.isVerified ? 'Remove Verification' : 'Verify Store'}">
+                                    <i class="fas fa-${store.isVerified ? 'times' : 'check'}"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" onclick="viewStoreProducts('${store.id}')" title="View Products">
+                                    <i class="fas fa-box"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        $('#storesTable').html(html);
+    }
+
+    function updateStoresStats(stores) {
+        const total = stores.length;
+        const verified = stores.filter(s => s.isVerified).length;
+        const physical = stores.filter(s => s.hasPhysicalStore).length;
+        
+        $('#totalStores').text(total);
+        $('#verifiedStores').text(verified);
+        $('#physicalStores').text(physical);
+        $('#featuredStores').text(Math.min(total, parseInt($('#maxStores').val())));
+    }
+
+    function searchStores() {
+        const query = $('#storeSearch').val();
+        // Note: Implement search functionality
+        console.log('Searching stores:', query);
+        showAlert('Store search functionality to be implemented', 'info');
+    }
+
+    function viewStoreDetails(storeId) {
+        currentStoreId = storeId;
+        
+        // Note: Fetch store details from backend
+        // Mock data for demonstration
+        $('#storeModalName').text('Creative Store');
+        $('#storeModalEmail').text('store@example.com');
+        $('#storeModalTaxId').text('TAX123456');
+        $('#storeModalType').text('Physical Store');
+        $('#storeModalAddress').text('123 Main Street, Cairo, Egypt');
+        $('#storeModalProducts').text('25');
+        $('#storeModalJoined').text('March 2023');
+        $('#storeModalLogo').attr('src', 'https://via.placeholder.com/120x120?text=CS');
+        $('#storeModalVerification').html('<span class="badge bg-success">Verified</span>');
+        
+        $('#storeDetailsModal').modal('show');
+        console.log('Viewing store details:', storeId);
+    }
+
+    function toggleStoreVerification(storeId, newStatus) {
+        // Note: Implement store verification toggle
+        showAlert(`Store ${newStatus ? 'verified' : 'unverified'} successfully`, 'success');
+        loadStores();
+        loadPreviewData();
+        console.log('Toggle store verification:', storeId, newStatus);
+    }
+
+    function viewStoreProducts(storeId = null) {
+        const id = storeId || currentStoreId;
+        // Note: Navigate to products page filtered by store
+        showAlert('Redirecting to store products...', 'info');
+        console.log('View store products:', id);
+    }
+
+    // Preview Functions
+    function loadPreviewData() {
+        loadArtistsPreview();
+        loadStoresPreview();
+    }
+
+    function loadArtistsPreview() {
+        $('#artistsPreview').html(`
+            <div class="text-center">
+                <div class="spinner-border text-purple" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading artists preview...</p>
+            </div>
+        `);
+
+        fetch('/api/auth/api/artists/top/')
+            .then(response => response.json())
+            .then(data => {
+                const maxArtists = parseInt($('#maxArtists').val());
+                const artists = data.results.slice(0, maxArtists);
+                renderArtistsPreview(artists);
+            })
+            .catch(error => {
+                console.error('Error loading artists preview:', error);
+                $('#artistsPreview').html('<p class="text-danger">Failed to load artists preview</p>');
+            });
+    }
+
+    function renderArtistsPreview(artists) {
+        if (artists.length === 0) {
+            $('#artistsPreview').html('<p class="text-muted">No artists to display</p>');
+            return;
+        }
+
+        let html = '';
+        artists.forEach(artist => {
+            const avatarUrl = artist.profilePicture || 'https://via.placeholder.com/40x40?text=A';
+            html += `
+                <div class="preview-item">
+                    <img src="${avatarUrl}" alt="${artist.name}">
+                    <div class="info">
+                        <h6>${artist.name}</h6>
+                        <small>${artist.specialty || 'Artist'} • ${artist.productCount || 0} products</small>
+                    </div>
+                </div>
+            `;
+        });
+
+        $('#artistsPreview').html(html);
+    }
+
+    function loadStoresPreview() {
+        $('#storesPreview').html(`
+            <div class="text-center">
+                <div class="spinner-border text-purple" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading stores preview...</p>
+            </div>
+        `);
+
+        fetch('/api/auth/api/stores/top/')
+            .then(response => response.json())
+            .then(data => {
+                const maxStores = parseInt($('#maxStores').val());
+                const stores = data.results.slice(0, maxStores);
+                renderStoresPreview(stores);
+            })
+            .catch(error => {
+                console.error('Error loading stores preview:', error);
+                $('#storesPreview').html('<p class="text-danger">Failed to load stores preview</p>');
+            });
+    }
+
+    function renderStoresPreview(stores) {
+        if (stores.length === 0) {
+            $('#storesPreview').html('<p class="text-muted">No stores to display</p>');
+            return;
+        }
+
+        let html = '';
+        stores.forEach(store => {
+            const logoUrl = store.logo || 'https://via.placeholder.com/40x40?text=S';
+            const storeType = store.hasPhysicalStore ? 'Physical' : 'Online';
+            html += `
+                <div class="preview-item">
+                    <img src="${logoUrl}" alt="${store.name}">
+                    <div class="info">
+                        <h6>${store.name}</h6>
+                        <small>${storeType} • ${store.productCount || 0} products</small>
+                    </div>
+                </div>
+            `;
+        });
+
+        $('#storesPreview').html(html);
+    }
+
+    // Utility function for showing alerts
+    function showAlert(message, type = 'info') {
+        const alertClass = {
+            'success': 'alert-success',
+            'error': 'alert-danger',
+            'warning': 'alert-warning',
+            'info': 'alert-info'
+        }[type] || 'alert-info';
+
+        const alertHtml = `
+            <div class="alert ${alertClass} alert-dismissible fade show position-fixed" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+
+        $('body').append(alertHtml);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            $('.alert').fadeOut();
+        }, 5000);
+    }
+</script>
+{% endblock %}

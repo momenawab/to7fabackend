@@ -44,4 +44,7 @@ urlpatterns = [
     path('notifications/', api_views.AdminNotificationListView.as_view(), name='notification_list'),
     path('notifications/<int:pk>/read/', api_views.mark_notification_read, name='mark_notification_read'),
     path('notifications/read-all/', api_views.mark_all_notifications_read, name='mark_all_notifications_read'),
+    
+    # Ads
+    path('ads/active/', api_views.get_active_ads, name='get_active_ads'),
 ] 
