@@ -26,8 +26,7 @@ class Category(models.Model):
 class Product(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField()
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    stock = models.PositiveIntegerField(default=0)
+    base_price = models.DecimalField(max_digits=10, decimal_places=2)  # Base price for the product
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products')
     seller = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -63,6 +62,59 @@ class Product(models.Model):
             except:
                 return f"Store: {self.seller.email}"
         return self.seller.email
+    
+    # Backward compatibility properties
+    @property
+    def price(self):
+        """Returns base price for backward compatibility"""
+        return self.base_price
+    
+    @property
+    def stock(self):
+        """Returns total stock across all variants"""
+        return sum(variant.stock_count for variant in self.variants.filter(is_active=True))
+    
+    # Variant management methods
+    def get_available_attributes(self):
+        """Get all attributes available for this product's category"""
+        return self.category.category_attributes.filter(attribute__is_active=True).order_by('sort_order')
+    
+    def get_attribute_options(self, attribute):
+        """Get available options for a specific attribute"""
+        return attribute.options.filter(is_active=True).order_by('sort_order')
+    
+    def get_variants_by_attributes(self, **attributes):
+        """Find variants matching specific attribute values"""
+        variants = self.variants.filter(is_active=True)
+        for attr_name, value in attributes.items():
+            variants = variants.filter(
+                variant_attributes__attribute__attribute_type=attr_name,
+                variant_attributes__option__value=value
+            )
+        return variants
+    
+    def has_variants(self):
+        """Check if product has any variants"""
+        return self.variants.filter(is_active=True).exists()
+    
+    def get_price_range(self):
+        """Get min and max price across all variants"""
+        if not self.has_variants():
+            return self.base_price, self.base_price
+        
+        variants = self.variants.filter(is_active=True)
+        prices = [v.final_price for v in variants]
+        return min(prices), max(prices)
+    
+    def get_stock_status(self):
+        """Get overall stock status for the product"""
+        total_stock = self.stock
+        if total_stock > 10:
+            return "+10 available"
+        elif total_stock > 0:
+            return f"{total_stock} available"
+        else:
+            return "Out of stock"
 
 
 class ProductImage(models.Model):
@@ -238,3 +290,127 @@ class FeaturedProduct(models.Model):
         if self.featured_until:
             return timezone.now() <= self.featured_until
         return True
+
+
+# New models for flexible product attributes system
+class ProductAttribute(models.Model):
+    """Defines available attributes for products (e.g., Color, Size, Frame Type)"""
+    ATTRIBUTE_TYPES = [
+        ('color', 'Color'),
+        ('size', 'Size'),
+        ('frame_color', 'Frame Color'),
+        ('material', 'Material'),
+        ('custom', 'Custom'),
+    ]
+    
+    name = models.CharField(max_length=100)  # e.g., "Frame Color", "Size"
+    attribute_type = models.CharField(max_length=20, choices=ATTRIBUTE_TYPES)
+    is_required = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.name
+    
+    class Meta:
+        verbose_name = 'Product Attribute'
+        verbose_name_plural = 'Product Attributes'
+
+
+class ProductAttributeOption(models.Model):
+    """Defines available options for each attribute (e.g., Red, Blue for Color)"""
+    attribute = models.ForeignKey(ProductAttribute, on_delete=models.CASCADE, related_name='options')
+    value = models.CharField(max_length=100)  # e.g., "Red", "Large", "20x30cm"
+    display_name = models.CharField(max_length=100, blank=True)  # For different language display
+    color_code = models.CharField(max_length=7, blank=True, null=True)  # For color attributes #FF0000
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    
+    def __str__(self):
+        return f"{self.attribute.name}: {self.value}"
+    
+    def save(self, *args, **kwargs):
+        if not self.display_name:
+            self.display_name = self.value
+        super().save(*args, **kwargs)
+    
+    class Meta:
+        verbose_name = 'Attribute Option'
+        verbose_name_plural = 'Attribute Options'
+        ordering = ['sort_order', 'value']
+
+
+class CategoryAttribute(models.Model):
+    """Links categories to their available attributes"""
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='category_attributes')
+    attribute = models.ForeignKey(ProductAttribute, on_delete=models.CASCADE)
+    is_required = models.BooleanField(default=False)
+    sort_order = models.PositiveIntegerField(default=0)
+    
+    def __str__(self):
+        return f"{self.category.name} - {self.attribute.name}"
+    
+    class Meta:
+        unique_together = ['category', 'attribute']
+        ordering = ['sort_order']
+
+
+class ProductVariant(models.Model):
+    """Individual product variants with specific attribute combinations"""
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
+    sku = models.CharField(max_length=100, unique=True, blank=True)  # Auto-generated SKU
+    stock_count = models.PositiveIntegerField(default=0)
+    price_adjustment = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # +/- from base price
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        attributes = self.variant_attributes.all()
+        attr_str = ", ".join([f"{attr.attribute.name}: {attr.option.value}" for attr in attributes])
+        return f"{self.product.name} - {attr_str}"
+    
+    @property
+    def final_price(self):
+        return self.product.base_price + self.price_adjustment
+    
+    @property
+    def is_in_stock(self):
+        return self.stock_count > 0
+    
+    @property
+    def stock_status(self):
+        if self.stock_count > 10:
+            return "+10 available"
+        elif self.stock_count > 0:
+            return f"{self.stock_count} left"
+        else:
+            return "Out of stock"
+    
+    def save(self, *args, **kwargs):
+        if not self.sku:
+            # Generate SKU based on product ID and variant attributes
+            super().save(*args, **kwargs)  # Save first to get ID
+            attrs = self.variant_attributes.all()
+            attr_codes = [attr.option.value[:3].upper() for attr in attrs]
+            self.sku = f"P{self.product.id}V{self.id}-{''.join(attr_codes)}"
+            super().save(update_fields=['sku'])
+        else:
+            super().save(*args, **kwargs)
+    
+    class Meta:
+        verbose_name = 'Product Variant'
+        verbose_name_plural = 'Product Variants'
+
+
+class ProductVariantAttribute(models.Model):
+    """Links variants to their specific attribute values"""
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='variant_attributes')
+    attribute = models.ForeignKey(ProductAttribute, on_delete=models.CASCADE)
+    option = models.ForeignKey(ProductAttributeOption, on_delete=models.CASCADE)
+    
+    def __str__(self):
+        return f"{self.variant} - {self.attribute.name}: {self.option.value}"
+    
+    class Meta:
+        unique_together = ['variant', 'attribute']

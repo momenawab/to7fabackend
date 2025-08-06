@@ -595,3 +595,25 @@ def featured_products(request):
     }
     
     return render(request, 'admin_panel/featured_products.html', context)
+
+# Category Management
+@login_required
+@user_passes_test(is_admin)
+def category_management(request):
+    """View for managing categories and subcategories"""
+    context = {
+        'active_tab': 'categories'
+    }
+    
+    return render(request, 'admin_panel/category_management.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+def attribute_management(request):
+    """View for managing product attributes per category"""
+    context = {
+        'active_tab': 'attributes'
+    }
+    
+    return render(request, 'admin_panel/attribute_management.html', context)

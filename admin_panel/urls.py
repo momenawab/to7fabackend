@@ -39,6 +39,12 @@ urlpatterns = [
     # Featured Products Management
     path('featured-products/', views.featured_products, name='featured_products'),
     
+    # Category Management
+    path('categories/', views.category_management, name='categories'),
+    
+    # Attribute Management
+    path('attributes/', views.attribute_management, name='attributes'),
+    
     # Settings
     path('settings/', views.settings, name='settings'),
     
