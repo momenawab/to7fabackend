@@ -70,12 +70,15 @@ class ProductVariantAttributeSerializer(serializers.ModelSerializer):
 class ProductVariantSerializer(serializers.ModelSerializer):
     variant_attributes = ProductVariantAttributeSerializer(many=True, read_only=True)
     final_price = serializers.ReadOnlyField()
-    stock_status = serializers.ReadOnlyField()
+    stock_status = serializers.SerializerMethodField()
     
     class Meta:
         model = ProductVariant
         fields = ('id', 'sku', 'stock_count', 'price_adjustment', 'final_price', 
                  'stock_status', 'is_active', 'variant_attributes')
+    
+    def get_stock_status(self, obj):
+        return obj.stock_status
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.ReadOnlyField(source='category.name')
@@ -87,7 +90,7 @@ class ProductSerializer(serializers.ModelSerializer):
     variants = ProductVariantSerializer(many=True, read_only=True)
     available_attributes = serializers.SerializerMethodField()
     price_range = serializers.SerializerMethodField()
-    stock_status = serializers.ReadOnlyField()
+    stock_status = serializers.SerializerMethodField()
     has_variants = serializers.ReadOnlyField()
     
     # Backward compatibility fields
@@ -134,6 +137,10 @@ class ProductSerializer(serializers.ModelSerializer):
             if attr.attribute.attribute_type == 'size':
                 sizes.extend([option.value for option in attr.attribute.options.filter(is_active=True)])
         return sizes if sizes else ['20x30cm', '30x40cm', '40x50cm']  # Default fallback
+    
+    def get_stock_status(self, obj):
+        """Get stock status for the product"""
+        return obj.get_stock_status()
     
     def create(self, validated_data):
         user = self.context['request'].user

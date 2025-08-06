@@ -17,6 +17,23 @@ from .serializers import (
     OrderSerializer, AdminNotificationSerializer
 )
 
+# Test endpoint for debugging authentication
+@api_view(['GET'])
+@permission_classes([])  # No permissions required
+def test_authentication(request):
+    """Test endpoint to debug authentication issues"""
+    data = {
+        'user_authenticated': request.user.is_authenticated,
+        'user_id': request.user.id if request.user.is_authenticated else None,
+        'user_email': request.user.email if request.user.is_authenticated else None,
+        'is_staff': request.user.is_staff if request.user.is_authenticated else None,
+        'is_superuser': request.user.is_superuser if request.user.is_authenticated else None,
+        'session_key': request.session.session_key,
+        'auth_header': request.META.get('HTTP_AUTHORIZATION', 'None'),
+        'csrf_token': request.META.get('HTTP_X_CSRFTOKEN', 'None'),
+    }
+    return Response(data)
+
 # Seller Application Views
 class SellerApplicationListView(generics.ListAPIView):
     serializer_class = SellerApplicationSerializer
@@ -689,4 +706,340 @@ def get_active_ads(request):
             'rotation_interval': settings.ads_rotation_interval,
             'refresh_interval': settings.content_refresh_interval
         }
-    }) 
+    })
+
+
+# Product with Variants API
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def create_product_with_variants(request):
+    """API endpoint to create a product with variants"""
+    from products.models import (
+        Product, ProductImage, ProductAttribute, ProductAttributeOption, 
+        ProductVariant, ProductVariantAttribute
+    )
+    from django.db import transaction
+    import json
+    
+    try:
+        with transaction.atomic():
+            # Extract basic product data
+            product_data = {
+                'name': request.data.get('name'),
+                'description': request.data.get('description'),
+                'base_price': float(request.data.get('base_price', 0)),
+                'category_id': int(request.data.get('category')),
+                'is_featured': request.data.get('is_featured', False),
+                'seller': request.user,
+                'is_active': True
+            }
+            
+            # Create product
+            product = Product.objects.create(**product_data)
+            
+            # Handle images
+            images = request.FILES.getlist('images')
+            for i, image_file in enumerate(images):
+                ProductImage.objects.create(
+                    product=product,
+                    image=image_file,
+                    is_primary=(i == 0)  # First image is primary
+                )
+            
+            # Get selected attribute options
+            selected_attributes = {}
+            for key in request.data.keys():
+                if key.startswith('selected_') and key.endswith('_options'):
+                    attribute_type = key.replace('selected_', '').replace('_options', '')
+                    option_ids = request.data.getlist(key)
+                    if option_ids:
+                        options = ProductAttributeOption.objects.filter(
+                            id__in=option_ids,
+                            is_active=True
+                        )
+                        selected_attributes[attribute_type] = list(options)
+            
+            # Generate variants
+            variants_created = 0
+            if selected_attributes:
+                # Get all combinations
+                attribute_types = list(selected_attributes.keys())
+                option_lists = [selected_attributes[attr_type] for attr_type in attribute_types]
+                
+                # Generate all combinations using itertools.product
+                import itertools
+                all_combinations = list(itertools.product(*option_lists))
+                
+                # Parse variants data from frontend
+                variants_data_str = request.data.get('variants_data', '[]')
+                variants_data = json.loads(variants_data_str) if variants_data_str else []
+                
+                for i, combination in enumerate(all_combinations):
+                    # Get variant data for this combination (if provided)
+                    variant_data = variants_data[i] if i < len(variants_data) else {}
+                    
+                    # Create variant
+                    variant = ProductVariant.objects.create(
+                        product=product,
+                        stock_count=int(variant_data.get('stock_count', 0)),
+                        price_adjustment=float(variant_data.get('price_adjustment', 0)),
+                        is_active=variant_data.get('is_active', True)
+                    )
+                    
+                    # Create variant attributes
+                    for option in combination:
+                        ProductVariantAttribute.objects.create(
+                            variant=variant,
+                            attribute=option.attribute,
+                            option=option
+                        )
+                    
+                    variants_created += 1
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='create',
+                description=f"Created product '{product.name}' with {variants_created} variants",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': f'Product created successfully with {variants_created} variants!',
+                'product_id': product.id,
+                'variants_created': variants_created
+            })
+            
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'error': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def get_categories_for_admin(request):
+    """API endpoint to get all active categories for admin use"""
+    from products.models import Category
+    
+    categories = Category.objects.filter(is_active=True).order_by('name')
+    
+    categories_data = []
+    for category in categories:
+        categories_data.append({
+            'id': category.id,
+            'name': category.name,
+            'description': category.description,
+            'parent_id': category.parent_id,
+            'image': category.image.url if category.image else None,
+            'is_active': category.is_active
+        })
+    
+    return Response(categories_data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def get_category_attributes_for_admin(request, category_id):
+    """API endpoint to get attributes available for a specific category"""
+    from products.models import Category, CategoryAttribute
+    
+    try:
+        category = Category.objects.get(id=category_id, is_active=True)
+        
+        category_attributes = CategoryAttribute.objects.filter(
+            category=category,
+            attribute__is_active=True
+        ).select_related('attribute').order_by('sort_order')
+        
+        attributes_data = []
+        for cat_attr in category_attributes:
+            attribute = cat_attr.attribute
+            
+            # Get active options
+            options_data = []
+            for option in attribute.options.filter(is_active=True).order_by('sort_order'):
+                options_data.append({
+                    'id': option.id,
+                    'value': option.value,
+                    'display_name': option.display_name,
+                    'color_code': option.color_code,
+                    'is_active': option.is_active,
+                    'sort_order': option.sort_order
+                })
+            
+            attributes_data.append({
+                'id': cat_attr.id,
+                'is_required': cat_attr.is_required,
+                'sort_order': cat_attr.sort_order,
+                'attribute': {
+                    'id': attribute.id,
+                    'name': attribute.name,
+                    'attribute_type': attribute.attribute_type,
+                    'is_required': attribute.is_required,
+                    'is_active': attribute.is_active,
+                    'options': options_data
+                }
+            })
+        
+        return Response(attributes_data)
+        
+    except Category.DoesNotExist:
+        return Response({
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def get_attribute_options_for_admin(request, attribute_type):
+    """API endpoint to get options for a specific attribute type"""
+    from products.models import ProductAttribute
+    
+    try:
+        attribute = ProductAttribute.objects.get(
+            attribute_type=attribute_type,
+            is_active=True
+        )
+        
+        options_data = []
+        for option in attribute.options.filter(is_active=True).order_by('sort_order'):
+            options_data.append({
+                'id': option.id,
+                'value': option.value,
+                'display_name': option.display_name,
+                'color_code': option.color_code,
+                'is_active': option.is_active,
+                'sort_order': option.sort_order
+            })
+        
+        return Response(options_data)
+        
+    except ProductAttribute.DoesNotExist:
+        return Response({
+            'error': f'Attribute type "{attribute_type}" not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def update_product_with_variants(request, product_id):
+    """API endpoint to update a product with variants"""
+    from products.models import (
+        Product, ProductImage, ProductAttribute, ProductAttributeOption, 
+        ProductVariant, ProductVariantAttribute
+    )
+    from django.db import transaction
+    import json
+    
+    try:
+        product = Product.objects.get(id=product_id)
+    except Product.DoesNotExist:
+        return Response({
+            'error': 'Product not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        with transaction.atomic():
+            # Update basic product data
+            product.name = request.data.get('name', product.name)
+            product.description = request.data.get('description', product.description)
+            product.base_price = float(request.data.get('base_price', product.base_price))
+            
+            category_id = request.data.get('category')
+            if category_id:
+                from products.models import Category
+                product.category = Category.objects.get(id=int(category_id))
+            
+            product.is_featured = request.data.get('is_featured', False)
+            product.is_active = request.data.get('is_active', True)
+            product.save()
+            
+            # Handle images if new ones are uploaded
+            images = request.FILES.getlist('images')
+            if images:
+                # Delete existing images
+                product.images.all().delete()
+                
+                # Add new images
+                for i, image_file in enumerate(images):
+                    ProductImage.objects.create(
+                        product=product,
+                        image=image_file,
+                        is_primary=(i == 0)  # First image is primary
+                    )
+            
+            # Handle variants if attributes are selected
+            selected_attributes = {}
+            for key in request.data.keys():
+                if key.startswith('selected_') and key.endswith('_options'):
+                    attribute_type = key.replace('selected_', '').replace('_options', '')
+                    option_ids = request.data.getlist(key)
+                    if option_ids:
+                        options = ProductAttributeOption.objects.filter(
+                            id__in=option_ids,
+                            is_active=True
+                        )
+                        selected_attributes[attribute_type] = list(options)
+            
+            # Generate new variants if attributes are selected
+            variants_created = 0
+            if selected_attributes:
+                # Delete existing variants
+                product.variants.all().delete()
+                
+                # Generate all combinations
+                attribute_types = list(selected_attributes.keys())
+                option_lists = [selected_attributes[attr_type] for attr_type in attribute_types]
+                
+                import itertools
+                all_combinations = list(itertools.product(*option_lists))
+                
+                # Parse variants data from frontend
+                variants_data_str = request.data.get('variants_data', '[]')
+                variants_data = json.loads(variants_data_str) if variants_data_str else []
+                
+                for i, combination in enumerate(all_combinations):
+                    # Get variant data for this combination (if provided)
+                    variant_data = variants_data[i] if i < len(variants_data) else {}
+                    
+                    # Create variant
+                    variant = ProductVariant.objects.create(
+                        product=product,
+                        stock_count=int(variant_data.get('stock_count', 0)),
+                        price_adjustment=float(variant_data.get('price_adjustment', 0)),
+                        is_active=variant_data.get('is_active', True)
+                    )
+                    
+                    # Create variant attributes
+                    for option in combination:
+                        ProductVariantAttribute.objects.create(
+                            variant=variant,
+                            attribute=option.attribute,
+                            option=option
+                        )
+                    
+                    variants_created += 1
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f"Updated product '{product.name}' with {variants_created} variants",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': f'Product updated successfully with {variants_created} variants!',
+                'product_id': product.id,
+                'variants_created': variants_created
+            })
+            
+    except Exception as e:
+        return Response({
+            'status': 'error',
+            'error': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST) 
