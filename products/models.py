@@ -110,11 +110,16 @@ class Product(models.Model):
         """Get overall stock status for the product"""
         total_stock = self.stock
         if total_stock > 10:
-            return "+10 available"
+            return "In stock"
         elif total_stock > 0:
-            return f"{total_stock} available"
+            return f"{total_stock} left"
         else:
             return "Out of stock"
+    
+    @property
+    def has_stock(self):
+        """Check if product has any stock"""
+        return self.stock > 0
 
 
 class ProductImage(models.Model):

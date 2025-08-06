@@ -22,6 +22,8 @@ urlpatterns = [
     
     # Product Management
     path('products/', views.product_management, name='product_management'),
+    path('products/add-with-variants/', views.add_product_with_variants, name='add_product_with_variants'),
+    path('products/<int:product_id>/edit-with-variants/', views.edit_product_with_variants, name='edit_product_with_variants'),
     
     # Order Management
     path('orders/', views.order_management, name='order_management'),

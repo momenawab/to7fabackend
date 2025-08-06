@@ -617,3 +617,43 @@ def attribute_management(request):
     }
     
     return render(request, 'admin_panel/attribute_management.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def add_product_with_variants(request):
+    """View for adding products with variants using the enhanced interface"""
+    context = {
+        'active_tab': 'products'
+    }
+    
+    # Log admin activity
+    AdminActivity.objects.create(
+        admin=request.user,
+        action='other',
+        description="Accessed add product with variants page",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+    
+    return render(request, 'admin_panel/add_product_with_variants.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def edit_product_with_variants(request, product_id):
+    """View for editing products with variants using the enhanced interface"""
+    product = get_object_or_404(Product, id=product_id)
+    
+    context = {
+        'active_tab': 'products',
+        'product': product,
+        'is_edit': True
+    }
+    
+    # Log admin activity
+    AdminActivity.objects.create(
+        admin=request.user,
+        action='other',
+        description=f"Accessed edit product with variants page for product: {product.name}",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+    
+    return render(request, 'admin_panel/edit_product_with_variants.html', context)

@@ -5,6 +5,9 @@ from . import api_views
 app_name = 'admin_api'
 
 urlpatterns = [
+    # Test endpoint for debugging
+    path('test/auth/', api_views.test_authentication, name='test_auth'),
+    
     # Seller Applications
     path('seller-applications/', api_views.SellerApplicationListView.as_view(), name='seller_applications_list'),
     path('seller-applications/<int:pk>/', api_views.SellerApplicationDetailView.as_view(), name='seller_application_detail'),
@@ -47,4 +50,11 @@ urlpatterns = [
     
     # Ads
     path('ads/active/', api_views.get_active_ads, name='get_active_ads'),
+    
+    # Product with Variants Management
+    path('products/admin/create-with-variants/', api_views.create_product_with_variants, name='create_product_with_variants'),
+    path('products/admin/<int:product_id>/update-with-variants/', api_views.update_product_with_variants, name='update_product_with_variants'),
+    path('products/admin/categories/', api_views.get_categories_for_admin, name='get_categories_for_admin'),
+    path('products/admin/categories/<int:category_id>/attributes/', api_views.get_category_attributes_for_admin, name='get_category_attributes_for_admin'),
+    path('products/admin/attributes/<str:attribute_type>/options/', api_views.get_attribute_options_for_admin, name='get_attribute_options_for_admin'),
 ] 

@@ -9,6 +9,16 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>Products</span>
         <div class="d-flex">
+            <!-- Add Product Button -->
+            <div class="dropdown me-3">
+                <button class="btn btn-purple dropdown-toggle" type="button" id="addProductDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-plus me-2"></i>Add Product
+                </button>
+                <ul class="dropdown-menu" aria-labelledby="addProductDropdown">
+                    <li><a class="dropdown-item" href="{% url 'admin_panel:add_product_with_variants' %}"><i class="fas fa-layer-group me-2"></i>Add Product with Variants</a></li>
+                    <li><a class="dropdown-item" href="/admin/products/product/add/"><i class="fas fa-box me-2"></i>Add Simple Product</a></li>
+                </ul>
+            </div>
             <!-- Search Form -->
             <form class="d-flex me-2">
                 <input type="text" name="q" class="form-control me-2" placeholder="Search products..." value="{{ search_query }}">
@@ -91,7 +101,9 @@
                                     Actions
                                 </button>
                                 <ul class="dropdown-menu" aria-labelledby="actionDropdown{{ product.id }}">
-                                    <li><a class="dropdown-item" href="#"><i class="fas fa-eye me-2"></i>View Details</a></li>
+                                    <li><a class="dropdown-item" href="/admin/products/product/{{ product.id }}/change/"><i class="fas fa-eye me-2"></i>View Details</a></li>
+                                    <li><a class="dropdown-item" href="{% url 'admin_panel:edit_product_with_variants' product.id %}"><i class="fas fa-edit me-2"></i>Edit Product & Variants</a></li>
+                                    <li><hr class="dropdown-divider"></li>
                                     {% if product.is_active %}
                                     <li><a class="dropdown-item text-danger" href="#" data-bs-toggle="modal" data-bs-target="#deactivateProductModal" data-product-id="{{ product.id }}" data-product-name="{{ product.name }}"><i class="fas fa-ban me-2"></i>Deactivate</a></li>
                                     {% else %}
