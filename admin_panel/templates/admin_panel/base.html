@@ -301,6 +301,7 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {% csrf_token %}
     <!-- Sidebar -->
     <div class="sidebar">
         <div class="brand d-flex align-items-center">
@@ -360,6 +361,18 @@
                 <a class="nav-link {% if active_tab == 'featured_products' %}active{% endif %}" href="{% url 'admin_panel:featured_products' %}">
                     <i class="fas fa-star"></i>
                     <span>Featured Products</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'categories' %}active{% endif %}" href="{% url 'admin_panel:categories' %}">
+                    <i class="fas fa-tags"></i>
+                    <span>Categories</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if active_tab == 'attributes' %}active{% endif %}" href="{% url 'admin_panel:attributes' %}">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Product Attributes</span>
                 </a>
             </li>
             <li class="nav-item">

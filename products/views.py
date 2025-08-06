@@ -1,10 +1,17 @@
 from django.shortcuts import render, get_object_or_404
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct
-from .serializers import ProductSerializer, ProductDetailSerializer, CategorySerializer, ReviewSerializer
+from .models import (
+    Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct,
+    ProductAttribute, ProductAttributeOption, CategoryAttribute
+)
+from .serializers import (
+    ProductSerializer, ProductDetailSerializer, CategorySerializer, ReviewSerializer,
+    ProductAttributeSerializer, ProductAttributeOptionSerializer, CategoryAttributeSerializer
+)
 from django.db.models import Q, Count
 from django.utils import timezone
 
@@ -471,10 +478,14 @@ def content_settings(request):
 
 # Admin management endpoints for offers and featured products
 
+@csrf_exempt
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def manage_offers(request):
     """Manage product offers for admin dashboard"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
     if request.method == 'GET':
         # Get all offers with product details
         offers = ProductOffer.objects.select_related('product', 'product__category').order_by('-created_at')
@@ -599,10 +610,14 @@ def manage_offer_detail(request, offer_id):
             'message': 'Offer deleted successfully'
         })
 
+@csrf_exempt
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def manage_featured_products(request):
     """Manage featured products for admin dashboard"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
     if request.method == 'GET':
         # Get all featured products
         featured_products = FeaturedProduct.objects.select_related('product', 'product__category').order_by('priority', '-featured_since')
@@ -707,10 +722,14 @@ def manage_featured_detail(request, featured_id):
             'message': 'Featured product removed successfully'
         })
 
+@csrf_exempt
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def toggle_product_featured(request, product_id):
     """Toggle featured status of a product"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
     try:
         product = Product.objects.get(id=product_id, is_active=True)
         
@@ -741,3 +760,622 @@ def toggle_product_featured(request, product_id):
         return Response({
             'error': 'Product not found'
         }, status=status.HTTP_404_NOT_FOUND)
+
+# Advertisement Management API Endpoints
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])  # Require authentication for creating/managing ads
+def manage_advertisements(request):
+    """Manage advertisements for admin panel"""
+    if request.method == 'GET':
+        # Get all advertisements for admin management
+        ads = Advertisement.objects.all().order_by('order', '-created_at')
+        
+        ads_data = []
+        for ad in ads:
+            ads_data.append({
+                'id': str(ad.id),
+                'title': ad.title,
+                'description': ad.description,
+                'imageUrl': ad.image_display_url,
+                'linkUrl': ad.link_url,
+                'isActive': ad.is_active,
+                'order': ad.order,
+                'created_at': ad.created_at.isoformat(),
+                'updated_at': ad.updated_at.isoformat()
+            })
+        
+        return Response({
+            'results': ads_data,
+            'count': len(ads_data)
+        })
+    
+    elif request.method == 'POST':
+        # Create new advertisement
+        try:
+            # Validate required fields
+            title = request.data.get('title', '').strip()
+            if not title:
+                return Response({
+                    'error': 'Title is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            image_url = request.data.get('imageUrl', '').strip()
+            if not image_url:
+                return Response({
+                    'error': 'Image URL is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create the advertisement
+            ad = Advertisement.objects.create(
+                title=title,
+                description=request.data.get('description', '').strip(),
+                image_url=image_url,
+                link_url=request.data.get('linkUrl', '').strip(),
+                is_active=request.data.get('isActive', True),
+                order=request.data.get('order', 0)
+            )
+            
+            return Response({
+                'id': str(ad.id),
+                'title': ad.title,
+                'description': ad.description,
+                'imageUrl': ad.image_display_url,
+                'linkUrl': ad.link_url,
+                'isActive': ad.is_active,
+                'order': ad.order,
+                'created_at': ad.created_at.isoformat(),
+                'message': 'Advertisement created successfully'
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({
+                'error': f'Failed to create advertisement: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def manage_advertisement_detail(request, ad_id):
+    """Manage individual advertisement"""
+    try:
+        ad = Advertisement.objects.get(id=ad_id)
+    except Advertisement.DoesNotExist:
+        return Response({
+            'error': 'Advertisement not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        return Response({
+            'id': str(ad.id),
+            'title': ad.title,
+            'description': ad.description,
+            'imageUrl': ad.image_display_url,
+            'linkUrl': ad.link_url,
+            'isActive': ad.is_active,
+            'order': ad.order,
+            'created_at': ad.created_at.isoformat(),
+            'updated_at': ad.updated_at.isoformat()
+        })
+    
+    elif request.method == 'PUT':
+        # Update advertisement
+        try:
+            if 'title' in request.data:
+                ad.title = request.data['title'].strip()
+            if 'description' in request.data:
+                ad.description = request.data['description'].strip()
+            if 'imageUrl' in request.data:
+                ad.image_url = request.data['imageUrl'].strip()
+            if 'linkUrl' in request.data:
+                ad.link_url = request.data['linkUrl'].strip()
+            if 'isActive' in request.data:
+                ad.is_active = request.data['isActive']
+            if 'order' in request.data:
+                ad.order = request.data['order']
+            
+            ad.save()
+            
+            return Response({
+                'id': str(ad.id),
+                'title': ad.title,
+                'description': ad.description,
+                'imageUrl': ad.image_display_url,
+                'linkUrl': ad.link_url,
+                'isActive': ad.is_active,
+                'order': ad.order,
+                'updated_at': ad.updated_at.isoformat(),
+                'message': 'Advertisement updated successfully'
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': f'Failed to update advertisement: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        ad.delete()
+        return Response({
+            'message': 'Advertisement deleted successfully'
+        }, status=status.HTTP_204_NO_CONTENT)
+
+# Category Management API Endpoints
+
+@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def manage_categories(request):
+    """Get all categories for admin management with hierarchical structure"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Get all categories
+    categories = Category.objects.all().order_by('name')
+    
+    # Build hierarchical structure
+    parent_categories = []
+    category_dict = {}
+    
+    # First pass: create dictionary of all categories
+    for category in categories:
+        category_data = {
+            'id': category.id,
+            'name': category.name,
+            'description': category.description,
+            'image': category.image.url if category.image else None,
+            'is_active': category.is_active,
+            'created_at': category.created_at.isoformat(),
+            'updated_at': category.updated_at.isoformat(),
+            'parent_id': category.parent.id if category.parent else None,
+            'parent_name': category.parent.name if category.parent else None,
+            'product_count': category.products.count(),
+            'children': []
+        }
+        category_dict[category.id] = category_data
+    
+    # Second pass: build hierarchy
+    for category in categories:
+        category_data = category_dict[category.id]
+        if category.parent:
+            # This is a subcategory, add to parent's children
+            if category.parent.id in category_dict:
+                category_dict[category.parent.id]['children'].append(category_data)
+        else:
+            # This is a parent category
+            parent_categories.append(category_data)
+    
+    return Response({
+        'results': parent_categories,
+        'total_count': categories.count(),
+        'parent_count': len(parent_categories),
+        'subcategory_count': categories.filter(parent__isnull=False).count()
+    })
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_category(request):
+    """Create a new category or subcategory"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Debug logging (can be removed in production)
+    print(f"Create request data: {request.data}")
+    print(f"Create request content type: {request.content_type}")
+    print(f"Create is_active value: {request.data.get('is_active')} (type: {type(request.data.get('is_active'))})")
+    
+    try:
+        name = request.data.get('name', '').strip()
+        if not name:
+            return Response({
+                'error': 'Category name is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if category with this name already exists
+        if Category.objects.filter(name__iexact=name).exists():
+            return Response({
+                'error': 'A category with this name already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        parent_id = request.data.get('parent_id')
+        parent_category = None
+        
+        if parent_id:
+            try:
+                parent_category = Category.objects.get(id=parent_id)
+                # Ensure parent is not a subcategory (prevent deep nesting)
+                if parent_category.parent:
+                    return Response({
+                        'error': 'Cannot create subcategory under another subcategory. Only 2-level hierarchy is supported.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            except Category.DoesNotExist:
+                return Response({
+                    'error': 'Parent category not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Handle is_active field properly
+        is_active_value = request.data.get('is_active', True)
+        if isinstance(is_active_value, str):
+            is_active = is_active_value.lower() in ['true', '1', 'yes', 'on']
+        else:
+            is_active = bool(is_active_value)
+        
+        category = Category.objects.create(
+            name=name,
+            description=request.data.get('description', '').strip(),
+            parent=parent_category,
+            is_active=is_active
+        )
+        
+        # Handle image upload if provided
+        if 'image' in request.FILES:
+            category.image = request.FILES['image']
+            category.save()
+        
+        return Response({
+            'id': category.id,
+            'name': category.name,
+            'description': category.description,
+            'image': category.image.url if category.image else None,
+            'is_active': category.is_active,
+            'parent_id': category.parent.id if category.parent else None,
+            'parent_name': category.parent.name if category.parent else None,
+            'created_at': category.created_at.isoformat(),
+            'message': f'Category "{category.name}" created successfully'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to create category: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def manage_category_detail(request, category_id):
+    """Get category details with products and subcategories"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        category = Category.objects.get(id=category_id)
+    except Category.DoesNotExist:
+        return Response({
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    # Get subcategories
+    subcategories = Category.objects.filter(parent=category).order_by('name')
+    subcategory_data = [{
+        'id': sub.id,
+        'name': sub.name,
+        'description': sub.description,
+        'image': sub.image.url if sub.image else None,
+        'is_active': sub.is_active,
+        'product_count': sub.products.count()
+    } for sub in subcategories]
+    
+    # Get products in this category
+    products = Product.objects.filter(category=category).order_by('-created_at')[:10]  # Latest 10 products
+    product_data = [{
+        'id': product.id,
+        'name': product.name,
+        'price': float(product.price),
+        'is_active': product.is_active,
+        'seller_name': product.seller_name,
+        'created_at': product.created_at.isoformat()
+    } for product in products]
+    
+    return Response({
+        'id': category.id,
+        'name': category.name,
+        'description': category.description,
+        'image': category.image.url if category.image else None,
+        'is_active': category.is_active,
+        'parent_id': category.parent.id if category.parent else None,
+        'parent_name': category.parent.name if category.parent else None,
+        'created_at': category.created_at.isoformat(),
+        'updated_at': category.updated_at.isoformat(),
+        'subcategories': subcategory_data,
+        'subcategory_count': len(subcategory_data),
+        'products': product_data,
+        'total_product_count': category.products.count()
+    })
+
+@csrf_exempt
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_category(request, category_id):
+    """Update category details"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Debug logging (can be removed in production)
+    print(f"Request data: {request.data}")
+    print(f"Request content type: {request.content_type}")
+    print(f"Is_active value: {request.data.get('is_active')} (type: {type(request.data.get('is_active'))})")
+    
+    try:
+        category = Category.objects.get(id=category_id)
+    except Category.DoesNotExist:
+        return Response({
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    try:
+        # Update name if provided
+        if 'name' in request.data:
+            new_name = request.data['name'].strip()
+            if not new_name:
+                return Response({
+                    'error': 'Category name cannot be empty'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if another category with this name exists
+            if Category.objects.filter(name__iexact=new_name).exclude(id=category_id).exists():
+                return Response({
+                    'error': 'A category with this name already exists'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            category.name = new_name
+        
+        # Update other fields
+        if 'description' in request.data:
+            category.description = request.data['description'].strip()
+        
+        if 'is_active' in request.data:
+            # Handle both boolean and string values
+            is_active_value = request.data['is_active']
+            if isinstance(is_active_value, str):
+                category.is_active = is_active_value.lower() in ['true', '1', 'yes', 'on']
+            else:
+                category.is_active = bool(is_active_value)
+        
+        # Handle parent change
+        if 'parent_id' in request.data:
+            parent_id = request.data['parent_id']
+            if parent_id:
+                try:
+                    parent_category = Category.objects.get(id=parent_id)
+                    # Prevent circular references
+                    if parent_category.id == category.id:
+                        return Response({
+                            'error': 'Category cannot be its own parent'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    # Prevent deep nesting
+                    if parent_category.parent:
+                        return Response({
+                            'error': 'Cannot move category under a subcategory. Only 2-level hierarchy is supported.'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    # Prevent moving parent under its child
+                    if category.children.filter(id=parent_category.id).exists():
+                        return Response({
+                            'error': 'Cannot move category under its own subcategory'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                    
+                    category.parent = parent_category
+                except Category.DoesNotExist:
+                    return Response({
+                        'error': 'Parent category not found'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            else:
+                category.parent = None
+        
+        # Handle image upload
+        if 'image' in request.FILES:
+            category.image = request.FILES['image']
+        
+        category.save()
+        
+        return Response({
+            'id': category.id,
+            'name': category.name,
+            'description': category.description,
+            'image': category.image.url if category.image else None,
+            'is_active': category.is_active,
+            'parent_id': category.parent.id if category.parent else None,
+            'parent_name': category.parent.name if category.parent else None,
+            'updated_at': category.updated_at.isoformat(),
+            'message': f'Category "{category.name}" updated successfully'
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to update category: {str(e)}'
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+@csrf_exempt
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_category(request, category_id):
+    """Delete a category"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        category = Category.objects.get(id=category_id)
+    except Category.DoesNotExist:
+        return Response({
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if category has products
+    product_count = category.products.count()
+    if product_count > 0:
+        return Response({
+            'error': f'Cannot delete category. It contains {product_count} products. Please move or delete the products first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if category has subcategories
+    subcategory_count = category.children.count()
+    if subcategory_count > 0:
+        return Response({
+            'error': f'Cannot delete category. It has {subcategory_count} subcategories. Please delete or move the subcategories first.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    category_name = category.name
+    category.delete()
+    
+    return Response({
+        'message': f'Category "{category_name}" deleted successfully'
+    }, status=status.HTTP_204_NO_CONTENT)
+
+
+# Attribute Management API Endpoints
+
+@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_attribute_options(request, attribute_type):
+    """Get all options for a specific attribute type"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        attribute = ProductAttribute.objects.get(attribute_type=attribute_type)
+        options = attribute.options.all().order_by('sort_order')
+        serializer = ProductAttributeOptionSerializer(options, many=True)
+        return Response(serializer.data)
+    except ProductAttribute.DoesNotExist:
+        return Response({'error': 'Attribute not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_category_attributes(request, category_id):
+    """Get all attributes for a specific category"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        category = Category.objects.get(id=category_id)
+        category_attributes = category.category_attributes.all().order_by('sort_order')
+        serializer = CategoryAttributeSerializer(category_attributes, many=True)
+        return Response(serializer.data)
+    except Category.DoesNotExist:
+        return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_category_attributes(request, category_id):
+    """Update which attributes and options are available for a category"""
+    if not request.user.is_staff:
+        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        
+        category = Category.objects.get(id=category_id)
+        
+        # Clear existing category attributes
+        CategoryAttribute.objects.filter(category=category).delete()
+        
+        # Add frame colors if enabled
+        if data.get('frame_colors', {}).get('enabled', False):
+            frame_color_attr = ProductAttribute.objects.get(attribute_type='frame_color')
+            
+            # First, disable all frame color options for this attribute
+            ProductAttributeOption.objects.filter(attribute=frame_color_attr).update(is_active=False)
+            
+            # Enable selected options
+            selected_colors = data['frame_colors'].get('options', [])
+            if selected_colors:
+                ProductAttributeOption.objects.filter(
+                    attribute=frame_color_attr,
+                    id__in=selected_colors
+                ).update(is_active=True)
+            
+            # Create category attribute relationship
+            CategoryAttribute.objects.create(
+                category=category,
+                attribute=frame_color_attr,
+                is_required=False,
+                sort_order=0
+            )
+        
+        # Add sizes if enabled
+        if data.get('sizes', {}).get('enabled', False):
+            size_attr = ProductAttribute.objects.get(attribute_type='size')
+            
+            # First, disable all size options for this attribute
+            ProductAttributeOption.objects.filter(attribute=size_attr).update(is_active=False)
+            
+            # Enable selected options
+            selected_sizes = data['sizes'].get('options', [])
+            if selected_sizes:
+                ProductAttributeOption.objects.filter(
+                    attribute=size_attr,
+                    id__in=selected_sizes
+                ).update(is_active=True)
+            
+            # Create category attribute relationship
+            CategoryAttribute.objects.create(
+                category=category,
+                attribute=size_attr,
+                is_required=data['sizes'].get('required', False),
+                sort_order=1
+            )
+        
+        return Response({
+            'message': f'Attributes updated successfully for category "{category.name}"'
+        })
+        
+    except Category.DoesNotExist:
+        return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ProductAttribute.DoesNotExist:
+        return Response({'error': 'Attribute not found'}, status=status.HTTP_404_NOT_FOUND)
+    except json.JSONDecodeError:
+        return Response({'error': 'Invalid JSON data'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def debug_arabic_encoding(request):
+    """Debug endpoint to test Arabic encoding"""
+    try:
+        # Test Arabic strings
+        test_data = {
+            'categories': [],
+            'products': [],
+            'test_strings': {
+                'arabic_greeting': 'مرحبا بك في تحفة',
+                'arabic_numbers': '١٢٣٤٥٦٧٨٩٠',
+                'mixed_text': 'Welcome مرحبا',
+                'product_name': 'لوحة فنية جميلة',
+                'description': 'هذا منتج رائع بوصف عربي طويل يحتوي على كلمات متنوعة'
+            }
+        }
+        
+        # Get some real categories
+        categories = Category.objects.all()[:3]
+        for cat in categories:
+            test_data['categories'].append({
+                'id': cat.id,
+                'name': cat.name,
+                'description': cat.description,
+                'name_length': len(cat.name),
+                'contains_arabic': bool(cat.name and any('\u0600' <= c <= '\u06FF' for c in cat.name))
+            })
+        
+        # Get some real products
+        products = Product.objects.all()[:3]
+        for prod in products:
+            test_data['products'].append({
+                'id': prod.id,
+                'name': prod.name,
+                'description': prod.description[:100] if prod.description else '',
+                'name_length': len(prod.name),
+                'contains_arabic': bool(prod.name and any('\u0600' <= c <= '\u06FF' for c in prod.name))
+            })
+        
+        return Response(test_data)
+    except Exception as e:
+        return Response({
+            'error': f'Debug endpoint failed: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

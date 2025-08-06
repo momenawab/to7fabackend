@@ -225,7 +225,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-purple" onclick="saveAdvertisement()">
+                <button type="button" class="btn btn-purple" onclick="saveAdvertisement(); return false;">
                     <i class="fas fa-save"></i> Save Advertisement
                 </button>
             </div>
@@ -309,6 +309,17 @@
         loadAdvertisements();
         loadAdsStats();
         loadAdsPreview();
+        
+        // Prevent form submission
+        $('#addAdForm').on('submit', function(e) {
+            e.preventDefault();
+            saveAdvertisement();
+        });
+        
+        $('#editAdForm').on('submit', function(e) {
+            e.preventDefault();
+            updateAdvertisement();
+        });
     });
 
     // Ads Settings Functions
@@ -452,14 +463,31 @@
             return;
         }
 
-        // Note: Implement the backend endpoint for creating ads
-        showAlert('Advertisement added successfully', 'success');
-        $('#addAdModal').modal('hide');
-        $('#addAdForm')[0].reset();
-        loadAdvertisements();
-        loadAdsPreview();
-
-        console.log('Advertisement to save:', adData);
+        // Create advertisement via API
+        fetch('/api/products/admin/advertisements/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(adData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showAlert(data.error, 'error');
+            } else {
+                showAlert('Advertisement added successfully', 'success');
+                $('#addAdModal').modal('hide');
+                $('#addAdForm')[0].reset();
+                loadAdvertisements();
+                loadAdsPreview();
+            }
+        })
+        .catch(error => {
+            console.error('Error creating advertisement:', error);
+            showAlert('Failed to create advertisement', 'error');
+        });
     }
 
     function editAdvertisement(adId) {
@@ -593,6 +621,22 @@
         `;
 
         $('#adsPreview').html(html);
+    }
+
+    // Utility function to get CSRF cookie
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
     }
 
     // Utility function for showing alerts
