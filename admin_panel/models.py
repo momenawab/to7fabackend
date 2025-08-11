@@ -2,6 +2,14 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from custom_auth.models import User
 
+def default_dict():
+    """Return empty dict for JSONField default"""
+    return {}
+
+def default_list():
+    """Return empty list for JSONField default"""
+    return []
+
 class SellerApplication(models.Model):
     """Model to track seller applications"""
     STATUS_CHOICES = (
@@ -22,9 +30,9 @@ class SellerApplication(models.Model):
     email = models.EmailField()
     address = models.TextField()
     shipping_company = models.CharField(max_length=100)
-    shipping_costs = models.JSONField(default=dict)  # Store costs per governorate
+    shipping_costs = models.JSONField(default=default_dict)  # Store costs per governorate
     details = models.TextField()
-    categories = models.JSONField(default=list)  # List of category IDs
+    categories = models.JSONField(default=default_list)  # List of category IDs
     
     # Artist-specific fields
     specialty = models.CharField(max_length=100, blank=True, null=True)

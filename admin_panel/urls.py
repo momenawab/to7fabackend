@@ -1,4 +1,5 @@
 from django.urls import path
+from django.http import JsonResponse
 from . import views
 
 app_name = 'admin_panel'
@@ -53,6 +54,9 @@ urlpatterns = [
     # API endpoints
     path('api/stats/', views.admin_stats_api, name='admin_stats_api'),
     path('api/notifications/<int:notification_id>/read/', views.mark_notification_read, name='mark_notification_read'),
+    path('api/test/', lambda request: JsonResponse({'status': 'working', 'user': str(request.user)}), name='api_test'),
+    path('api/categories/', views.get_categories_json, name='get_categories_json'),
+    path('api/categories/<int:category_id>/attributes/', views.get_category_attributes_json, name='get_category_attributes_json'),
     
     path('activity-log/', views.activity_log, name='activity_log'),
 ] 

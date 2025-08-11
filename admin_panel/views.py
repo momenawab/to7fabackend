@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 from django.contrib import messages
 from django.db.models import Count, Sum, Q
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db import transaction
 from datetime import datetime
 
 from rest_framework.decorators import api_view, permission_classes
@@ -80,13 +81,13 @@ def admin_dashboard(request):
     total_orders = Order.objects.count()
     pending_applications = SellerApplication.objects.filter(status='pending').count()
     
-    # Recent applications
-    recent_applications = SellerApplication.objects.filter(
+    # Recent applications with optimized queries
+    recent_applications = SellerApplication.objects.select_related('user').filter(
         status='pending'
     ).order_by('-submitted_at')[:5]
     
-    # Recent orders
-    recent_orders = Order.objects.all().order_by('-created_at')[:5]
+    # Recent orders with optimized queries
+    recent_orders = Order.objects.select_related('user').all().order_by('-created_at')[:5]
     
     # Notifications
     notifications = AdminNotification.objects.filter(
@@ -113,9 +114,9 @@ def seller_applications(request):
     status_filter = request.GET.get('status', 'pending')
     
     if status_filter == 'all':
-        applications = SellerApplication.objects.all().order_by('-submitted_at')
+        applications = SellerApplication.objects.select_related('user', 'processed_by').all().order_by('-submitted_at')
     else:
-        applications = SellerApplication.objects.filter(
+        applications = SellerApplication.objects.select_related('user', 'processed_by').filter(
             status=status_filter
         ).order_by('-submitted_at')
     
@@ -158,57 +159,59 @@ def process_application(request, application_id):
         admin_notes = request.POST.get('admin_notes', '')
         
         if action == 'approve':
-            # Update application status
-            application.status = 'approved'
-            application.admin_notes = admin_notes
-            application.processed_at = timezone.now()
-            application.processed_by = request.user
-            application.save()
-            
-            # Update user type and create profile
-            user = application.user
-            user.user_type = application.user_type
-            user.save()
-            
-            if application.user_type == 'artist':
-                # Check if artist profile already exists
-                artist_profile, created = Artist.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'specialty': application.specialty,
-                        'bio': application.bio,
-                        'is_verified': True
-                    }
-                )
+            # Use atomic transaction to ensure data consistency
+            with transaction.atomic():
+                # Update application status
+                application.status = 'approved'
+                application.admin_notes = admin_notes
+                application.processed_at = timezone.now()
+                application.processed_by = request.user
+                application.save()
                 
-                # If profile already exists, update it
-                if not created:
-                    artist_profile.specialty = application.specialty
-                    artist_profile.bio = application.bio
-                    artist_profile.is_verified = True
-                    artist_profile.save()
-                    
-            elif application.user_type == 'store':
-                # Check if store profile already exists
-                store_profile, created = Store.objects.get_or_create(
-                    user=user,
-                    defaults={
-                        'store_name': application.store_name,
-                        'tax_id': application.tax_id,
-                        'has_physical_store': application.has_physical_store,
-                        'physical_address': application.physical_address,
-                        'is_verified': True
-                    }
-                )
+                # Update user type and create profile
+                user = application.user
+                user.user_type = application.user_type
+                user.save()
                 
-                # If profile already exists, update it
-                if not created:
-                    store_profile.store_name = application.store_name
-                    store_profile.tax_id = application.tax_id
-                    store_profile.has_physical_store = application.has_physical_store
-                    store_profile.physical_address = application.physical_address
-                    store_profile.is_verified = True
-                    store_profile.save()
+                if application.user_type == 'artist':
+                    # Use select_for_update to prevent race conditions
+                    try:
+                        artist_profile = Artist.objects.select_for_update().get(user=user)
+                        # Update existing profile
+                        artist_profile.specialty = application.specialty
+                        artist_profile.bio = application.bio
+                        artist_profile.is_verified = True
+                        artist_profile.save()
+                    except Artist.DoesNotExist:
+                        # Create new profile if it doesn't exist
+                        Artist.objects.create(
+                            user=user,
+                            specialty=application.specialty,
+                            bio=application.bio,
+                            is_verified=True
+                        )
+                        
+                elif application.user_type == 'store':
+                    # Use select_for_update to prevent race conditions
+                    try:
+                        store_profile = Store.objects.select_for_update().get(user=user)
+                        # Update existing profile
+                        store_profile.store_name = application.store_name
+                        store_profile.tax_id = application.tax_id
+                        store_profile.has_physical_store = application.has_physical_store
+                        store_profile.physical_address = application.physical_address
+                        store_profile.is_verified = True
+                        store_profile.save()
+                    except Store.DoesNotExist:
+                        # Create new profile if it doesn't exist
+                        Store.objects.create(
+                            user=user,
+                            store_name=application.store_name,
+                            tax_id=application.tax_id,
+                            has_physical_store=application.has_physical_store,
+                            physical_address=application.physical_address,
+                            is_verified=True
+                        )
             
             # Log activity
             AdminActivity.objects.create(
@@ -316,7 +319,7 @@ def product_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
     
-    products = Product.objects.all()
+    products = Product.objects.select_related('category', 'seller').all()
     
     # Apply filters
     if category_id != 'all':
@@ -359,7 +362,7 @@ def order_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
     
-    orders = Order.objects.all()
+    orders = Order.objects.select_related('user').all()
     
     # Apply filters
     if status != 'all':
@@ -368,7 +371,7 @@ def order_management(request):
     if search_query:
         orders = orders.filter(
             Q(id__icontains=search_query) | 
-            Q(customer__email__icontains=search_query)
+            Q(user__email__icontains=search_query)
         )
     
     # Pagination
@@ -480,12 +483,18 @@ def activity_log(request):
         activities = activities.filter(action=action_type)
     
     if date_from:
-        date_from = datetime.strptime(date_from, '%Y-%m-%d').date()
-        activities = activities.filter(timestamp__date__gte=date_from)
+        try:
+            date_from = datetime.strptime(date_from, '%Y-%m-%d').date()
+            activities = activities.filter(timestamp__date__gte=date_from)
+        except ValueError:
+            messages.error(request, 'Invalid date format for date_from. Use YYYY-MM-DD.')
     
     if date_to:
-        date_to = datetime.strptime(date_to, '%Y-%m-%d').date()
-        activities = activities.filter(timestamp__date__lte=date_to)
+        try:
+            date_to = datetime.strptime(date_to, '%Y-%m-%d').date()
+            activities = activities.filter(timestamp__date__lte=date_to)
+        except ValueError:
+            messages.error(request, 'Invalid date format for date_to. Use YYYY-MM-DD.')
     
     # Pagination
     paginator = Paginator(activities, 25)  # Show 25 activities per page
@@ -528,20 +537,26 @@ def view_user_profile(request, user_id):
         try:
             customer = user.customer_profile
             return redirect(f'/admin/custom_auth/customer/{customer.id}/change/')
-        except:
-            pass
+        except AttributeError:
+            messages.warning(request, f"Customer profile not found for user {user.email}")
+        except Exception as e:
+            messages.error(request, f"Error accessing customer profile: {str(e)}")
     elif user.user_type == 'artist':
         try:
             artist = user.artist_profile
             return redirect(f'/admin/custom_auth/artist/{artist.id}/change/')
-        except:
-            pass
+        except AttributeError:
+            messages.warning(request, f"Artist profile not found for user {user.email}")
+        except Exception as e:
+            messages.error(request, f"Error accessing artist profile: {str(e)}")
     elif user.user_type == 'store':
         try:
             store = user.store_profile
             return redirect(f'/admin/custom_auth/store/{store.id}/change/')
-        except:
-            pass
+        except AttributeError:
+            messages.warning(request, f"Store profile not found for user {user.email}")
+        except Exception as e:
+            messages.error(request, f"Error accessing store profile: {str(e)}")
     
     # Default to user admin page
     return redirect(f'/admin/custom_auth/user/{user.id}/change/')
@@ -657,3 +672,84 @@ def edit_product_with_variants(request, product_id):
     )
     
     return render(request, 'admin_panel/edit_product_with_variants.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+def get_categories_json(request):
+    """JSON endpoint to get categories for the admin panel"""
+    try:
+        from products.models import Category
+        
+        # Add logging for debugging
+        print(f"Categories API called by user: {request.user}")
+        print(f"Is user authenticated: {request.user.is_authenticated}")
+        print(f"Is user staff: {request.user.is_staff}")
+        print(f"Is user superuser: {request.user.is_superuser}")
+        
+        categories = Category.objects.filter(is_active=True).order_by('name')
+        print(f"Found {categories.count()} categories")
+        
+        categories_data = [
+            {
+                'id': category.id,
+                'name': category.name,
+                'description': category.description,
+            }
+            for category in categories
+        ]
+        
+        print(f"Returning categories data: {categories_data}")
+        return JsonResponse(categories_data, safe=False)
+        
+    except Exception as e:
+        print(f"Error in get_categories_json: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@user_passes_test(is_admin)
+def get_category_attributes_json(request, category_id):
+    """JSON endpoint to get category attributes for the admin panel"""
+    from products.models import Category, CategoryAttribute
+    
+    try:
+        category = Category.objects.get(id=category_id, is_active=True)
+        
+        category_attributes = CategoryAttribute.objects.filter(
+            category=category,
+            attribute__is_active=True
+        ).select_related('attribute').order_by('sort_order')
+        
+        attributes_data = []
+        for cat_attr in category_attributes:
+            attribute = cat_attr.attribute
+            
+            # Get active options
+            options_data = []
+            for option in attribute.options.filter(is_active=True).order_by('sort_order'):
+                options_data.append({
+                    'id': option.id,
+                    'value': option.value,
+                    'display_name': option.display_name,
+                    'color_code': option.color_code,
+                    'is_active': option.is_active,
+                    'sort_order': option.sort_order
+                })
+            
+            attributes_data.append({
+                'id': cat_attr.id,
+                'is_required': cat_attr.is_required,
+                'sort_order': cat_attr.sort_order,
+                'attribute': {
+                    'id': attribute.id,
+                    'name': attribute.name,
+                    'attribute_type': attribute.attribute_type,
+                    'is_required': attribute.is_required,
+                    'is_active': attribute.is_active,
+                    'options': options_data
+                }
+            })
+        
+        return JsonResponse(attributes_data, safe=False)
+        
+    except Category.DoesNotExist:
+        return JsonResponse({'error': 'Category not found'}, status=404)

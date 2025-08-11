@@ -2,14 +2,16 @@ from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db.models import Count, Sum, Q, F
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
+from django.db import transaction
 import csv
 
 from custom_auth.models import User, Artist, Store
-from products.models import Product, Category
+from products.models import Product, Category, Advertisement, ContentSettings
 from orders.models import Order, OrderItem
 from .models import SellerApplication, AdminActivity, AdminNotification
 from .serializers import (
@@ -17,20 +19,23 @@ from .serializers import (
     OrderSerializer, AdminNotificationSerializer
 )
 
-# Test endpoint for debugging authentication
+class AdminPagination(PageNumberPagination):
+    """Custom pagination for admin API endpoints"""
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+# Test endpoint for debugging authentication (secured)
 @api_view(['GET'])
-@permission_classes([])  # No permissions required
+@permission_classes([IsAuthenticated, IsAdminUser])
 def test_authentication(request):
-    """Test endpoint to debug authentication issues"""
+    """Test endpoint to debug authentication issues - only for admins"""
+    # Only return basic info for security
     data = {
         'user_authenticated': request.user.is_authenticated,
-        'user_id': request.user.id if request.user.is_authenticated else None,
-        'user_email': request.user.email if request.user.is_authenticated else None,
-        'is_staff': request.user.is_staff if request.user.is_authenticated else None,
-        'is_superuser': request.user.is_superuser if request.user.is_authenticated else None,
-        'session_key': request.session.session_key,
-        'auth_header': request.META.get('HTTP_AUTHORIZATION', 'None'),
-        'csrf_token': request.META.get('HTTP_X_CSRFTOKEN', 'None'),
+        'user_email': request.user.email,
+        'is_staff': request.user.is_staff,
+        'message': 'Authentication test successful'
     }
     return Response(data)
 
@@ -38,10 +43,11 @@ def test_authentication(request):
 class SellerApplicationListView(generics.ListAPIView):
     serializer_class = SellerApplicationSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = AdminPagination
     
     def get_queryset(self):
         status_filter = self.request.query_params.get('status', None)
-        queryset = SellerApplication.objects.all().order_by('-submitted_at')
+        queryset = SellerApplication.objects.select_related('user', 'processed_by').all().order_by('-submitted_at')
         
         if status_filter and status_filter != 'all':
             queryset = queryset.filter(status=status_filter)
@@ -78,28 +84,49 @@ def approve_application(request, pk):
     
     # If approved, update user type and create profile
     if action:
-        user = application.user
-        user.user_type = application.user_type
-        user.save()
-        
-        if application.user_type == 'artist':
-            # Create artist profile
-            Artist.objects.create(
-                user=user,
-                specialty=application.specialty,
-                bio=application.bio,
-                is_verified=True
-            )
-        elif application.user_type == 'store':
-            # Create store profile
-            Store.objects.create(
-                user=user,
-                store_name=application.store_name,
-                tax_id=application.tax_id,
-                has_physical_store=application.has_physical_store,
-                physical_address=application.physical_address,
-                is_verified=True
-            )
+        with transaction.atomic():
+            user = application.user
+            user.user_type = application.user_type
+            user.save()
+            
+            if application.user_type == 'artist':
+                # Use select_for_update to prevent race conditions
+                try:
+                    artist_profile = Artist.objects.select_for_update().get(user=user)
+                    # Update existing profile
+                    artist_profile.specialty = application.specialty
+                    artist_profile.bio = application.bio
+                    artist_profile.is_verified = True
+                    artist_profile.save()
+                except Artist.DoesNotExist:
+                    # Create new profile if it doesn't exist
+                    Artist.objects.create(
+                        user=user,
+                        specialty=application.specialty,
+                        bio=application.bio,
+                        is_verified=True
+                    )
+            elif application.user_type == 'store':
+                # Use select_for_update to prevent race conditions
+                try:
+                    store_profile = Store.objects.select_for_update().get(user=user)
+                    # Update existing profile
+                    store_profile.store_name = application.store_name
+                    store_profile.tax_id = application.tax_id
+                    store_profile.has_physical_store = application.has_physical_store
+                    store_profile.physical_address = application.physical_address
+                    store_profile.is_verified = True
+                    store_profile.save()
+                except Store.DoesNotExist:
+                    # Create new profile if it doesn't exist
+                    Store.objects.create(
+                        user=user,
+                        store_name=application.store_name,
+                        tax_id=application.tax_id,
+                        has_physical_store=application.has_physical_store,
+                        physical_address=application.physical_address,
+                        is_verified=True
+                    )
     
     return Response({
         'status': 'success',
@@ -110,12 +137,13 @@ def approve_application(request, pk):
 class UserListView(generics.ListAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = AdminPagination
     
     def get_queryset(self):
         user_type = self.request.query_params.get('type', None)
         search_query = self.request.query_params.get('q', None)
         
-        queryset = User.objects.all()
+        queryset = User.objects.all().order_by('-date_joined')
         
         if user_type and user_type != 'all':
             queryset = queryset.filter(user_type=user_type)
@@ -149,13 +177,14 @@ def block_user(request, pk):
 class ProductListView(generics.ListAPIView):
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = AdminPagination
     
     def get_queryset(self):
         category_id = self.request.query_params.get('category', None)
         status = self.request.query_params.get('status', None)
         search_query = self.request.query_params.get('q', None)
         
-        queryset = Product.objects.all()
+        queryset = Product.objects.select_related('category', 'seller').all().order_by('-created_at')
         
         if category_id and category_id != 'all':
             queryset = queryset.filter(category_id=category_id)
@@ -206,12 +235,13 @@ def toggle_product_status(request, pk):
 class OrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = AdminPagination
     
     def get_queryset(self):
         status = self.request.query_params.get('status', None)
         search_query = self.request.query_params.get('q', None)
         
-        queryset = Order.objects.all()
+        queryset = Order.objects.select_related('user').prefetch_related('items__product').all().order_by('-created_at')
         
         if status and status != 'all':
             queryset = queryset.filter(status=status)
@@ -219,7 +249,7 @@ class OrderListView(generics.ListAPIView):
         if search_query:
             queryset = queryset.filter(
                 Q(id__icontains=search_query) | 
-                Q(customer__email__icontains=search_query)
+                Q(user__email__icontains=search_query)
             )
             
         return queryset
@@ -284,6 +314,7 @@ def admin_stats(request):
 class AdminNotificationListView(generics.ListAPIView):
     serializer_class = AdminNotificationSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = AdminPagination
     
     def get_queryset(self):
         is_read = self.request.query_params.get('is_read', None)
@@ -433,8 +464,8 @@ def report_summary(request):
         current_date += timezone.timedelta(days=1)
     
     # Product data
-    # Top selling products
-    top_products = Product.objects.annotate(
+    # Top selling products with optimized queries
+    top_products = Product.objects.select_related('category', 'seller').annotate(
         units_sold=Count('orderitem')
     ).order_by('-units_sold')[:10]
     
@@ -456,8 +487,8 @@ def report_summary(request):
             'revenue': revenue
         })
     
-    # Top categories
-    top_categories = Category.objects.annotate(
+    # Top categories with optimized queries
+    top_categories = Category.objects.prefetch_related('product_set').annotate(
         product_count=Count('product')
     ).order_by('-product_count')[:5]
     
@@ -710,6 +741,29 @@ def get_active_ads(request):
 
 
 # Product with Variants API
+def validate_uploaded_files(files):
+    """Validate uploaded image files"""
+    allowed_types = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    max_file_size = 5 * 1024 * 1024  # 5MB
+    
+    errors = []
+    
+    for file in files:
+        # Check file type
+        if file.content_type not in allowed_types:
+            errors.append(f"File '{file.name}' has invalid type. Allowed types: JPEG, PNG, WebP, GIF")
+        
+        # Check file size
+        if file.size > max_file_size:
+            errors.append(f"File '{file.name}' is too large. Maximum size: 5MB")
+        
+        # Check file extension
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+        if not any(file.name.lower().endswith(ext) for ext in allowed_extensions):
+            errors.append(f"File '{file.name}' has invalid extension")
+    
+    return errors
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def create_product_with_variants(request):
@@ -721,15 +775,71 @@ def create_product_with_variants(request):
     from django.db import transaction
     import json
     
+    # Validate uploaded files first
+    images = request.FILES.getlist('images')
+    if images:
+        file_errors = validate_uploaded_files(images)
+        if file_errors:
+            return Response({
+                'status': 'error',
+                'errors': file_errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
+        print(f"DEBUG: Request data: {dict(request.data)}")
+        print(f"DEBUG: Request FILES: {dict(request.FILES)}")
+        
         with transaction.atomic():
-            # Extract basic product data
+            # Validate and extract basic product data
+            name = request.data.get('name', '').strip()
+            description = request.data.get('description', '').strip()
+            base_price = request.data.get('base_price')
+            category_id = request.data.get('category')
+            
+            print(f"DEBUG: Extracted data - name: {name}, description: {description}, base_price: {base_price}, category_id: {category_id}")
+            
+            # Validation
+            if not name:
+                return Response({
+                    'status': 'error',
+                    'error': 'Product name is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not description:
+                return Response({
+                    'status': 'error',
+                    'error': 'Product description is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                base_price = float(base_price)
+                if base_price < 0:
+                    raise ValueError("Price cannot be negative")
+            except (TypeError, ValueError):
+                return Response({
+                    'status': 'error',
+                    'error': 'Valid base price is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                category_id = int(category_id)
+            except (TypeError, ValueError):
+                return Response({
+                    'status': 'error',
+                    'error': 'Valid category is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Handle boolean conversion
+            is_featured = request.data.get('is_featured', False)
+            if isinstance(is_featured, str):
+                is_featured = is_featured.lower() in ('true', '1', 'yes', 'on')
+            
             product_data = {
-                'name': request.data.get('name'),
-                'description': request.data.get('description'),
-                'base_price': float(request.data.get('base_price', 0)),
-                'category_id': int(request.data.get('category')),
-                'is_featured': request.data.get('is_featured', False),
+                'name': name,
+                'description': description,
+                'base_price': base_price,
+                'category_id': category_id,
+                'is_featured': bool(is_featured),
                 'seller': request.user,
                 'is_active': True
             }
@@ -778,12 +888,17 @@ def create_product_with_variants(request):
                     # Get variant data for this combination (if provided)
                     variant_data = variants_data[i] if i < len(variants_data) else {}
                     
+                    # Handle boolean conversion for variant
+                    is_active = variant_data.get('is_active', True)
+                    if isinstance(is_active, str):
+                        is_active = is_active.lower() in ('true', '1', 'yes', 'on')
+                    
                     # Create variant
                     variant = ProductVariant.objects.create(
                         product=product,
                         stock_count=int(variant_data.get('stock_count', 0)),
                         price_adjustment=float(variant_data.get('price_adjustment', 0)),
-                        is_active=variant_data.get('is_active', True)
+                        is_active=bool(is_active)
                     )
                     
                     # Create variant attributes
@@ -811,11 +926,35 @@ def create_product_with_variants(request):
                 'variants_created': variants_created
             })
             
-    except Exception as e:
+    except ValueError as e:
+        print(f"ValueError in create_product_with_variants: {str(e)}")
         return Response({
             'status': 'error',
-            'error': str(e)
+            'error': 'Invalid data provided',
+            'details': str(e)
         }, status=status.HTTP_400_BAD_REQUEST)
+    except PermissionError as e:
+        print(f"PermissionError in create_product_with_variants: {str(e)}")
+        return Response({
+            'status': 'error',
+            'error': 'Permission denied',
+            'details': str(e)
+        }, status=status.HTTP_403_FORBIDDEN)
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating product with variants: {str(e)}", exc_info=True)
+        print(f"FULL ERROR in create_product_with_variants:")
+        print(f"Error: {str(e)}")
+        print(f"Type: {type(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        
+        return Response({
+            'status': 'error',
+            'error': f'Internal server error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
@@ -1005,12 +1144,17 @@ def update_product_with_variants(request, product_id):
                     # Get variant data for this combination (if provided)
                     variant_data = variants_data[i] if i < len(variants_data) else {}
                     
+                    # Handle boolean conversion for variant
+                    is_active = variant_data.get('is_active', True)
+                    if isinstance(is_active, str):
+                        is_active = is_active.lower() in ('true', '1', 'yes', 'on')
+                    
                     # Create variant
                     variant = ProductVariant.objects.create(
                         product=product,
                         stock_count=int(variant_data.get('stock_count', 0)),
                         price_adjustment=float(variant_data.get('price_adjustment', 0)),
-                        is_active=variant_data.get('is_active', True)
+                        is_active=bool(is_active)
                     )
                     
                     # Create variant attributes
@@ -1038,8 +1182,303 @@ def update_product_with_variants(request, product_id):
                 'variants_created': variants_created
             })
             
-    except Exception as e:
+    except ValueError as e:
         return Response({
             'status': 'error',
-            'error': str(e)
-        }, status=status.HTTP_400_BAD_REQUEST) 
+            'error': 'Invalid data provided',
+            'details': str(e)
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except PermissionError as e:
+        return Response({
+            'status': 'error',
+            'error': 'Permission denied',
+            'details': str(e)
+        }, status=status.HTTP_403_FORBIDDEN)
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error updating product with variants: {str(e)}", exc_info=True)
+        
+        return Response({
+            'status': 'error',
+            'error': 'Internal server error occurred'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Advertisement Management API Endpoints
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def list_advertisements(request):
+    """API endpoint to list all advertisements for admin management"""
+    
+    # Get filter parameters
+    category_id = request.query_params.get('category')
+    main_only = request.query_params.get('main_only')
+    is_active = request.query_params.get('is_active')
+    
+    # Build queryset
+    queryset = Advertisement.objects.select_related('category').all()
+    
+    # Apply filters
+    if main_only == 'true':
+        queryset = queryset.filter(show_on_main=True, category__isnull=True)
+    elif category_id:
+        try:
+            category_id = int(category_id)
+            queryset = queryset.filter(category_id=category_id)
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Invalid category ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if is_active == 'true':
+        queryset = queryset.filter(is_active=True)
+    elif is_active == 'false':
+        queryset = queryset.filter(is_active=False)
+    
+    # Order by category, then order, then creation date
+    queryset = queryset.order_by('category__name', 'order', '-created_at')
+    
+    # Prepare response data
+    ads_data = []
+    for ad in queryset:
+        ads_data.append({
+            'id': ad.id,
+            'title': ad.title,
+            'description': ad.description,
+            'imageUrl': ad.image_display_url,
+            'linkUrl': ad.link_url,
+            'category_id': ad.category_id,
+            'category_name': ad.category.name if ad.category else None,
+            'show_on_main': ad.show_on_main,
+            'display_location': ad.display_location,
+            'isActive': ad.is_active,
+            'order': ad.order,
+            'created_at': ad.created_at.isoformat(),
+            'updated_at': ad.updated_at.isoformat()
+        })
+    
+    return Response({
+        'advertisements': ads_data,
+        'count': len(ads_data)
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def create_advertisement(request):
+    """API endpoint to create a new advertisement"""
+    
+    try:
+        # Extract data from request
+        title = request.data.get('title', '').strip()
+        description = request.data.get('description', '').strip()
+        image_url = request.data.get('image_url', '').strip()
+        link_url = request.data.get('link_url', '').strip()
+        category_id = request.data.get('category')
+        show_on_main = request.data.get('show_on_main', True)
+        is_active = request.data.get('is_active', True)
+        order = request.data.get('order', 0)
+        
+        # Validation
+        if not title:
+            return Response({
+                'error': 'Advertisement title is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not image_url:
+            return Response({
+                'error': 'Image URL is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Handle category
+        category = None
+        if category_id:
+            try:
+                category_id = int(category_id)
+                category = Category.objects.get(id=category_id, is_active=True)
+            except (ValueError, TypeError, Category.DoesNotExist):
+                return Response({
+                    'error': 'Invalid category selected'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create advertisement
+        ad = Advertisement.objects.create(
+            title=title,
+            description=description,
+            image_url=image_url,
+            link_url=link_url,
+            category=category,
+            show_on_main=bool(show_on_main),
+            is_active=bool(is_active),
+            order=int(order)
+        )
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='create',
+            description=f'Created advertisement "{ad.title}" for {ad.display_location}',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Advertisement created successfully',
+            'advertisement': {
+                'id': ad.id,
+                'title': ad.title,
+                'description': ad.description,
+                'imageUrl': ad.image_display_url,
+                'linkUrl': ad.link_url,
+                'category_id': ad.category_id,
+                'category_name': ad.category.name if ad.category else None,
+                'show_on_main': ad.show_on_main,
+                'display_location': ad.display_location,
+                'isActive': ad.is_active,
+                'order': ad.order,
+                'created_at': ad.created_at.isoformat(),
+                'updated_at': ad.updated_at.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        return Response({
+            'error': f'Failed to create advertisement: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def manage_advertisement_detail(request, ad_id):
+    """API endpoint to get, update, or delete a specific advertisement"""
+    
+    try:
+        ad = Advertisement.objects.select_related('category').get(id=ad_id)
+    except Advertisement.DoesNotExist:
+        return Response({
+            'error': 'Advertisement not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Return advertisement details
+        return Response({
+            'id': ad.id,
+            'title': ad.title,
+            'description': ad.description,
+            'imageUrl': ad.image_display_url,
+            'linkUrl': ad.link_url,
+            'category_id': ad.category_id,
+            'category_name': ad.category.name if ad.category else None,
+            'show_on_main': ad.show_on_main,
+            'display_location': ad.display_location,
+            'isActive': ad.is_active,
+            'order': ad.order,
+            'created_at': ad.created_at.isoformat(),
+            'updated_at': ad.updated_at.isoformat()
+        })
+    
+    elif request.method == 'PUT':
+        # Update advertisement
+        try:
+            # Extract data from request
+            if 'title' in request.data:
+                ad.title = request.data['title'].strip()
+            if 'description' in request.data:
+                ad.description = request.data['description'].strip()
+            if 'image_url' in request.data:
+                ad.image_url = request.data['image_url'].strip()
+            if 'link_url' in request.data:
+                ad.link_url = request.data['link_url'].strip()
+            if 'order' in request.data:
+                ad.order = int(request.data['order'])
+            if 'is_active' in request.data:
+                ad.is_active = bool(request.data['is_active'])
+            if 'show_on_main' in request.data:
+                ad.show_on_main = bool(request.data['show_on_main'])
+            
+            # Handle category
+            if 'category' in request.data:
+                category_id = request.data['category']
+                if category_id:
+                    try:
+                        category_id = int(category_id)
+                        ad.category = Category.objects.get(id=category_id, is_active=True)
+                    except (ValueError, TypeError, Category.DoesNotExist):
+                        return Response({
+                            'error': 'Invalid category selected'
+                        }, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    ad.category = None
+            
+            # Validation
+            if not ad.title:
+                return Response({
+                    'error': 'Advertisement title is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not ad.image_url:
+                return Response({
+                    'error': 'Image URL is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            ad.save()
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f'Updated advertisement "{ad.title}" for {ad.display_location}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Advertisement updated successfully',
+                'advertisement': {
+                    'id': ad.id,
+                    'title': ad.title,
+                    'description': ad.description,
+                    'imageUrl': ad.image_display_url,
+                    'linkUrl': ad.link_url,
+                    'category_id': ad.category_id,
+                    'category_name': ad.category.name if ad.category else None,
+                    'show_on_main': ad.show_on_main,
+                    'display_location': ad.display_location,
+                    'isActive': ad.is_active,
+                    'order': ad.order,
+                    'created_at': ad.created_at.isoformat(),
+                    'updated_at': ad.updated_at.isoformat()
+                }
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': f'Failed to update advertisement: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method == 'DELETE':
+        # Delete advertisement
+        try:
+            ad_title = ad.title
+            ad_location = ad.display_location
+            ad.delete()
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='delete',
+                description=f'Deleted advertisement "{ad_title}" from {ad_location}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': 'Advertisement deleted successfully'
+            })
+            
+        except Exception as e:
+            return Response({
+                'error': f'Failed to delete advertisement: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
