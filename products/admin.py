@@ -231,20 +231,49 @@ class ReviewAdmin(admin.ModelAdmin):
     search_fields = ('product__name', 'user__email', 'comment')
     readonly_fields = ('created_at',)
 
+class AdvertisementAdminForm(forms.ModelForm):
+    class Meta:
+        model = Advertisement
+        fields = '__all__'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove required attribute from image field to prevent browser validation
+        self.fields['image'].required = False
+        self.fields['image_url'].required = False
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        image = cleaned_data.get('image')
+        image_url = cleaned_data.get('image_url')
+        
+        if not image and not image_url:
+            # Raise specific field errors instead of general form error
+            raise forms.ValidationError({
+                'image_url': 'Please provide either an image file or an external image URL.',
+            })
+        
+        return cleaned_data
+
 class AdvertisementAdmin(admin.ModelAdmin):
-    list_display = ('title', 'is_active', 'order', 'created_at')
-    list_filter = ('is_active', 'created_at')
-    search_fields = ('title', 'description')
-    readonly_fields = ('created_at', 'updated_at')
-    ordering = ('order', '-created_at')
+    form = AdvertisementAdminForm
+    list_display = ('title', 'display_location', 'is_active', 'order', 'created_at')
+    list_filter = ('is_active', 'category', 'show_on_main', 'created_at')
+    search_fields = ('title', 'description', 'category__name')
+    readonly_fields = ('created_at', 'updated_at', 'display_location')
+    ordering = ('category', 'order', '-created_at')
     
     fieldsets = (
         ('Basic Information', {
             'fields': ('title', 'description', 'is_active', 'order')
         }),
+        ('Display Location', {
+            'fields': ('category', 'show_on_main', 'display_location'),
+            'description': 'Select a category to show ads on category pages, or leave empty and check "Show on Main" for main page ads. You can also show the same ad in both locations.'
+        }),
         ('Image', {
             'fields': ('image', 'image_url'),
-            'description': 'You can either upload an image or provide an external URL. External URL takes precedence.'
+            'description': 'You must provide EITHER an uploaded image file OR an external image URL (not both). External URL takes precedence if both are provided.'
         }),
         ('Link', {
             'fields': ('link_url',),
@@ -255,6 +284,10 @@ class AdvertisementAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    def display_location(self, obj):
+        return obj.display_location
+    display_location.short_description = 'Display Location'
 
 class ContentSettingsAdmin(admin.ModelAdmin):
     list_display = ('__str__', 'show_latest_offers', 'show_featured_products', 'show_top_artists', 'show_top_stores', 'show_ads_slider')

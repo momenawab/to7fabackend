@@ -418,7 +418,7 @@ def top_rated_products(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def advertisements(request):
-    """Get active advertisements for slider"""
+    """Get active advertisements for slider with optional category filtering"""
     # Get settings to check if ads should be shown
     settings = ContentSettings.get_settings()
     if not settings.show_ads_slider:
@@ -428,9 +428,41 @@ def advertisements(request):
             'message': 'Ads slider is currently disabled'
         })
     
-    ads = Advertisement.objects.filter(
-        is_active=True
-    ).order_by('order', '-created_at')[:settings.max_ads_to_show]
+    # Get category parameter from query string
+    category_id = request.query_params.get('category')
+    
+    # Base query for active ads
+    ads_query = Advertisement.objects.filter(is_active=True)
+    
+    if category_id:
+        try:
+            # Filter ads for specific category
+            category_id = int(category_id)
+            ads_query = ads_query.filter(category_id=category_id)
+            
+            # Verify category exists
+            try:
+                category = Category.objects.get(id=category_id)
+                category_name = category.name
+            except Category.DoesNotExist:
+                return Response({
+                    'results': [],
+                    'count': 0,
+                    'message': 'Category not found'
+                }, status=status.HTTP_404_NOT_FOUND)
+                
+        except (ValueError, TypeError):
+            return Response({
+                'error': 'Invalid category ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        # Main page ads - show ads with show_on_main=True and category=None
+        ads_query = ads_query.filter(show_on_main=True, category__isnull=True)
+        category_name = 'Main Page'
+    
+    # Get ads with limit and count before slicing
+    ads_count = ads_query.count()
+    ads = ads_query.order_by('order', '-created_at')[:settings.max_ads_to_show]
     
     ads_data = []
     for ad in ads:
@@ -441,12 +473,17 @@ def advertisements(request):
             'imageUrl': ad.image_display_url,
             'linkUrl': ad.link_url,
             'isActive': ad.is_active,
-            'order': ad.order
+            'order': ad.order,
+            'category_id': ad.category_id,
+            'category_name': ad.category.name if ad.category else None,
+            'display_location': ad.display_location
         })
     
     return Response({
         'results': ads_data,
-        'count': ads.count(),
+        'count': len(ads_data),
+        'category': category_name if 'category_name' in locals() else 'Main Page',
+        'category_id': category_id,
         'settings': {
             'max_ads': settings.max_ads_to_show,
             'rotation_interval': settings.ads_rotation_interval,
@@ -769,7 +806,7 @@ def manage_advertisements(request):
     """Manage advertisements for admin panel"""
     if request.method == 'GET':
         # Get all advertisements for admin management
-        ads = Advertisement.objects.all().order_by('order', '-created_at')
+        ads = Advertisement.objects.select_related('category').all().order_by('category', 'order', '-created_at')
         
         ads_data = []
         for ad in ads:
@@ -780,7 +817,11 @@ def manage_advertisements(request):
                 'imageUrl': ad.image_display_url,
                 'linkUrl': ad.link_url,
                 'isActive': ad.is_active,
+                'showOnMain': ad.show_on_main,
                 'order': ad.order,
+                'category_id': ad.category_id,
+                'category_name': ad.category.name if ad.category else None,
+                'display_location': ad.display_location,
                 'created_at': ad.created_at.isoformat(),
                 'updated_at': ad.updated_at.isoformat()
             })
@@ -806,13 +847,26 @@ def manage_advertisements(request):
                     'error': 'Image URL is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
+            # Handle category assignment
+            category = None
+            category_id = request.data.get('category_id')
+            if category_id:
+                try:
+                    category = Category.objects.get(id=category_id)
+                except Category.DoesNotExist:
+                    return Response({
+                        'error': 'Category not found'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            
             # Create the advertisement
             ad = Advertisement.objects.create(
                 title=title,
                 description=request.data.get('description', '').strip(),
                 image_url=image_url,
                 link_url=request.data.get('linkUrl', '').strip(),
+                category=category,
                 is_active=request.data.get('isActive', True),
+                show_on_main=request.data.get('showOnMain', True),
                 order=request.data.get('order', 0)
             )
             
@@ -823,7 +877,11 @@ def manage_advertisements(request):
                 'imageUrl': ad.image_display_url,
                 'linkUrl': ad.link_url,
                 'isActive': ad.is_active,
+                'showOnMain': ad.show_on_main,
                 'order': ad.order,
+                'category_id': ad.category_id,
+                'category_name': ad.category.name if ad.category else None,
+                'display_location': ad.display_location,
                 'created_at': ad.created_at.isoformat(),
                 'message': 'Advertisement created successfully'
             }, status=status.HTTP_201_CREATED)
@@ -852,7 +910,11 @@ def manage_advertisement_detail(request, ad_id):
             'imageUrl': ad.image_display_url,
             'linkUrl': ad.link_url,
             'isActive': ad.is_active,
+            'showOnMain': ad.show_on_main,
             'order': ad.order,
+            'category_id': ad.category_id,
+            'category_name': ad.category.name if ad.category else None,
+            'display_location': ad.display_location,
             'created_at': ad.created_at.isoformat(),
             'updated_at': ad.updated_at.isoformat()
         })
@@ -870,8 +932,21 @@ def manage_advertisement_detail(request, ad_id):
                 ad.link_url = request.data['linkUrl'].strip()
             if 'isActive' in request.data:
                 ad.is_active = request.data['isActive']
+            if 'showOnMain' in request.data:
+                ad.show_on_main = request.data['showOnMain']
             if 'order' in request.data:
                 ad.order = request.data['order']
+            if 'category_id' in request.data:
+                category_id = request.data['category_id']
+                if category_id:
+                    try:
+                        ad.category = Category.objects.get(id=category_id)
+                    except Category.DoesNotExist:
+                        return Response({
+                            'error': 'Category not found'
+                        }, status=status.HTTP_404_NOT_FOUND)
+                else:
+                    ad.category = None
             
             ad.save()
             

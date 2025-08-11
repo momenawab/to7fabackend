@@ -179,6 +179,19 @@ LOGIN_URL = '/dashboard/login/'
 CORS_ALLOW_ALL_ORIGINS = True  # For development only, change in production
 CORS_ALLOW_CREDENTIALS = True
 
+# Additional CORS settings for proper UTF-8 handling
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 # Unicode and encoding settings
 DEFAULT_CHARSET = 'utf-8'
 FILE_CHARSET = 'utf-8'
@@ -186,4 +199,19 @@ FILE_CHARSET = 'utf-8'
 # Ensure proper Unicode handling in responses
 REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
     'rest_framework.renderers.JSONRenderer',
+]
+
+# JSON encoder settings for proper Arabic text handling
+import json
+from django.core.serializers.json import DjangoJSONEncoder
+
+class UnicodeJSONEncoder(DjangoJSONEncoder):
+    """Custom JSON encoder that ensures proper Unicode handling for Arabic text"""
+    def __init__(self, **kwargs):
+        kwargs['ensure_ascii'] = False
+        super().__init__(**kwargs)
+
+# Configure JSON rendering to use Unicode
+REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
+    'products.renderers.UnicodeJSONRenderer',
 ]

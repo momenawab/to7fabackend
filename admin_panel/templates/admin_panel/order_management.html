@@ -53,9 +53,9 @@
                     {% for order in orders %}
                     <tr>
                         <td>#{{ order.id }}</td>
-                        <td>{{ order.customer.email }}</td>
+                        <td>{{ order.user.email }}</td>
                         <td>{{ order.created_at|date:"M d, Y" }}</td>
-                        <td>{{ order.orderitem_set.count }} items</td>
+                        <td>{{ order.items.count }} items</td>
                         <td>${{ order.total_amount }}</td>
                         <td>{{ order.payment_method }}</td>
                         <td>
@@ -319,8 +319,8 @@
                 $('#orderDetailPayment').text(data.payment_method || 'N/A');
                 
                 // Fill customer information
-                $('#orderDetailCustomerName').text(data.customer.first_name + ' ' + data.customer.last_name);
-                $('#orderDetailCustomerEmail').text(data.customer.email);
+                $('#orderDetailCustomerName').text(data.user.first_name + ' ' + data.user.last_name);
+                $('#orderDetailCustomerEmail').text(data.user.email);
                 $('#orderDetailShippingAddress').text(data.shipping_address || 'N/A');
                 
                 // Fill order items

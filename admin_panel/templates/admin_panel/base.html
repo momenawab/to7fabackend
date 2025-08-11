@@ -431,7 +431,7 @@
                                 {% if notifications %}
                                     {% for notification in notifications %}
                                     <li>
-                                        <a class="dropdown-item notification-item" href="{{ notification.link|default:'#' }}">
+                                        <a class="dropdown-item notification-item" href="{{ notification.link|default:'#' }}" data-notification-id="{{ notification.id }}">
                                             <div class="d-flex justify-content-between">
                                                 <span class="title">{{ notification.title }}</span>
                                                 <span class="time">{{ notification.created_at|timesince }} ago</span>
@@ -492,12 +492,30 @@
     
     <!-- Custom JS -->
     <script>
+        // Get CSRF token
+        function getCSRFToken() {
+            return $('[name=csrfmiddlewaretoken]').val();
+        }
+        
+        // Setup AJAX to include CSRF token
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", getCSRFToken());
+                }
+            }
+        });
+        
         // Mark notification as read
         $('.notification-item').click(function() {
             const notificationId = $(this).data('notification-id');
             if (notificationId) {
-                $.post(`/api/admin/notifications/${notificationId}/read/`, {}, function(data) {
+                $.post(`{% url 'admin_panel:mark_notification_read' 0 %}`.replace('0', notificationId), {
+                    csrfmiddlewaretoken: getCSRFToken()
+                }, function(data) {
                     console.log('Notification marked as read');
+                }).fail(function(xhr, status, error) {
+                    console.error('Failed to mark notification as read:', error);
                 });
             }
         });

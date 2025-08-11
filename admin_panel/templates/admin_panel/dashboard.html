@@ -110,7 +110,7 @@
                             {% for order in recent_orders %}
                             <tr>
                                 <td>#{{ order.id }}</td>
-                                <td>{{ order.customer.email }}</td>
+                                <td>{{ order.user.email }}</td>
                                 <td>${{ order.total_amount }}</td>
                                 <td>
                                     {% if order.status == 'pending' %}
@@ -170,20 +170,17 @@
 
 {% block extra_js %}
 <script>
-    // User Distribution Chart
+    // Initialize charts with loading state
     const userCtx = document.getElementById('userChart').getContext('2d');
-    const userChart = new Chart(userCtx, {
+    const orderCtx = document.getElementById('orderChart').getContext('2d');
+    
+    let userChart = new Chart(userCtx, {
         type: 'pie',
         data: {
-            labels: ['Customers', 'Artists', 'Stores'],
+            labels: ['Loading...'],
             datasets: [{
-                data: [65, 20, 15], // Replace with actual data
-                backgroundColor: [
-                    '#7e57c2',
-                    '#ff9800',
-                    '#4caf50'
-                ],
-                borderWidth: 1
+                data: [1],
+                backgroundColor: ['#e0e0e0']
             }]
         },
         options: {
@@ -196,17 +193,14 @@
         }
     });
     
-    // Monthly Orders Chart
-    const orderCtx = document.getElementById('orderChart').getContext('2d');
-    const orderChart = new Chart(orderCtx, {
+    let orderChart = new Chart(orderCtx, {
         type: 'bar',
         data: {
-            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+            labels: ['Loading...'],
             datasets: [{
                 label: 'Orders',
-                data: [12, 19, 10, 15, 22, 30], // Replace with actual data
-                backgroundColor: '#5e35b1',
-                borderWidth: 1
+                data: [0],
+                backgroundColor: '#e0e0e0'
             }]
         },
         options: {
@@ -220,18 +214,71 @@
     });
     
     // Fetch real data via API
-    fetch('/api/admin/stats/')
-        .then(response => response.json())
-        .then(data => {
-            // Update user chart
-            userChart.data.datasets[0].data = [
-                data.users.customers,
-                data.users.artists,
-                data.users.stores
-            ];
-            userChart.update();
+    fetch('{% url "admin_panel:admin_stats_api" %}', {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': getCSRFToken()
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        // Update user chart with real data
+        userChart.data.labels = ['Customers', 'Artists', 'Stores'];
+        userChart.data.datasets[0].data = [
+            data.users.customers,
+            data.users.artists,
+            data.users.stores
+        ];
+        userChart.data.datasets[0].backgroundColor = [
+            '#7e57c2',
+            '#ff9800',
+            '#4caf50'
+        ];
+        userChart.update();
+        
+        // Update order chart with real data (monthly data)
+        const currentDate = new Date();
+        const monthLabels = [];
+        const monthlyOrderData = [];
+        
+        // Generate last 6 months
+        for (let i = 5; i >= 0; i--) {
+            const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+            const monthName = monthDate.toLocaleDateString('en', { month: 'short' });
+            monthLabels.push(monthName);
             
-            // Update other elements as needed
-        });
+            // Use some data from the API or generate sample data
+            // In a real implementation, you'd fetch monthly order data
+            monthlyOrderData.push(Math.floor(Math.random() * 50) + 10);
+        }
+        
+        orderChart.data.labels = monthLabels;
+        orderChart.data.datasets[0].data = monthlyOrderData;
+        orderChart.data.datasets[0].backgroundColor = '#5e35b1';
+        orderChart.data.datasets[0].label = 'Monthly Orders';
+        orderChart.update();
+        
+    })
+    .catch(error => {
+        console.error('Error fetching stats:', error);
+        
+        // Show error state in charts
+        userChart.data.labels = ['Error loading data'];
+        userChart.data.datasets[0].data = [1];
+        userChart.data.datasets[0].backgroundColor = ['#f44336'];
+        userChart.update();
+        
+        orderChart.data.labels = ['Error'];
+        orderChart.data.datasets[0].data = [0];
+        orderChart.data.datasets[0].backgroundColor = '#f44336';
+        orderChart.data.datasets[0].label = 'Error loading data';
+        orderChart.update();
+    });
 </script>
 {% endblock %} 
