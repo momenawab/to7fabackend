@@ -50,6 +50,9 @@ urlpatterns = [
     
     # Ads
     path('ads/active/', api_views.get_active_ads, name='get_active_ads'),
+    path('ads/', api_views.list_advertisements, name='list_advertisements'),
+    path('ads/create/', api_views.create_advertisement, name='create_advertisement'),
+    path('ads/<int:ad_id>/', api_views.manage_advertisement_detail, name='manage_advertisement_detail'),
     
     # Product with Variants Management
     path('products/admin/create-with-variants/', api_views.create_product_with_variants, name='create_product_with_variants'),

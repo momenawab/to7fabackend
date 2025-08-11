@@ -73,20 +73,20 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = ('id', 'product', 'product_name', 'quantity', 'price')
 
 class OrderSerializer(serializers.ModelSerializer):
-    customer_email = serializers.EmailField(source='customer.email', read_only=True)
-    customer_name = serializers.SerializerMethodField()
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    items = OrderItemSerializer(source='orderitem_set', many=True, read_only=True)
+    items = OrderItemSerializer(source='items', many=True, read_only=True)
     
     class Meta:
         model = Order
-        fields = ('id', 'customer', 'customer_email', 'customer_name',
+        fields = ('id', 'user', 'user_email', 'user_name',
                   'status', 'status_display', 'shipping_address',
                   'shipping_cost', 'total_amount', 'payment_method',
                   'items', 'created_at', 'updated_at')
     
-    def get_customer_name(self, obj):
-        user = obj.customer
+    def get_user_name(self, obj):
+        user = obj.user
         return f"{user.first_name} {user.last_name}".strip() or user.email
 
 class AdminActivitySerializer(serializers.ModelSerializer):
