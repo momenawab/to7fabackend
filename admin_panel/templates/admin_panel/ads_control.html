@@ -57,6 +57,43 @@
     </div>
 </div>
 
+<!-- Category Filter -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <span>Filter Advertisements by Location</span>
+            </div>
+            <div class="card-body">
+                <div class="row align-items-end">
+                    <div class="col-md-4">
+                        <label for="categoryFilter" class="form-label">Display Location</label>
+                        <select class="form-select" id="categoryFilter" onchange="loadAdvertisements()">
+                            <option value="">All Locations</option>
+                            <option value="main">Main Page Only</option>
+                            <option value="categories">Category Pages</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="specificCategoryFilter" class="form-label">Specific Category</label>
+                        <select class="form-select" id="specificCategoryFilter" onchange="loadAdvertisements()" disabled>
+                            <option value="">Select Category...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label for="statusFilter" class="form-label">Status</label>
+                        <select class="form-select" id="statusFilter" onchange="loadAdvertisements()">
+                            <option value="">All Status</option>
+                            <option value="active">Active Only</option>
+                            <option value="inactive">Inactive Only</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Advertisement Management -->
 <div class="row mb-4">
     <div class="col-md-12">
@@ -80,6 +117,7 @@
                                 <th width="60">Order</th>
                                 <th>Title</th>
                                 <th width="100">Image</th>
+                                <th width="140">Display Location</th>
                                 <th width="120">Status</th>
                                 <th width="100">Created</th>
                                 <th width="150">Actions</th>
@@ -87,7 +125,7 @@
                         </thead>
                         <tbody id="advertisementsTable">
                             <tr>
-                                <td colspan="6" class="text-center">
+                                <td colspan="7" class="text-center">
                                     <div class="spinner-border text-purple" role="status">
                                         <span class="visually-hidden">Loading...</span>
                                     </div>
@@ -196,12 +234,41 @@
                     <div class="mb-3">
                         <label for="adImageUrl" class="form-label">Image URL *</label>
                         <input type="url" class="form-control" id="adImageUrl" required placeholder="https://example.com/image.jpg">
-                        <div class="form-text">Recommended size: 800x400 pixels</div>
+                        <div class="form-text">
+                            Recommended size: 800x400 pixels. Try these sample URLs:<br>
+                            <small class="text-muted">
+                                • <a href="#" onclick="$('#adImageUrl').val('https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=400&fit=crop'); return false;">Sample 1</a><br>
+                                • <a href="#" onclick="$('#adImageUrl').val('https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=800&h=400&fit=crop'); return false;">Sample 2</a><br>
+                                • <a href="#" onclick="$('#adImageUrl').val('https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop'); return false;">Sample 3</a>
+                            </small>
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="adLinkUrl" class="form-label">Link URL</label>
                         <input type="url" class="form-control" id="adLinkUrl" placeholder="https://example.com">
                         <div class="form-text">Where users go when they click the ad (optional)</div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="adCategory" class="form-label">Category</label>
+                                <select class="form-select" id="adCategory">
+                                    <option value="">Main Page (No Category)</option>
+                                </select>
+                                <div class="form-text">Select category for category-specific ads</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-check form-switch mt-4">
+                                    <input class="form-check-input" type="checkbox" id="adShowOnMain" checked>
+                                    <label class="form-check-label" for="adShowOnMain">
+                                        Show on Main Page
+                                    </label>
+                                </div>
+                                <div class="form-text">Also display this ad on the main page</div>
+                            </div>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -265,10 +332,33 @@
                     <div class="mb-3">
                         <label for="editAdImageUrl" class="form-label">Image URL *</label>
                         <input type="url" class="form-control" id="editAdImageUrl" required>
+                        <div class="form-text">Recommended size: 800x400 pixels</div>
                     </div>
                     <div class="mb-3">
                         <label for="editAdLinkUrl" class="form-label">Link URL</label>
                         <input type="url" class="form-control" id="editAdLinkUrl">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="editAdCategory" class="form-label">Category</label>
+                                <select class="form-select" id="editAdCategory">
+                                    <option value="">Main Page (No Category)</option>
+                                </select>
+                                <div class="form-text">Select category for category-specific ads</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-check form-switch mt-4">
+                                    <input class="form-check-input" type="checkbox" id="editAdShowOnMain">
+                                    <label class="form-check-label" for="editAdShowOnMain">
+                                        Show on Main Page
+                                    </label>
+                                </div>
+                                <div class="form-text">Also display this ad on the main page</div>
+                            </div>
+                        </div>
                     </div>
                     <div class="row">
                         <div class="col-md-6">
@@ -306,9 +396,22 @@
     // Load initial data
     $(document).ready(function() {
         loadAdsSettings();
+        loadCategories();
         loadAdvertisements();
         loadAdsStats();
         loadAdsPreview();
+        
+        // Category filter change handler
+        $('#categoryFilter').on('change', function() {
+            const value = $(this).val();
+            const specificFilter = $('#specificCategoryFilter');
+            
+            if (value === 'categories') {
+                specificFilter.prop('disabled', false);
+            } else {
+                specificFilter.prop('disabled', true).val('');
+            }
+        });
         
         // Prevent form submission
         $('#addAdForm').on('submit', function(e) {
@@ -354,11 +457,33 @@
         console.log('Ads settings to save:', settings);
     }
 
+    // Load categories for dropdowns
+    function loadCategories() {
+        fetch('/api/products/categories/')
+            .then(response => response.json())
+            .then(data => {
+                const categories = data.results || data;
+                let categoryOptions = '<option value="">Main Page (No Category)</option>';
+                let filterOptions = '<option value="">Select Category...</option>';
+                
+                categories.forEach(category => {
+                    categoryOptions += `<option value="${category.id}">${category.name}</option>`;
+                    filterOptions += `<option value="${category.id}">${category.name}</option>`;
+                });
+                
+                $('#adCategory, #editAdCategory').html(categoryOptions);
+                $('#specificCategoryFilter').html(filterOptions);
+            })
+            .catch(error => {
+                console.error('Error loading categories:', error);
+            });
+    }
+
     // Advertisement Management Functions
     function loadAdvertisements() {
         $('#advertisementsTable').html(`
             <tr>
-                <td colspan="6" class="text-center">
+                <td colspan="7" class="text-center">
                     <div class="spinner-border text-purple" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
@@ -367,15 +492,36 @@
             </tr>
         `);
 
-        fetch('/api/products/advertisements/')
+        // Build query parameters based on filters
+        let queryParams = [];
+        const categoryFilter = $('#categoryFilter').val();
+        const specificCategory = $('#specificCategoryFilter').val();
+        const statusFilter = $('#statusFilter').val();
+        
+        if (categoryFilter === 'main') {
+            queryParams.push('main_only=true');
+        } else if (categoryFilter === 'categories' && specificCategory) {
+            queryParams.push(`category=${specificCategory}`);
+        }
+        
+        if (statusFilter === 'active') {
+            queryParams.push('is_active=true');
+        } else if (statusFilter === 'inactive') {
+            queryParams.push('is_active=false');
+        }
+        
+        const queryString = queryParams.length > 0 ? '?' + queryParams.join('&') : '';
+        
+        fetch(`/api/admin/ads/${queryString}`)
             .then(response => response.json())
             .then(data => {
-                renderAdvertisementsTable(data.results);
-                updateAdsStats(data.results);
+                const ads = data.advertisements || data.results || data;
+                renderAdvertisementsTable(ads);
+                updateAdsStats(ads);
             })
             .catch(error => {
                 console.error('Error loading advertisements:', error);
-                $('#advertisementsTable').html('<tr><td colspan="6" class="text-center text-danger">Failed to load advertisements</td></tr>');
+                $('#advertisementsTable').html('<tr><td colspan="7" class="text-center text-danger">Failed to load advertisements</td></tr>');
             });
     }
 
@@ -383,7 +529,7 @@
         let html = '';
 
         if (ads.length === 0) {
-            html = '<tr><td colspan="6" class="text-center text-muted">No advertisements found. Click "Add Advertisement" to create one.</td></tr>';
+            html = '<tr><td colspan="7" class="text-center text-muted">No advertisements found. Click "Add Advertisement" to create one.</td></tr>';
         } else {
             ads.forEach(ad => {
                 const createdDate = new Date(ad.created_at || Date.now()).toLocaleDateString();
@@ -401,6 +547,9 @@
                                 `<img src="${ad.imageUrl}" alt="${ad.title}" style="width: 80px; height: 40px; object-fit: cover;" class="rounded border">` : 
                                 '<span class="text-muted">No image</span>'
                             }
+                        </td>
+                        <td>
+                            <small class="text-primary">${ad.display_location || 'Main Page'}</small>
                         </td>
                         <td>
                             <span class="badge ${ad.isActive ? 'bg-success' : 'bg-secondary'}">
@@ -446,11 +595,12 @@
         const adData = {
             title: $('#adTitle').val().trim(),
             description: $('#adDescription').val().trim(),
-            imageUrl: $('#adImageUrl').val().trim(),
-            linkUrl: $('#adLinkUrl').val().trim(),
+            image_url: $('#adImageUrl').val().trim(),
+            link_url: $('#adLinkUrl').val().trim(),
             order: parseInt($('#adOrder').val()),
-            isActive: $('#adIsActive').is(':checked'),
-            trackClicks: $('#adTrackClicks').is(':checked')
+            is_active: $('#adIsActive').is(':checked'),
+            category: $('#adCategory').val() || null,
+            show_on_main: $('#adShowOnMain').is(':checked')
         };
 
         if (!adData.title) {
@@ -458,13 +608,13 @@
             return;
         }
 
-        if (!adData.imageUrl) {
+        if (!adData.image_url) {
             showAlert('Please enter an image URL for the advertisement', 'error');
             return;
         }
 
         // Create advertisement via API
-        fetch('/api/products/admin/advertisements/', {
+        fetch('/api/admin/ads/create/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -491,19 +641,25 @@
     }
 
     function editAdvertisement(adId) {
-        // Note: Implement the backend endpoint for getting ad details
-        $('#editAdModal').modal('show');
-        $('#editAdId').val(adId);
-
-        // Mock data for demonstration
-        $('#editAdTitle').val('Sample Ad Title');
-        $('#editAdDescription').val('Sample description');
-        $('#editAdImageUrl').val('https://via.placeholder.com/800x400');
-        $('#editAdLinkUrl').val('https://example.com');
-        $('#editAdOrder').val(1);
-        $('#editAdIsActive').prop('checked', true);
-
-        console.log('Editing advertisement:', adId);
+        // Fetch ad details from backend
+        fetch(`/api/admin/ads/${adId}/`)
+            .then(response => response.json())
+            .then(data => {
+                $('#editAdModal').modal('show');
+                $('#editAdId').val(adId);
+                $('#editAdTitle').val(data.title || '');
+                $('#editAdDescription').val(data.description || '');
+                $('#editAdImageUrl').val(data.imageUrl || '');
+                $('#editAdLinkUrl').val(data.linkUrl || '');
+                $('#editAdOrder').val(data.order || 0);
+                $('#editAdIsActive').prop('checked', data.isActive);
+                $('#editAdCategory').val(data.category_id || '');
+                $('#editAdShowOnMain').prop('checked', data.show_on_main);
+            })
+            .catch(error => {
+                console.error('Error loading ad details:', error);
+                showAlert('Failed to load advertisement details', 'error');
+            });
     }
 
     function updateAdvertisement() {
@@ -511,11 +667,12 @@
         const adData = {
             title: $('#editAdTitle').val().trim(),
             description: $('#editAdDescription').val().trim(),
-            imageUrl: $('#editAdImageUrl').val().trim(),
-            linkUrl: $('#editAdLinkUrl').val().trim(),
+            image_url: $('#editAdImageUrl').val().trim(),
+            link_url: $('#editAdLinkUrl').val().trim(),
             order: parseInt($('#editAdOrder').val()),
-            isActive: $('#editAdIsActive').is(':checked'),
-            trackClicks: $('#editAdTrackClicks').is(':checked')
+            is_active: $('#editAdIsActive').is(':checked'),
+            category: $('#editAdCategory').val() || null,
+            show_on_main: $('#editAdShowOnMain').is(':checked')
         };
 
         if (!adData.title) {
@@ -523,32 +680,88 @@
             return;
         }
 
-        // Note: Implement the backend endpoint for updating ads
-        showAlert('Advertisement updated successfully', 'success');
-        $('#editAdModal').modal('hide');
-        loadAdvertisements();
-        loadAdsPreview();
+        if (!adData.image_url || adData.image_url.trim() === '') {
+            showAlert('Please enter an image URL for the advertisement', 'error');
+            return;
+        }
 
-        console.log('Advertisement to update:', adId, adData);
+        // Update advertisement via API
+        fetch(`/api/admin/ads/${adId}/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(adData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showAlert(data.error, 'error');
+            } else {
+                showAlert(data.message || 'Advertisement updated successfully', 'success');
+                $('#editAdModal').modal('hide');
+                loadAdvertisements();
+                loadAdsPreview();
+            }
+        })
+        .catch(error => {
+            console.error('Error updating advertisement:', error);
+            showAlert('Failed to update advertisement', 'error');
+        });
     }
 
     function toggleAdStatus(adId, newStatus) {
-        // Note: Implement the backend endpoint for toggling ad status
-        showAlert(`Advertisement ${newStatus ? 'activated' : 'deactivated'} successfully`, 'success');
-        loadAdvertisements();
-        loadAdsPreview();
-
-        console.log('Toggle ad status:', adId, newStatus);
+        // Toggle advertisement status via API
+        fetch(`/api/admin/ads/${adId}/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                is_active: newStatus
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showAlert(data.error, 'error');
+            } else {
+                showAlert(`Advertisement ${newStatus ? 'activated' : 'deactivated'} successfully`, 'success');
+                loadAdvertisements();
+                loadAdsPreview();
+            }
+        })
+        .catch(error => {
+            console.error('Error toggling ad status:', error);
+            showAlert('Failed to toggle advertisement status', 'error');
+        });
     }
 
     function deleteAdvertisement(adId) {
         if (confirm('Are you sure you want to delete this advertisement? This action cannot be undone.')) {
-            // Note: Implement the backend endpoint for deleting ads
-            showAlert('Advertisement deleted successfully', 'success');
-            loadAdvertisements();
-            loadAdsPreview();
-
-            console.log('Deleting advertisement:', adId);
+            // Delete advertisement via API
+            fetch(`/api/admin/ads/${adId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showAlert(data.error, 'error');
+                } else {
+                    showAlert(data.message || 'Advertisement deleted successfully', 'success');
+                    loadAdvertisements();
+                    loadAdsPreview();
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting advertisement:', error);
+                showAlert('Failed to delete advertisement', 'error');
+            });
         }
     }
 

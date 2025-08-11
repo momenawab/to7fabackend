@@ -5,6 +5,7 @@
 {% block page_title %}Featured Products & Offers Management{% endblock %}
 
 {% block content %}
+{% csrf_token %}
 <!-- Homepage Products Settings -->
 <div class="row mb-4">
     <div class="col-md-12">
@@ -798,14 +799,49 @@
             return;
         }
 
-        // Note: Implement the backend endpoint for creating offers
-        showAlert('Offer created successfully', 'success');
-        $('#addOfferModal').modal('hide');
-        $('#addOfferForm')[0].reset();
-        loadOffers();
-        loadPreviewData();
-
-        console.log('Offer to save:', offerData);
+        // Get CSRF token
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+        
+        $.ajax({
+            url: '/api/products/admin/offers/',
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({
+                product_id: offerData.productId,
+                discount_percentage: offerData.discountPercent,
+                start_date: offerData.startDate,
+                end_date: offerData.endDate,
+                description: offerData.description,
+                is_active: offerData.isActive
+            }),
+            success: function(response) {
+                showAlert('Offer created successfully', 'success');
+                $('#addOfferModal').modal('hide');
+                $('#addOfferForm')[0].reset();
+                
+                // If also feature is checked, feature the product
+                if (offerData.alsoFeature) {
+                    toggleFeatured(offerData.productId, true);
+                }
+                
+                loadOffers();
+                loadPreviewData();
+            },
+            error: function(xhr) {
+                console.error('Error creating offer:', xhr);
+                let errorMsg = 'Failed to create offer';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                } else if (xhr.status === 403) {
+                    errorMsg = 'Access denied. Admin permissions required.';
+                }
+                showAlert(errorMsg, 'error');
+            }
+        });
     }
 
     function editOffer(productId) {
@@ -917,10 +953,45 @@
     }
 
     function toggleFeatured(productId, newStatus) {
-        showAlert(`Product ${newStatus ? 'featured' : 'unfeatured'} successfully`, 'success');
-        loadFeaturedProducts();
-        loadPreviewData();
-        console.log('Toggle featured status:', productId, newStatus);
+        // Get CSRF token
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+        
+        $.ajaxSetup({
+            beforeSend: function(xhr, settings) {
+                if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+                    xhr.setRequestHeader("X-CSRFToken", csrfToken);
+                }
+            }
+        });
+        
+        $.ajax({
+            url: `/api/products/admin/toggle-featured/${productId}/`,
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            data: {
+                'priority': 0,
+                'reason': 'Admin panel toggle'
+            },
+            success: function(response) {
+                showAlert(response.message, 'success');
+                loadFeaturedProducts();
+                loadAllProducts(); // Refresh all products to show updated status
+                loadPreviewData();
+            },
+            error: function(xhr) {
+                console.error('Error toggling featured status:', xhr);
+                let errorMsg = 'Failed to toggle featured status';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                } else if (xhr.status === 403) {
+                    errorMsg = 'Access denied. Admin permissions required.';
+                }
+                showAlert(errorMsg, 'error');
+            }
+        });
     }
 
     function changePriority(productId) {
@@ -1027,10 +1098,7 @@
     }
 
     function quickFeature(productId) {
-        showAlert('Product featured status toggled', 'success');
-        loadAllProducts();
-        loadFeaturedProducts();
-        console.log('Quick feature toggle:', productId);
+        toggleFeatured(productId, true); // Use the same toggle function
     }
 
     function quickOffer(productId) {

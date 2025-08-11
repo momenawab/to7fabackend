@@ -150,23 +150,54 @@ class Advertisement(models.Model):
     """Model for managing ads slider in the app"""
     title = models.CharField(max_length=200, verbose_name=_('Title'))
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
-    image = models.ImageField(upload_to='advertisements/', verbose_name=_('Image'))
+    image = models.ImageField(upload_to='advertisements/', blank=True, null=True, verbose_name=_('Image'))
     image_url = models.URLField(blank=True, null=True, verbose_name=_('External Image URL'), 
                                help_text=_('Use this if image is hosted externally'))
     link_url = models.URLField(blank=True, null=True, verbose_name=_('Link URL'), 
                               help_text=_('URL to navigate when ad is clicked'))
+    
+    # Category relationship - null means it shows on main page
+    category = models.ForeignKey(
+        'Category', 
+        on_delete=models.CASCADE, 
+        blank=True, 
+        null=True,
+        verbose_name=_('Category'),
+        help_text=_('Leave empty to show on main page, or select a category for category-specific ads')
+    )
+    
+    # Display settings
     is_active = models.BooleanField(default=True, verbose_name=_('Is Active'))
     order = models.PositiveIntegerField(default=0, verbose_name=_('Display Order'))
+    show_on_main = models.BooleanField(default=True, verbose_name=_('Show on Main Page'), 
+                                     help_text=_('Show this ad on the main page slider'))
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         verbose_name = _('Advertisement')
         verbose_name_plural = _('Advertisements')
-        ordering = ['order', '-created_at']
+        ordering = ['category', 'order', '-created_at']
+        indexes = [
+            models.Index(fields=['is_active', 'show_on_main']),
+            models.Index(fields=['category', 'is_active']),
+            models.Index(fields=['order']),
+        ]
     
     def __str__(self):
-        return self.title
+        category_name = f" ({self.category.name})" if self.category else " (Main Page)"
+        return f"{self.title}{category_name}"
+    
+    def clean(self):
+        """Custom validation to ensure either image or image_url is provided"""
+        from django.core.exceptions import ValidationError
+        
+        if not self.image and not self.image_url:
+            raise ValidationError({
+                'image': _('Please provide either an image file or an external image URL.'),
+                'image_url': _('Please provide either an image file or an external image URL.')
+            })
     
     @property
     def image_display_url(self):
@@ -176,6 +207,16 @@ class Advertisement(models.Model):
         elif self.image:
             return self.image.url
         return None
+    
+    @property
+    def display_location(self):
+        """Return display location description"""
+        locations = []
+        if self.show_on_main:
+            locations.append("Main Page")
+        if self.category:
+            locations.append(f"Category: {self.category.name}")
+        return " & ".join(locations) if locations else "Inactive"
 
 
 class ContentSettings(models.Model):
