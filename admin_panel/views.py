@@ -27,6 +27,12 @@ def is_admin(user):
 
 # Authentication views
 def admin_login(request):
+    # Debug CSRF token
+    if request.method == 'POST':
+        print(f"CSRF Token in POST: {request.POST.get('csrfmiddlewaretoken', 'NOT FOUND')}")
+        print(f"CSRF Token in META: {request.META.get('HTTP_X_CSRFTOKEN', 'NOT FOUND')}")
+        print(f"CSRF Cookie: {request.COOKIES.get('csrftoken', 'NOT FOUND')}")
+    
     if request.user.is_authenticated and is_admin(request.user):
         return redirect('admin_panel:dashboard')
         
