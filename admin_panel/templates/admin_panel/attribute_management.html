@@ -1,0 +1,300 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Attribute Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Manage Product Attributes</h3>
+                </div>
+                <div class="card-body">
+                    <!-- Category Selection -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label for="categorySelect" class="form-label">Select Category</label>
+                            <select class="form-select" id="categorySelect" onchange="loadCategoryAttributes()">
+                                <option value="">Choose a category...</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Attributes Management -->
+                    <div id="attributesSection" style="display: none;">
+                        <h4>Available Attributes</h4>
+                        
+                        <!-- Frame Colors Section -->
+                        <div id="frameColorsSection" class="mb-4">
+                            <h5>Frame Colors</h5>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="enableFrameColors" onchange="toggleFrameColors()">
+                                <label class="form-check-label" for="enableFrameColors">
+                                    Enable Frame Colors for this category
+                                </label>
+                            </div>
+                            <div id="frameColorOptions" style="display: none;">
+                                <div class="row" id="frameColorsList"></div>
+                            </div>
+                        </div>
+
+                        <!-- Sizes Section -->
+                        <div id="sizesSection" class="mb-4">
+                            <h5>Sizes</h5>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="enableSizes" onchange="toggleSizes()">
+                                <label class="form-check-label" for="enableSizes">
+                                    Enable Sizes for this category
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="sizesRequired">
+                                <label class="form-check-label" for="sizesRequired">
+                                    Make size selection required
+                                </label>
+                            </div>
+                            <div id="sizeOptions" style="display: none;">
+                                <div class="row" id="sizesList"></div>
+                            </div>
+                        </div>
+
+                        <!-- Save Button -->
+                        <div class="row">
+                            <div class="col-12">
+                                <button type="button" class="btn btn-primary" onclick="saveAttributeSettings()">
+                                    Save Attribute Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    loadCategories();
+    loadAllAttributes();
+});
+
+let allFrameColors = [];
+let allSizes = [];
+let currentCategory = null;
+
+function loadCategories() {
+    $.ajax({
+        url: '/api/products/admin/categories/',
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            const select = $('#categorySelect');
+            select.empty().append('<option value="">Choose a category...</option>');
+            
+            response.forEach(category => {
+                select.append(`<option value="${category.id}">${category.name}</option>`);
+            });
+        },
+        error: function(xhr) {
+            showAlert('Failed to load categories: ' + getErrorMessage(xhr), 'danger');
+        }
+    });
+}
+
+function loadAllAttributes() {
+    // Load frame colors
+    $.ajax({
+        url: '/api/products/admin/attributes/frame_color/options/',
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            allFrameColors = response;
+            renderFrameColors();
+        }
+    });
+
+    // Load sizes
+    $.ajax({
+        url: '/api/products/admin/attributes/size/options/',
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            allSizes = response;
+            renderSizes();
+        }
+    });
+}
+
+function renderFrameColors() {
+    const container = $('#frameColorsList');
+    container.empty();
+    
+    allFrameColors.forEach(color => {
+        const colorBox = color.color_code ? 
+            `<span class="color-preview" style="background-color: ${color.color_code}; width: 20px; height: 20px; display: inline-block; border: 1px solid #ccc; margin-right: 8px; border-radius: 3px;"></span>` : '';
+        
+        container.append(`
+            <div class="col-md-3 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="frameColor_${color.id}" value="${color.id}">
+                    <label class="form-check-label" for="frameColor_${color.id}">
+                        ${colorBox}${color.display_name}
+                    </label>
+                </div>
+            </div>
+        `);
+    });
+}
+
+function renderSizes() {
+    const container = $('#sizesList');
+    container.empty();
+    
+    allSizes.forEach(size => {
+        container.append(`
+            <div class="col-md-3 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="size_${size.id}" value="${size.id}">
+                    <label class="form-check-label" for="size_${size.id}">
+                        ${size.display_name}
+                    </label>
+                </div>
+            </div>
+        `);
+    });
+}
+
+function loadCategoryAttributes() {
+    const categoryId = $('#categorySelect').val();
+    if (!categoryId) {
+        $('#attributesSection').hide();
+        return;
+    }
+
+    currentCategory = categoryId;
+    $('#attributesSection').show();
+
+    // Reset all checkboxes
+    $('input[type="checkbox"]').prop('checked', false);
+    $('#frameColorOptions').hide();
+    $('#sizeOptions').hide();
+
+    // Load category's current attribute settings
+    $.ajax({
+        url: `/api/products/admin/categories/${categoryId}/attributes/`,
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            response.forEach(categoryAttr => {
+                const attribute = categoryAttr.attribute;
+                
+                if (attribute.attribute_type === 'frame_color') {
+                    $('#enableFrameColors').prop('checked', true);
+                    $('#frameColorOptions').show();
+                    
+                    // Check which colors are enabled
+                    attribute.options.forEach(option => {
+                        if (option.is_active) {
+                            $(`#frameColor_${option.id}`).prop('checked', true);
+                        }
+                    });
+                }
+                
+                if (attribute.attribute_type === 'size') {
+                    $('#enableSizes').prop('checked', true);
+                    $('#sizesRequired').prop('checked', categoryAttr.is_required);
+                    $('#sizeOptions').show();
+                    
+                    // Check which sizes are enabled
+                    attribute.options.forEach(option => {
+                        if (option.is_active) {
+                            $(`#size_${option.id}`).prop('checked', true);
+                        }
+                    });
+                }
+            });
+        },
+        error: function(xhr) {
+            showAlert('Failed to load category attributes: ' + getErrorMessage(xhr), 'danger');
+        }
+    });
+}
+
+function toggleFrameColors() {
+    const enabled = $('#enableFrameColors').is(':checked');
+    $('#frameColorOptions').toggle(enabled);
+}
+
+function toggleSizes() {
+    const enabled = $('#enableSizes').is(':checked');
+    $('#sizeOptions').toggle(enabled);
+}
+
+function saveAttributeSettings() {
+    if (!currentCategory) {
+        showAlert('Please select a category first', 'warning');
+        return;
+    }
+
+    const settings = {
+        category_id: currentCategory,
+        frame_colors: {
+            enabled: $('#enableFrameColors').is(':checked'),
+            options: []
+        },
+        sizes: {
+            enabled: $('#enableSizes').is(':checked'),
+            required: $('#sizesRequired').is(':checked'),
+            options: []
+        }
+    };
+
+    // Collect selected frame colors
+    if (settings.frame_colors.enabled) {
+        $('input[id^="frameColor_"]:checked').each(function() {
+            settings.frame_colors.options.push(parseInt($(this).val()));
+        });
+    }
+
+    // Collect selected sizes
+    if (settings.sizes.enabled) {
+        $('input[id^="size_"]:checked').each(function() {
+            settings.sizes.options.push(parseInt($(this).val()));
+        });
+    }
+
+    $.ajax({
+        url: `/api/products/admin/categories/${currentCategory}/attributes/update/`,
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val(),
+            'Content-Type': 'application/json'
+        },
+        data: JSON.stringify(settings),
+        success: function(response) {
+            showAlert(response.message || 'Attribute settings saved successfully', 'success');
+        },
+        error: function(xhr) {
+            showAlert('Failed to save settings: ' + getErrorMessage(xhr), 'danger');
+        }
+    });
+}
+</script>
+
+<style>
+.color-preview {
+    border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+</style>
+{% endblock %}

@@ -1,0 +1,709 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Product Management - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Product Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .filters-section {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem 2rem;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow);
+    }
+
+    .filters-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .search-box {
+        position: relative;
+        flex: 1;
+        min-width: 300px;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 0.875rem 1rem 0.875rem 3rem;
+        border: 2px solid var(--border-light);
+        border-radius: var(--radius);
+        font-size: 0.875rem;
+        transition: var(--transition);
+        background: var(--white);
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-secondary);
+        font-size: 1rem;
+    }
+
+    .filter-dropdown {
+        position: relative;
+    }
+
+    .filter-btn {
+        padding: 0.875rem 1.25rem;
+        background: var(--white);
+        border: 2px solid var(--border-light);
+        border-radius: var(--radius);
+        color: var(--text-secondary);
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 150px;
+        justify-content: space-between;
+    }
+
+    .filter-btn:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+    }
+
+    .filter-btn.active {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: var(--white);
+    }
+
+    .products-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .product-card {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        transition: var(--transition);
+        position: relative;
+    }
+
+    .product-card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .product-image {
+        width: 100%;
+        height: 200px;
+        background: var(--gray-100);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .product-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: var(--transition);
+    }
+
+    .product-card:hover .product-image img {
+        transform: scale(1.05);
+    }
+
+    .product-status {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        padding: 0.375rem 0.75rem;
+        border-radius: var(--radius);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .status-active {
+        background: var(--success);
+        color: var(--white);
+    }
+
+    .status-inactive {
+        background: var(--danger);
+        color: var(--white);
+    }
+
+    .status-pending {
+        background: var(--warning);
+        color: var(--white);
+    }
+
+    .product-content {
+        padding: 1.5rem;
+    }
+
+    .product-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .product-category {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .product-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .meta-item {
+        text-align: center;
+        padding: 0.75rem;
+        background: var(--gray-50);
+        border-radius: var(--radius-sm);
+    }
+
+    .meta-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 0.25rem;
+    }
+
+    .meta-label {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .product-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .action-btn {
+        flex: 1;
+        padding: 0.75rem;
+        border: none;
+        border-radius: var(--radius);
+        font-weight: 500;
+        font-size: 0.875rem;
+        cursor: pointer;
+        transition: var(--transition);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        text-decoration: none;
+    }
+
+    .btn-edit {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        color: var(--white);
+    }
+
+    .btn-edit:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow);
+        color: var(--white);
+    }
+
+    .btn-delete {
+        background: var(--gray-100);
+        color: var(--text-secondary);
+        border: 1px solid var(--border-light);
+    }
+
+    .btn-delete:hover {
+        background: var(--danger);
+        color: var(--white);
+        border-color: var(--danger);
+    }
+
+    .stats-overview {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        box-shadow: var(--shadow);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+    }
+
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        border-radius: var(--radius);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        color: var(--white);
+        font-size: 1.25rem;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 800;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-secondary);
+    }
+
+    .empty-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        color: var(--gray-300);
+    }
+
+    .empty-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+    }
+
+    .empty-description {
+        font-size: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .pagination-wrapper {
+        display: flex;
+        justify-content: center;
+        margin-top: 2rem;
+    }
+
+    .modern-pagination {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .page-btn {
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--border-light);
+        background: var(--white);
+        color: var(--text-secondary);
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: var(--transition);
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .page-btn:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+        background: rgba(99, 102, 241, 0.05);
+    }
+
+    .page-btn.active {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
+    }
+
+    .page-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    @media (max-width: 768px) {
+        .filters-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .search-box {
+            min-width: auto;
+        }
+
+        .products-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .product-meta {
+            grid-template-columns: 1fr;
+        }
+
+        .stats-overview {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Statistics Overview -->
+<div class="stats-overview">
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-box"></i>
+        </div>
+        <div class="stat-value">{{ total_products|default:0 }}</div>
+        <div class="stat-label">Total Products</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stat-value">{{ active_products|default:0 }}</div>
+        <div class="stat-label">Active Products</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-star"></i>
+        </div>
+        <div class="stat-value">{{ featured_products|default:0 }}</div>
+        <div class="stat-label">Featured Products</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="stat-value">${{ total_revenue|default:0 }}</div>
+        <div class="stat-label">Total Revenue</div>
+    </div>
+</div>
+
+<!-- Filters Section -->
+<div class="filters-section">
+    <div class="filters-row">
+        <!-- Search Box -->
+        <div class="search-box">
+            <form method="GET" action="">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" 
+                       name="q" 
+                       class="search-input" 
+                       placeholder="Search products by name, category, or seller..." 
+                       value="{{ search_query }}"
+                       autocomplete="off">
+                {% if category_id != 'all' %}<input type="hidden" name="category" value="{{ category_id }}">{% endif %}
+                {% if status != 'all' %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+            </form>
+        </div>
+        
+        <!-- Category Filter -->
+        <div class="filter-dropdown">
+            <div class="dropdown">
+                <button class="filter-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span>Category: {{ category_name|default:"All" }}</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item {% if category_id == 'all' %}active{% endif %}" 
+                           href="?category=all{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">
+                        <i class="fas fa-list me-2"></i>All Categories
+                    </a></li>
+                    {% for category in categories %}
+                    <li><a class="dropdown-item {% if category_id == category.id|stringformat:'i' %}active{% endif %}" 
+                           href="?category={{ category.id }}{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">
+                        <i class="fas fa-tag me-2"></i>{{ category.name }}
+                    </a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Status Filter -->
+        <div class="filter-dropdown">
+            <div class="dropdown">
+                <button class="filter-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span>Status: {{ status|title|default:"All" }}</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item {% if status == 'all' %}active{% endif %}" 
+                           href="?status=all{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">
+                        <i class="fas fa-list me-2"></i>All Status
+                    </a></li>
+                    <li><a class="dropdown-item {% if status == 'active' %}active{% endif %}" 
+                           href="?status=active{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">
+                        <i class="fas fa-check-circle me-2"></i>Active
+                    </a></li>
+                    <li><a class="dropdown-item {% if status == 'inactive' %}active{% endif %}" 
+                           href="?status=inactive{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">
+                        <i class="fas fa-times-circle me-2"></i>Inactive
+                    </a></li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Add Product Button -->
+        <div class="dropdown">
+            <button class="action-btn action-btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-plus"></i>
+                Add Product
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{% url 'admin_panel:add_product_with_variants' %}">
+                    <i class="fas fa-layer-group me-2"></i>Add Product with Variants
+                </a></li>
+                <li><a class="dropdown-item" href="/admin/products/product/add/">
+                    <i class="fas fa-box me-2"></i>Add Simple Product
+                </a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Products Grid -->
+{% if products %}
+<div class="products-grid">
+    {% for product in products %}
+    <div class="product-card">
+        <div class="product-image">
+            {% if product.image %}
+            <img src="{{ product.image.url }}" alt="{{ product.name }}">
+            {% else %}
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: var(--gray-100); color: var(--text-secondary);">
+                <i class="fas fa-image fa-2x"></i>
+            </div>
+            {% endif %}
+            
+            <div class="product-status status-{{ product.is_active|yesno:'active,inactive' }}">
+                {{ product.is_active|yesno:'Active,Inactive' }}
+            </div>
+        </div>
+        
+        <div class="product-content">
+            <h3 class="product-title">{{ product.name }}</h3>
+            
+            <div class="product-category">
+                <i class="fas fa-tag"></i>
+                {{ product.category.name }}
+            </div>
+            
+            <div class="product-meta">
+                <div class="meta-item">
+                    <div class="meta-value">${{ product.price|floatformat:2 }}</div>
+                    <div class="meta-label">Price</div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-value">{{ product.stock|default:0 }}</div>
+                    <div class="meta-label">Stock</div>
+                </div>
+            </div>
+            
+            <div class="product-actions">
+                <a href="{% url 'admin_panel:edit_product_with_variants' product.id %}" class="action-btn btn-edit">
+                    <i class="fas fa-edit"></i>
+                    Edit
+                </a>
+                <button class="action-btn btn-delete" onclick="confirmDelete('{{ product.name }}', '{{ product.id }}')">
+                    <i class="fas fa-trash"></i>
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="pagination-wrapper">
+    <div class="modern-pagination">
+        {% if page_obj.has_previous %}
+        <a href="?page=1{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" class="page-btn">
+            <i class="fas fa-angle-double-left"></i>
+        </a>
+        <a href="?page={{ page_obj.previous_page_number }}{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" class="page-btn">
+            <i class="fas fa-angle-left"></i>
+        </a>
+        {% endif %}
+        
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+            <span class="page-btn active">{{ num }}</span>
+            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+            <a href="?page={{ num }}{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" class="page-btn">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+        
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" class="page-btn">
+            <i class="fas fa-angle-right"></i>
+        </a>
+        <a href="?page={{ page_obj.paginator.num_pages }}{% if category_id != 'all' %}&category={{ category_id }}{% endif %}{% if status != 'all' %}&status={{ status }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}" class="page-btn">
+            <i class="fas fa-angle-double-right"></i>
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<!-- Empty State -->
+<div class="modern-card">
+    <div class="modern-card-body">
+        <div class="empty-state">
+            <div class="empty-icon">
+                <i class="fas fa-box-open"></i>
+            </div>
+            <h3 class="empty-title">No Products Found</h3>
+            <p class="empty-description">
+                {% if search_query %}
+                No products match your search criteria. Try adjusting your filters or search terms.
+                {% else %}
+                You haven't added any products yet. Start by creating your first product.
+                {% endif %}
+            </p>
+            <a href="{% url 'admin_panel:add_product_with_variants' %}" class="action-btn action-btn-primary">
+                <i class="fas fa-plus"></i>
+                Add Your First Product
+            </a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-submit search form on input
+    const searchInput = document.querySelector('.search-input');
+    let searchTimeout;
+    
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            this.form.submit();
+        }, 500);
+    });
+    
+    // Confirm delete function
+    function confirmDelete(productName, productId) {
+        const confirmation = confirm(`Are you sure you want to delete "${productName}"? This action cannot be undone.`);
+        if (confirmation) {
+            // Create a form to submit the delete request
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/admin-panel/products/${productId}/delete/`;
+            
+            // Add CSRF token
+            const csrfToken = document.createElement('input');
+            csrfToken.type = 'hidden';
+            csrfToken.name = 'csrfmiddlewaretoken';
+            csrfToken.value = getCSRFToken();
+            form.appendChild(csrfToken);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+    
+    // Add loading states to action buttons
+    document.querySelectorAll('.action-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            if (!this.classList.contains('btn-delete')) {
+                const icon = this.querySelector('i');
+                const text = this.querySelector('span') || this;
+                
+                icon.className = 'fas fa-spinner fa-spin';
+                this.style.pointerEvents = 'none';
+                
+                setTimeout(() => {
+                    this.style.pointerEvents = 'auto';
+                }, 2000);
+            }
+        });
+    });
+    
+    // Smooth animations for cards
+    const observerOptions = {
+        threshold: 0.1,
+        rootMargin: '0px 0px -50px 0px'
+    };
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry, index) => {
+            if (entry.isIntersecting) {
+                setTimeout(() => {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }, index * 100);
+                observer.unobserve(entry.target);
+            }
+        });
+    }, observerOptions);
+    
+    // Observe product cards for animation
+    document.querySelectorAll('.product-card').forEach((card, index) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(30px)';
+        card.style.transition = 'all 0.6s ease-out';
+        observer.observe(card);
+    });
+    
+    // Real-time search suggestions (if you want to implement this later)
+    function implementSearchSuggestions() {
+        // Placeholder for search suggestions functionality
+        console.log('Search suggestions can be implemented here');
+    }
+</script>
+{% endblock %}

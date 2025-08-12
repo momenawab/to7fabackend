@@ -1,0 +1,597 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Edit Product with Variants{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Edit Product: {{ product.name }}</h3>
+                    <div class="ms-auto">
+                        <a href="{% url 'admin_panel:product_management' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Products
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form id="productForm" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <!-- Basic Product Information -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h4>Basic Information</h4>
+                                <div class="form-group">
+                                    <label for="name">Product Name *</label>
+                                    <input type="text" class="form-control" id="name" name="name" value="{{ product.name }}" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="description">Description *</label>
+                                    <textarea class="form-control" id="description" name="description" rows="4" required>{{ product.description }}</textarea>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="category">Category *</label>
+                                    <select class="form-control" id="category" name="category" required onchange="loadCategoryAttributes()">
+                                        <option value="">Select Category</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="base_price">Base Price (ج.م) *</label>
+                                    <input type="number" step="0.01" class="form-control" id="base_price" name="base_price" value="{{ product.base_price }}" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="is_featured" name="is_featured" {% if product.is_featured %}checked{% endif %}>
+                                        <label class="form-check-label" for="is_featured">Featured Product</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="is_active" name="is_active" {% if product.is_active %}checked{% endif %}>
+                                        <label class="form-check-label" for="is_active">Product Active</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <h4>Product Images</h4>
+                                <div class="form-group">
+                                    <label for="images">Product Images</label>
+                                    <input type="file" class="form-control-file" id="images" name="images" multiple accept="image/*">
+                                    <small class="form-text text-muted">Select new images to replace existing ones. Leave empty to keep current images.</small>
+                                </div>
+                                
+                                <!-- Current Images -->
+                                {% if product.images.all %}
+                                <div class="mb-3">
+                                    <h6>Current Images:</h6>
+                                    <div class="row" id="current-images">
+                                        {% for image in product.images.all %}
+                                        <div class="col-md-3 mb-2">
+                                            <div class="card">
+                                                <img src="{{ image.image.url }}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                                                <div class="card-body p-2">
+                                                    <small class="text-muted">{% if image.is_primary %}Primary{% else %}Secondary{% endif %}</small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                                
+                                <div id="image-preview" class="row mt-3"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Product Attributes -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <h4>Product Attributes</h4>
+                                <div id="attributes-section" style="display: none;">
+                                    <div class="alert alert-info">
+                                        Select the colors and sizes available for this product. Variants will be updated accordingly.
+                                    </div>
+                                    
+                                    <!-- Frame Colors -->
+                                    <div id="frame-colors-section" class="mb-4" style="display: none;">
+                                        <h5>Frame Colors (لون الاطار)</h5>
+                                        <div id="frame-colors-list" class="row"></div>
+                                    </div>
+                                    
+                                    <!-- Sizes -->
+                                    <div id="sizes-section" class="mb-4" style="display: none;">
+                                        <h5>Sizes (الحجم)</h5>
+                                        <div id="sizes-list" class="row"></div>
+                                    </div>
+                                    
+                                    <!-- Other Attributes -->
+                                    <div id="other-attributes-section" class="mb-4"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Current Variants -->
+                        {% if product.variants.all %}
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <h4>Current Variants</h4>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th>Variant</th>
+                                                <th>Stock Count</th>
+                                                <th>Price Adjustment</th>
+                                                <th>Final Price</th>
+                                                <th>Active</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for variant in product.variants.all %}
+                                            <tr>
+                                                <td>
+                                                    {% for attr in variant.variant_attributes.all %}
+                                                        {{ attr.attribute.name }}: {{ attr.option.display_name }}{% if not forloop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                </td>
+                                                <td>{{ variant.stock_count }}</td>
+                                                <td>{{ variant.price_adjustment }} ج.م</td>
+                                                <td>{{ variant.final_price }} ج.م</td>
+                                                <td>
+                                                    {% if variant.is_active %}
+                                                        <span class="badge bg-success">Active</span>
+                                                    {% else %}
+                                                        <span class="badge bg-secondary">Inactive</span>
+                                                    {% endif %}
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- New Variants Preview -->
+                        <div class="row mt-4" id="variants-section" style="display: none;">
+                            <div class="col-12">
+                                <h4>New Generated Variants</h4>
+                                <div class="alert alert-warning">
+                                    The following variants will be created/updated. You can set stock and price adjustments for each.
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered" id="variants-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Variant</th>
+                                                <th>Stock Count</th>
+                                                <th>Price Adjustment (ج.م)</th>
+                                                <th>Final Price</th>
+                                                <th>Active</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="variants-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Submit Buttons -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <button type="button" class="btn btn-secondary" onclick="previewVariants()">
+                                    Preview New Variants
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    Update Product
+                                </button>
+                                <a href="{% url 'admin_panel:product_management' %}" class="btn btn-light">
+                                    Cancel
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Store product data for editing
+const productData = {
+    id: {{ product.id }},
+    name: "{{ product.name|escapejs }}",
+    categoryId: {{ product.category.id|default:"null" }},
+    categoryName: "{{ product.category.name|escapejs }}",
+    basePrice: {{ product.base_price }},
+    isFeatured: {{ product.is_featured|yesno:"true,false" }},
+    isActive: {{ product.is_active|yesno:"true,false" }}
+};
+
+$(document).ready(function() {
+    loadCategories();
+    setupImagePreview();
+    setupFormSubmission();
+});
+
+let allAttributes = {};
+let selectedAttributes = {};
+
+function loadCategories() {
+    $.ajax({
+        url: '/api/admin/products/admin/categories/',
+        method: 'GET',
+        success: function(response) {
+            const select = $('#category');
+            select.empty().append('<option value="">Select Category</option>');
+            
+            response.forEach(category => {
+                const selected = category.id === productData.categoryId ? 'selected' : '';
+                select.append(`<option value="${category.id}" ${selected}>${category.name}</option>`);
+            });
+            
+            // Show current category prominently
+            if (productData.categoryId && productData.categoryName) {
+                select.trigger('change'); // Trigger change to show current selection
+            }
+            
+            // Load attributes for current category
+            if (productData.categoryId) {
+                setTimeout(() => loadCategoryAttributes(), 100);
+            }
+        },
+        error: function(xhr) {
+            showAlert('Failed to load categories: ' + getErrorMessage(xhr), 'danger');
+        }
+    });
+}
+
+function loadCategoryAttributes() {
+    const categoryId = $('#category').val();
+    if (!categoryId) {
+        $('#attributes-section').hide();
+        return;
+    }
+
+    $.ajax({
+        url: `/api/admin/products/admin/categories/${categoryId}/attributes/`,
+        method: 'GET',
+        success: function(response) {
+            allAttributes = {};
+            selectedAttributes = {};
+            
+            // Reset sections
+            $('#frame-colors-section').hide();
+            $('#sizes-section').hide();
+            $('#other-attributes-section').empty();
+            
+            response.forEach(categoryAttr => {
+                const attribute = categoryAttr.attribute;
+                allAttributes[attribute.attribute_type] = attribute;
+                selectedAttributes[attribute.attribute_type] = [];
+                
+                if (attribute.attribute_type === 'frame_color') {
+                    renderFrameColors(attribute);
+                } else if (attribute.attribute_type === 'size') {
+                    renderSizes(attribute);
+                } else {
+                    renderOtherAttribute(attribute, categoryAttr.is_required);
+                }
+            });
+            
+            $('#attributes-section').show();
+        },
+        error: function(xhr) {
+            showAlert('Failed to load category attributes: ' + getErrorMessage(xhr), 'danger');
+        }
+    });
+}
+
+function renderFrameColors(attribute) {
+    const container = $('#frame-colors-list');
+    container.empty();
+    
+    attribute.options.forEach(option => {
+        if (!option.is_active) return;
+        
+        const colorBox = option.color_code ? 
+            `<span class="color-preview me-2" style="background-color: ${option.color_code}; width: 20px; height: 20px; display: inline-block; border: 1px solid #ccc; border-radius: 3px;"></span>` : '';
+        
+        container.append(`
+            <div class="col-md-3 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="color_${option.id}" 
+                           value="${option.id}" onchange="updateSelectedAttribute('frame_color', ${option.id}, this.checked)">
+                    <label class="form-check-label" for="color_${option.id}">
+                        ${colorBox}${option.display_name}
+                    </label>
+                </div>
+            </div>
+        `);
+    });
+    
+    $('#frame-colors-section').show();
+}
+
+function renderSizes(attribute) {
+    const container = $('#sizes-list');
+    container.empty();
+    
+    attribute.options.forEach(option => {
+        if (!option.is_active) return;
+        
+        container.append(`
+            <div class="col-md-3 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="size_${option.id}" 
+                           value="${option.id}" onchange="updateSelectedAttribute('size', ${option.id}, this.checked)">
+                    <label class="form-check-label" for="size_${option.id}">
+                        ${option.display_name}
+                    </label>
+                </div>
+            </div>
+        `);
+    });
+    
+    $('#sizes-section').show();
+}
+
+function renderOtherAttribute(attribute, isRequired) {
+    const container = $('#other-attributes-section');
+    
+    const requiredText = isRequired ? ' *' : '';
+    let optionsHtml = '';
+    
+    attribute.options.forEach(option => {
+        if (!option.is_active) return;
+        
+        optionsHtml += `
+            <div class="col-md-3 mb-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="${attribute.attribute_type}_${option.id}" 
+                           value="${option.id}" onchange="updateSelectedAttribute('${attribute.attribute_type}', ${option.id}, this.checked)">
+                    <label class="form-check-label" for="${attribute.attribute_type}_${option.id}">
+                        ${option.display_name}
+                    </label>
+                </div>
+            </div>
+        `;
+    });
+    
+    container.append(`
+        <div class="mb-4">
+            <h5>${attribute.name}${requiredText}</h5>
+            <div class="row">${optionsHtml}</div>
+        </div>
+    `);
+}
+
+function updateSelectedAttribute(attributeType, optionId, isSelected) {
+    if (!selectedAttributes[attributeType]) {
+        selectedAttributes[attributeType] = [];
+    }
+    
+    if (isSelected) {
+        if (!selectedAttributes[attributeType].includes(optionId)) {
+            selectedAttributes[attributeType].push(optionId);
+        }
+    } else {
+        selectedAttributes[attributeType] = selectedAttributes[attributeType].filter(id => id !== optionId);
+    }
+}
+
+function previewVariants() {
+    const variants = generateVariantCombinations();
+    if (variants.length === 0) {
+        showAlert('Please select at least one option from each attribute to generate variants.', 'warning');
+        return;
+    }
+    
+    renderVariantsTable(variants);
+    $('#variants-section').show();
+}
+
+function generateVariantCombinations() {
+    const attributeTypes = Object.keys(selectedAttributes);
+    const validAttributes = attributeTypes.filter(type => selectedAttributes[type].length > 0);
+    
+    if (validAttributes.length === 0) return [];
+    
+    // Generate all combinations
+    const combinations = cartesianProduct(validAttributes.map(type => 
+        selectedAttributes[type].map(optionId => ({
+            attributeType: type,
+            optionId: optionId,
+            option: findOptionById(type, optionId)
+        }))
+    ));
+    
+    return combinations;
+}
+
+function cartesianProduct(arrays) {
+    return arrays.reduce((acc, curr) => 
+        acc.flatMap(a => curr.map(c => [...a, c])), [[]]
+    );
+}
+
+function findOptionById(attributeType, optionId) {
+    const attribute = allAttributes[attributeType];
+    return attribute ? attribute.options.find(opt => opt.id === optionId) : null;
+}
+
+function renderVariantsTable(variants) {
+    const tbody = $('#variants-tbody');
+    tbody.empty();
+    
+    const basePrice = parseFloat($('#base_price').val()) || 0;
+    
+    variants.forEach((variant, index) => {
+        const variantName = variant.map(attr => `${attr.option.display_name}`).join(' - ');
+        
+        tbody.append(`
+            <tr>
+                <td>${variantName}</td>
+                <td>
+                    <input type="number" class="form-control variant-stock" 
+                           data-variant="${index}" min="0" value="0">
+                </td>
+                <td>
+                    <input type="number" class="form-control variant-price-adj" step="0.01" 
+                           data-variant="${index}" value="0" onchange="updateFinalPrice(${index})">
+                </td>
+                <td>
+                    <span class="final-price" data-variant="${index}">${basePrice.toFixed(2)} ج.م</span>
+                </td>
+                <td>
+                    <input type="checkbox" class="form-check-input variant-active" 
+                           data-variant="${index}" checked>
+                </td>
+            </tr>
+        `);
+    });
+}
+
+function updateFinalPrice(variantIndex) {
+    const basePrice = parseFloat($('#base_price').val()) || 0;
+    const adjustment = parseFloat($(`.variant-price-adj[data-variant="${variantIndex}"]`).val()) || 0;
+    const finalPrice = basePrice + adjustment;
+    
+    $(`.final-price[data-variant="${variantIndex}"]`).text(`${finalPrice.toFixed(2)} ج.م`);
+}
+
+function setupImagePreview() {
+    $('#images').on('change', function() {
+        const files = this.files;
+        const preview = $('#image-preview');
+        preview.empty();
+        
+        // Hide current images if new ones are selected
+        if (files.length > 0) {
+            $('#current-images').hide();
+        }
+        
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.append(`
+                        <div class="col-md-3 mb-2">
+                            <div class="card">
+                                <img src="${e.target.result}" class="card-img-top" style="height: 150px; object-fit: cover;">
+                                <div class="card-body p-2">
+                                    <small class="text-muted">${i === 0 ? 'Primary' : 'Secondary'}</small>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+    });
+}
+
+function setupFormSubmission() {
+    $('#productForm').on('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        // Add selected attributes
+        Object.keys(selectedAttributes).forEach(attributeType => {
+            selectedAttributes[attributeType].forEach(optionId => {
+                formData.append(`selected_${attributeType}_options`, optionId);
+            });
+        });
+        
+        // Add variant data
+        const variants = [];
+        $('#variants-tbody tr').each(function(index) {
+            const $row = $(this);
+            const stockCount = $row.find('.variant-stock').val();
+            const priceAdjustment = $row.find('.variant-price-adj').val();
+            const isActive = $row.find('.variant-active').is(':checked');
+            
+            variants.push({
+                stock_count: parseInt(stockCount) || 0,
+                price_adjustment: parseFloat(priceAdjustment) || 0,
+                is_active: isActive
+            });
+        });
+        
+        formData.append('variants_data', JSON.stringify(variants));
+        
+        $.ajax({
+            url: `/api/admin/products/admin/${productData.id}/update-with-variants/`,
+            method: 'PUT',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                showAlert('Product updated successfully!', 'success');
+                setTimeout(() => {
+                    window.location.href = '/dashboard/products/';
+                }, 2000);
+            },
+            error: function(xhr) {
+                showAlert('Failed to update product: ' + getErrorMessage(xhr), 'danger');
+            }
+        });
+    });
+}
+
+function showAlert(message, type) {
+    const alert = $(`
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `);
+    
+    $('.card-body').prepend(alert);
+    
+    setTimeout(() => {
+        alert.fadeOut();
+    }, 5000);
+}
+
+function getErrorMessage(xhr) {
+    if (xhr.responseJSON && xhr.responseJSON.error) {
+        return xhr.responseJSON.error;
+    }
+    return xhr.statusText || 'Unknown error';
+}
+</script>
+
+<style>
+.color-preview {
+    border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.table th, .table td {
+    vertical-align: middle;
+}
+
+.form-check-input:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.alert {
+    margin-bottom: 1rem;
+}
+</style>
+{% endblock %}
