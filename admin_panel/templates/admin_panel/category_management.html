@@ -1,0 +1,960 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Category Management - To7fa Admin Panel{% endblock %}
+
+{% block page_title %}Category Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .category-card {
+        transition: all 0.3s ease;
+        border: 1px solid #e9ecef;
+    }
+    
+    .category-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .subcategory-item {
+        background-color: #f8f9fa;
+        border-left: 3px solid var(--primary-color);
+        margin-bottom: 5px;
+        padding: 8px 12px;
+        border-radius: 4px;
+    }
+    
+    .category-image {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 8px;
+    }
+    
+    .category-stats {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    
+    .modal-header {
+        background-color: var(--primary-color);
+        color: white;
+    }
+    
+    .modal-header .btn-close {
+        filter: invert(1);
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .loading-spinner {
+        display: none;
+        text-align: center;
+        margin: 2rem 0;
+    }
+    
+    .btn-action {
+        margin-right: 5px;
+        margin-bottom: 5px;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #6c757d;
+    }
+    
+    .category-tabs {
+        margin-bottom: 2rem;
+    }
+    
+    .nav-tabs .nav-link {
+        border: none;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    
+    .nav-tabs .nav-link.active {
+        background-color: var(--primary-color);
+        color: white;
+        border-radius: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Categories Overview Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="icon purple">
+                    <i class="fas fa-tags"></i>
+                </div>
+                <h3 id="total-categories">0</h3>
+                <p>Total Categories</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="icon blue">
+                    <i class="fas fa-layer-group"></i>
+                </div>
+                <h3 id="parent-categories">0</h3>
+                <p>Parent Categories</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="icon green">
+                    <i class="fas fa-list"></i>
+                </div>
+                <h3 id="subcategories">0</h3>
+                <p>Subcategories</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="icon orange">
+                    <i class="fas fa-box"></i>
+                </div>
+                <h3 id="products-in-categories">0</h3>
+                <p>Products in Categories</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <button class="btn btn-purple" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+                        <i class="fas fa-plus me-2"></i>Add New Category
+                    </button>
+                    <button class="btn btn-outline-purple" onclick="refreshCategories()">
+                        <i class="fas fa-sync-alt me-2"></i>Refresh
+                    </button>
+                </div>
+                <div>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="viewType" id="hierarchical-view" checked>
+                        <label class="btn btn-outline-primary" for="hierarchical-view">
+                            <i class="fas fa-sitemap me-1"></i>Hierarchical
+                        </label>
+                        
+                        <input type="radio" class="btn-check" name="viewType" id="flat-view">
+                        <label class="btn btn-outline-primary" for="flat-view">
+                            <i class="fas fa-list me-1"></i>Flat View
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div class="loading-spinner" id="loading-spinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading categories...</p>
+    </div>
+
+    <!-- Categories Display -->
+    <div class="row" id="categories-container">
+        <!-- Categories will be loaded here dynamically -->
+    </div>
+    
+    <!-- Empty State -->
+    <div class="empty-state" id="empty-state" style="display: none;">
+        <i class="fas fa-tags fa-3x mb-3 text-muted"></i>
+        <h4>No Categories Found</h4>
+        <p>Get started by creating your first category.</p>
+        <button class="btn btn-purple" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+            <i class="fas fa-plus me-2"></i>Add Category
+        </button>
+    </div>
+</div>
+
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus-circle me-2"></i>Add New Category
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addCategoryForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="categoryName" class="form-label">Category Name *</label>
+                                <input type="text" class="form-control" id="categoryName" name="name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="parentCategory" class="form-label">Parent Category</label>
+                                <select class="form-select" id="parentCategory" name="parent_id">
+                                    <option value="">None (Create as main category)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="categoryDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="categoryDescription" name="description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="categoryImage" class="form-label">Category Image</label>
+                                <input type="file" class="form-control" id="categoryImage" name="image" accept="image/*">
+                                <small class="text-muted">Optional. Recommended size: 200x200px</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <div class="form-check form-switch mt-4">
+                                    <input class="form-check-input" type="checkbox" id="isActive" name="is_active" checked>
+                                    <label class="form-check-label" for="isActive">
+                                        Active Category
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-purple" onclick="createCategory()">
+                    <i class="fas fa-save me-2"></i>Create Category
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Category Modal -->
+<div class="modal fade" id="editCategoryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit me-2"></i>Edit Category
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editCategoryForm">
+                    <input type="hidden" id="editCategoryId" name="category_id">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editCategoryName" class="form-label">Category Name *</label>
+                                <input type="text" class="form-control" id="editCategoryName" name="name" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editParentCategory" class="form-label">Parent Category</label>
+                                <select class="form-select" id="editParentCategory" name="parent_id">
+                                    <option value="">None (Main category)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editCategoryDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="editCategoryDescription" name="description" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="editCategoryImage" class="form-label">Category Image</label>
+                                <input type="file" class="form-control" id="editCategoryImage" name="image" accept="image/*">
+                                <small class="text-muted">Leave empty to keep current image</small>
+                                <div id="currentImagePreview" class="mt-2"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <div class="form-check form-switch mt-4">
+                                    <input class="form-check-input" type="checkbox" id="editIsActive" name="is_active">
+                                    <label class="form-check-label" for="editIsActive">
+                                        Active Category
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-purple" onclick="updateCategory()">
+                    <i class="fas fa-save me-2"></i>Update Category
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Category Details Modal -->
+<div class="modal fade" id="categoryDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-info-circle me-2"></i>Category Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="categoryDetailsContent">
+                <!-- Category details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let categories = [];
+let currentViewType = 'hierarchical';
+
+$(document).ready(function() {
+    loadCategories();
+    
+    // View type change handler
+    $('input[name="viewType"]').change(function() {
+        currentViewType = $(this).attr('id').replace('-view', '');
+        renderCategories();
+    });
+});
+
+function showLoading() {
+    $('#loading-spinner').show();
+    $('#categories-container').hide();
+    $('#empty-state').hide();
+}
+
+function hideLoading() {
+    $('#loading-spinner').hide();
+}
+
+function loadCategories() {
+    showLoading();
+    
+    $.ajax({
+        url: '/api/products/admin/categories/',
+        method: 'GET',
+        headers: {
+            'Authorization': 'Bearer ' + localStorage.getItem('access_token'),
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            categories = response.results;
+            updateStats(response);
+            renderCategories();
+            loadParentCategoryOptions();
+            hideLoading();
+        },
+        error: function(xhr) {
+            hideLoading();
+            showError('Failed to load categories: ' + getErrorMessage(xhr));
+        }
+    });
+}
+
+function updateStats(response) {
+    $('#total-categories').text(response.total_count || 0);
+    $('#parent-categories').text(response.parent_count || 0);
+    $('#subcategories').text(response.subcategory_count || 0);
+    
+    // Calculate total products in all categories
+    let totalProducts = 0;
+    function countProducts(categories) {
+        categories.forEach(category => {
+            totalProducts += category.product_count || 0;
+            if (category.children && category.children.length > 0) {
+                countProducts(category.children);
+            }
+        });
+    }
+    countProducts(categories);
+    $('#products-in-categories').text(totalProducts);
+}
+
+function renderCategories() {
+    const container = $('#categories-container');
+    
+    if (!categories || categories.length === 0) {
+        container.hide();
+        $('#empty-state').show();
+        return;
+    }
+    
+    container.show();
+    $('#empty-state').hide();
+    
+    if (currentViewType === 'hierarchical') {
+        renderHierarchicalView(container);
+    } else {
+        renderFlatView(container);
+    }
+}
+
+function renderHierarchicalView(container) {
+    container.empty();
+    
+    categories.forEach(category => {
+        const categoryCard = createCategoryCard(category, true);
+        container.append(categoryCard);
+    });
+}
+
+function renderFlatView(container) {
+    container.empty();
+    
+    // Flatten all categories
+    const flatCategories = [];
+    
+    function flattenCategories(cats, level = 0) {
+        cats.forEach(cat => {
+            flatCategories.push({...cat, level: level});
+            if (cat.children && cat.children.length > 0) {
+                flattenCategories(cat.children, level + 1);
+            }
+        });
+    }
+    
+    flattenCategories(categories);
+    
+    // Sort by name
+    flatCategories.sort((a, b) => a.name.localeCompare(b.name));
+    
+    flatCategories.forEach(category => {
+        const categoryCard = createCategoryCard(category, false);
+        container.append(categoryCard);
+    });
+}
+
+function createCategoryCard(category, showChildren = true) {
+    const levelIndent = category.level ? 'ms-' + (category.level * 3) : '';
+    const isParent = category.children && category.children.length > 0;
+    
+    let childrenHtml = '';
+    if (showChildren && isParent) {
+        childrenHtml = `
+            <div class="mt-3">
+                <h6 class="text-muted mb-2">
+                    <i class="fas fa-layer-group me-1"></i>
+                    Subcategories (${category.children.length})
+                </h6>
+                <div class="row">
+                    ${category.children.map(child => `
+                        <div class="col-md-6 mb-2">
+                            <div class="subcategory-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <strong>${child.name}</strong>
+                                        <br>
+                                        <small class="text-muted">${child.product_count} products</small>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-primary me-1" 
+                                                onclick="editCategory(${child.id})" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" 
+                                                onclick="deleteCategory(${child.id}, '${child.name}')" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    return `
+        <div class="col-md-6 col-lg-4 mb-4 ${levelIndent}">
+            <div class="card category-card h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-start mb-3">
+                        ${category.image ? 
+                            `<img src="${category.image}" alt="${category.name}" class="category-image me-3">` : 
+                            `<div class="category-image me-3 bg-light d-flex align-items-center justify-content-center">
+                                <i class="fas fa-image text-muted"></i>
+                            </div>`
+                        }
+                        <div class="flex-grow-1">
+                            <h5 class="card-title mb-1">
+                                ${category.name}
+                                ${!category.is_active ? '<span class="badge bg-secondary ms-2">Inactive</span>' : ''}
+                                ${category.level ? `<span class="badge bg-info ms-2">Level ${category.level + 1}</span>` : ''}
+                            </h5>
+                            ${category.parent_name ? `<small class="text-muted">Under: ${category.parent_name}</small><br>` : ''}
+                            <div class="category-stats">
+                                <i class="fas fa-box me-1"></i>${category.product_count} products
+                                ${isParent ? ` | <i class="fas fa-layer-group me-1"></i>${category.children.length} subcategories` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    ${category.description ? `<p class="card-text text-muted small mb-3">${category.description}</p>` : ''}
+                    
+                    <div class="d-flex flex-wrap gap-1">
+                        <button class="btn btn-sm btn-outline-primary btn-action" 
+                                onclick="viewCategoryDetails(${category.id})" title="View Details">
+                            <i class="fas fa-eye me-1"></i>Details
+                        </button>
+                        <button class="btn btn-sm btn-outline-success btn-action" 
+                                onclick="editCategory(${category.id})" title="Edit">
+                            <i class="fas fa-edit me-1"></i>Edit
+                        </button>
+                        ${!isParent && category.product_count === 0 ? `
+                            <button class="btn btn-sm btn-outline-danger btn-action" 
+                                    onclick="deleteCategory(${category.id}, '${category.name}')" title="Delete">
+                                <i class="fas fa-trash me-1"></i>Delete
+                            </button>
+                        ` : ''}
+                        ${!isParent ? `
+                            <button class="btn btn-sm btn-outline-info btn-action" 
+                                    onclick="addSubcategory(${category.id}, '${category.name}')" title="Add Subcategory">
+                                <i class="fas fa-plus me-1"></i>Add Sub
+                            </button>
+                        ` : ''}
+                    </div>
+                    
+                    ${childrenHtml}
+                </div>
+                <div class="card-footer bg-transparent">
+                    <small class="text-muted">
+                        Created: ${new Date(category.created_at).toLocaleDateString()}
+                        | Updated: ${new Date(category.updated_at).toLocaleDateString()}
+                    </small>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function loadParentCategoryOptions() {
+    const parentSelects = ['#parentCategory', '#editParentCategory'];
+    
+    parentSelects.forEach(selector => {
+        const select = $(selector);
+        const currentValue = select.val();
+        select.find('option:not(:first)').remove();
+        
+        // Only show parent categories (not subcategories)
+        categories.forEach(category => {
+            select.append(`<option value="${category.id}">${category.name}</option>`);
+        });
+        
+        select.val(currentValue);
+    });
+}
+
+function createCategory() {
+    const form = $('#addCategoryForm')[0];
+    const parentValue = $('#parentCategory').val();
+    
+    // Check if image file is selected
+    const imageInput = $('#categoryImage')[0];
+    const hasImageFile = imageInput && imageInput.files && imageInput.files.length > 0 && imageInput.files[0].size > 0;
+    
+    console.log('Create - Has image file:', hasImageFile);
+    
+    if (hasImageFile) {
+        // Use FormData for file upload
+        const formData = new FormData();
+        formData.append('name', $('#categoryName').val());
+        formData.append('description', $('#categoryDescription').val() || '');
+        formData.append('is_active', $('#isActive').is(':checked') ? 'true' : 'false');
+        formData.append('image', imageInput.files[0]);
+        
+        if (parentValue && parentValue !== '') {
+            formData.append('parent_id', parentValue);
+        }
+        
+        $.ajax({
+            url: '/api/products/admin/categories/create/',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            headers: {
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+            },
+            success: function(response) {
+                showSuccess(response.message || 'Category created successfully');
+                $('#addCategoryModal').modal('hide');
+                form.reset();
+                loadCategories();
+            },
+            error: function(xhr) {
+                showError('Failed to create category: ' + getErrorMessage(xhr));
+            }
+        });
+    } else {
+        // Use JSON for data without files
+        const data = {
+            name: $('#categoryName').val(),
+            description: $('#categoryDescription').val() || '',
+            is_active: $('#isActive').is(':checked')
+        };
+        
+        if (parentValue && parentValue !== '') {
+            data.parent_id = parseInt(parentValue);
+        }
+        
+        console.log('Creating category with JSON data:', data);
+        $.ajax({
+            url: '/api/products/admin/categories/create/',
+            method: 'POST',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            headers: {
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+            },
+            success: function(response) {
+                showSuccess(response.message || 'Category created successfully');
+                $('#addCategoryModal').modal('hide');
+                form.reset();
+                loadCategories();
+            },
+            error: function(xhr) {
+                showError('Failed to create category: ' + getErrorMessage(xhr));
+            }
+        });
+    }
+}
+
+function editCategory(categoryId) {
+    // Find category in our data
+    let category = null;
+    
+    function findCategory(cats) {
+        for (let cat of cats) {
+            if (cat.id === categoryId) {
+                return cat;
+            }
+            if (cat.children) {
+                const found = findCategory(cat.children);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+    
+    category = findCategory(categories);
+    
+    if (!category) {
+        showError('Category not found');
+        return;
+    }
+    
+    // Populate edit form
+    $('#editCategoryId').val(category.id);
+    $('#editCategoryName').val(category.name);
+    $('#editCategoryDescription').val(category.description || '');
+    $('#editIsActive').prop('checked', category.is_active);
+    
+    // Set parent category (exclude current category and its children)
+    const editParentSelect = $('#editParentCategory');
+    editParentSelect.find('option:not(:first)').remove();
+    
+    categories.forEach(cat => {
+        if (cat.id !== categoryId && !isChildOf(cat, categoryId)) {
+            editParentSelect.append(`<option value="${cat.id}">${cat.name}</option>`);
+        }
+    });
+    
+    editParentSelect.val(category.parent_id || '');
+    
+    // Show current image if exists
+    const imagePreview = $('#currentImagePreview');
+    if (category.image) {
+        imagePreview.html(`
+            <div class="mt-2">
+                <small class="text-muted">Current image:</small><br>
+                <img src="${category.image}" alt="Current image" style="max-width: 100px; height: auto; border-radius: 4px;">
+            </div>
+        `);
+    } else {
+        imagePreview.empty();
+    }
+    
+    $('#editCategoryModal').modal('show');
+}
+
+function isChildOf(category, parentId) {
+    if (!category.children) return false;
+    
+    for (let child of category.children) {
+        if (child.id === parentId) return true;
+        if (isChildOf(child, parentId)) return true;
+    }
+    return false;
+}
+
+function updateCategory() {
+    const categoryId = $('#editCategoryId').val();
+    const parentValue = $('#editParentCategory').val();
+    
+    // Check if image file is selected
+    const imageInput = $('#editCategoryImage')[0];
+    const hasImageFile = imageInput && imageInput.files && imageInput.files.length > 0 && imageInput.files[0].size > 0;
+    
+    console.log('Update - Has image file:', hasImageFile);
+    
+    if (hasImageFile) {
+        // Use FormData for file upload
+        const formData = new FormData();
+        formData.append('name', $('#editCategoryName').val());
+        formData.append('description', $('#editCategoryDescription').val() || '');
+        formData.append('is_active', $('#editIsActive').is(':checked') ? 'true' : 'false');
+        formData.append('image', imageInput.files[0]);
+        
+        if (parentValue && parentValue !== '') {
+            formData.append('parent_id', parentValue);
+        }
+        
+        $.ajax({
+            url: `/api/products/admin/categories/${categoryId}/update/`,
+            method: 'PUT',
+            data: formData,
+            processData: false,
+            contentType: false,
+            headers: {
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+            },
+            success: function(response) {
+                showSuccess(response.message || 'Category updated successfully');
+                $('#editCategoryModal').modal('hide');
+                loadCategories();
+            },
+            error: function(xhr) {
+                showError('Failed to update category: ' + getErrorMessage(xhr));
+            }
+        });
+    } else {
+        // Use JSON for data without files
+        const data = {
+            name: $('#editCategoryName').val(),
+            description: $('#editCategoryDescription').val() || '',
+            is_active: $('#editIsActive').is(':checked')
+        };
+        
+        if (parentValue && parentValue !== '') {
+            data.parent_id = parseInt(parentValue);
+        }
+        
+        console.log('Updating category with JSON data:', data);
+        $.ajax({
+            url: `/api/products/admin/categories/${categoryId}/update/`,
+            method: 'PUT',
+            data: JSON.stringify(data),
+            contentType: 'application/json',
+            headers: {
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+            },
+            success: function(response) {
+                showSuccess(response.message || 'Category updated successfully');
+                $('#editCategoryModal').modal('hide');
+                loadCategories();
+            },
+            error: function(xhr) {
+                showError('Failed to update category: ' + getErrorMessage(xhr));
+            }
+        });
+    }
+}
+
+function deleteCategory(categoryId, categoryName) {
+    if (!confirm(`Are you sure you want to delete the category "${categoryName}"?\n\nThis action cannot be undone.`)) {
+        return;
+    }
+    
+    $.ajax({
+        url: `/api/products/admin/categories/${categoryId}/delete/`,
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(response) {
+            showSuccess(response.message || 'Category deleted successfully');
+            loadCategories();
+        },
+        error: function(xhr) {
+            showError('Failed to delete category: ' + getErrorMessage(xhr));
+        }
+    });
+}
+
+function addSubcategory(parentId, parentName) {
+    $('#parentCategory').val(parentId);
+    $('#addCategoryModal .modal-title').html(`
+        <i class="fas fa-plus-circle me-2"></i>Add Subcategory to "${parentName}"
+    `);
+    $('#addCategoryModal').modal('show');
+}
+
+function viewCategoryDetails(categoryId) {
+    $.ajax({
+        url: `/api/products/admin/categories/${categoryId}/`,
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
+        },
+        success: function(category) {
+            const detailsHtml = `
+                <div class="row">
+                    <div class="col-md-4">
+                        ${category.image ? 
+                            `<img src="${category.image}" alt="${category.name}" class="img-fluid rounded mb-3">` : 
+                            `<div class="bg-light p-5 text-center rounded mb-3">
+                                <i class="fas fa-image fa-3x text-muted"></i>
+                                <p class="mt-2 text-muted">No image</p>
+                            </div>`
+                        }
+                        
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Category Info</h6>
+                            </div>
+                            <div class="card-body">
+                                <p><strong>ID:</strong> ${category.id}</p>
+                                <p><strong>Status:</strong> 
+                                    <span class="badge ${category.is_active ? 'bg-success' : 'bg-secondary'}">
+                                        ${category.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                </p>
+                                <p><strong>Parent:</strong> ${category.parent_name || 'None (Main Category)'}</p>
+                                <p><strong>Products:</strong> ${category.total_product_count}</p>
+                                <p><strong>Subcategories:</strong> ${category.subcategory_count}</p>
+                                <p><strong>Created:</strong> ${new Date(category.created_at).toLocaleString()}</p>
+                                <p><strong>Updated:</strong> ${new Date(category.updated_at).toLocaleString()}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-8">
+                        <h4>${category.name}</h4>
+                        ${category.description ? `<p class="text-muted">${category.description}</p>` : '<p class="text-muted">No description</p>'}
+                        
+                        ${category.subcategories && category.subcategories.length > 0 ? `
+                            <div class="mt-4">
+                                <h5><i class="fas fa-layer-group me-2"></i>Subcategories</h5>
+                                <div class="row">
+                                    ${category.subcategories.map(sub => `
+                                        <div class="col-md-6 mb-3">
+                                            <div class="card">
+                                                <div class="card-body">
+                                                    <h6>${sub.name}</h6>
+                                                    <p class="small text-muted">${sub.description || 'No description'}</p>
+                                                    <p class="small"><i class="fas fa-box me-1"></i>${sub.product_count} products</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        ${category.products && category.products.length > 0 ? `
+                            <div class="mt-4">
+                                <h5><i class="fas fa-box me-2"></i>Recent Products</h5>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Name</th>
+                                                <th>Price</th>
+                                                <th>Seller</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${category.products.map(product => `
+                                                <tr>
+                                                    <td>${product.name}</td>
+                                                    <td>$${product.price}</td>
+                                                    <td>${product.seller_name}</td>
+                                                    <td>
+                                                        <span class="badge ${product.is_active ? 'bg-success' : 'bg-secondary'}">
+                                                            ${product.is_active ? 'Active' : 'Inactive'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                    ${category.total_product_count > category.products.length ? 
+                                        `<p class="small text-muted">Showing latest ${category.products.length} of ${category.total_product_count} products</p>` : 
+                                        ''
+                                    }
+                                </div>
+                            </div>
+                        ` : '<div class="mt-4"><p class="text-muted">No products in this category yet.</p></div>'}
+                    </div>
+                </div>
+            `;
+            
+            $('#categoryDetailsContent').html(detailsHtml);
+            $('#categoryDetailsModal').modal('show');
+        },
+        error: function(xhr) {
+            showError('Failed to load category details: ' + getErrorMessage(xhr));
+        }
+    });
+}
+
+function refreshCategories() {
+    loadCategories();
+}
+
+function showSuccess(message) {
+    // You can replace this with a proper notification system
+    alert('Success: ' + message);
+}
+
+function showError(message) {
+    // You can replace this with a proper notification system
+    alert('Error: ' + message);
+}
+
+function getErrorMessage(xhr) {
+    if (xhr.responseJSON && xhr.responseJSON.error) {
+        return xhr.responseJSON.error;
+    }
+    return xhr.responseText || 'Unknown error occurred';
+}
+
+// Reset form when modal is hidden
+$('#addCategoryModal').on('hidden.bs.modal', function() {
+    $('#addCategoryForm')[0].reset();
+    $('#addCategoryModal .modal-title').html(`
+        <i class="fas fa-plus-circle me-2"></i>Add New Category
+    `);
+});
+</script>
+{% endblock %}
