@@ -4,164 +4,757 @@
 
 {% block page_title %}Dashboard{% endblock %}
 
+{% block extra_css %}
+<style>
+    .hero-section {
+        background: var(--secondary-gradient);
+        color: var(--text-primary);
+        padding: 3rem 2rem;
+        border-radius: var(--radius-lg);
+        margin-bottom: 2rem;
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--border-light);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 200px;
+        height: 200px;
+        background: var(--primary-alpha);
+        border-radius: 50%;
+        transform: translate(50%, -50%);
+    }
+
+    .hero-section::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 150px;
+        height: 150px;
+        background: rgba(172, 186, 166, 0.2);
+        border-radius: 50%;
+        transform: translate(-50%, 50%);
+    }
+
+    .hero-content {
+        position: relative;
+        z-index: 2;
+    }
+
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin-bottom: 1rem;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .hero-subtitle {
+        font-size: 1.125rem;
+        opacity: 0.9;
+        margin-bottom: 2rem;
+    }
+
+    .hero-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 2rem;
+        margin-top: 2rem;
+    }
+
+    .hero-stat {
+        text-align: center;
+    }
+
+    .hero-stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .hero-stat-label {
+        font-size: 0.875rem;
+        opacity: 0.8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .activity-feed {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .activity-item {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-light);
+        transition: var(--transition);
+    }
+
+    .activity-item:hover {
+        background: var(--gray-50);
+    }
+
+    .activity-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        font-size: 1rem;
+    }
+
+    .activity-icon.new-user {
+        background: #ecfdf5;
+        color: var(--success);
+    }
+
+    .activity-icon.new-order {
+        background: #eff6ff;
+        color: var(--info);
+    }
+
+    .activity-icon.new-product {
+        background: #fef3c7;
+        color: var(--warning);
+    }
+
+    .activity-icon.application {
+        background: #f3e8ff;
+        color: var(--primary);
+    }
+
+    .activity-content {
+        flex: 1;
+    }
+
+    .activity-title {
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+        color: var(--text-primary);
+    }
+
+    .activity-description {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+    }
+
+    .activity-time {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-left: 1rem;
+    }
+
+    .quick-actions {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .quick-action {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        padding: 1.5rem;
+        text-align: center;
+        text-decoration: none;
+        color: var(--text-primary);
+        transition: var(--transition);
+        box-shadow: var(--shadow);
+    }
+
+    .quick-action:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
+        color: var(--primary);
+        border-color: var(--primary);
+    }
+
+    .quick-action-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: var(--radius-lg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        font-size: 1.5rem;
+        background: linear-gradient(135deg, var(--gray-100) 0%, var(--gray-200) 100%);
+        color: var(--text-secondary);
+        transition: var(--transition);
+    }
+
+    .quick-action:hover .quick-action-icon {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        color: var(--white);
+    }
+
+    .quick-action-title {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+
+    .quick-action-description {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+    }
+
+    .chart-card {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+    }
+
+    .chart-header {
+        padding: 1.5rem 2rem;
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--border-light);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .chart-title {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+    }
+
+    .chart-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .chart-action {
+        padding: 0.375rem 0.75rem;
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-sm);
+        background: var(--white);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: var(--transition);
+    }
+
+    .chart-action:hover,
+    .chart-action.active {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
+    }
+
+    .chart-body {
+        padding: 2rem;
+        height: 350px;
+        position: relative;
+    }
+
+    .recent-table {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        box-shadow: var(--shadow);
+    }
+
+    .table-header {
+        padding: 1.5rem 2rem;
+        background: var(--gray-50);
+        border-bottom: 1px solid var(--border-light);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .table-title {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+    }
+
+    .view-all-btn {
+        padding: 0.5rem 1rem;
+        background: var(--primary);
+        color: var(--white);
+        border: none;
+        border-radius: var(--radius-sm);
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: var(--transition);
+    }
+
+    .view-all-btn:hover {
+        background: var(--primary-dark);
+        transform: translateY(-1px);
+    }
+
+    .progress-card {
+        background: var(--white);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-lg);
+        padding: 2rem;
+        box-shadow: var(--shadow);
+    }
+
+    .progress-item {
+        margin-bottom: 1.5rem;
+    }
+
+    .progress-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+
+    .progress-label {
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .progress-value {
+        font-weight: 600;
+        color: var(--primary);
+    }
+
+    .progress-bar-container {
+        height: 8px;
+        background: var(--gray-200);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+        border-radius: 4px;
+        transition: width 1s ease-out;
+        box-shadow: 0 2px 8px rgba(172, 186, 166, 0.3);
+    }
+
+            /* Beautiful version display in hero */
+        .hero-version {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            padding: 0.375rem 0.875rem;
+            border-radius: var(--radius);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            z-index: 10;
+            transition: var(--transition);
+            font-family: 'Inter', monospace;
+            letter-spacing: 0.05em;
+        }
+
+        .hero-version:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .hero-version::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+            border-radius: var(--radius);
+            animation: heroVersionShimmer 4s infinite;
+        }
+
+        @keyframes heroVersionShimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        @media (max-width: 768px) {
+            .hero-title {
+                font-size: 2rem;
+            }
+
+            .hero-stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+
+            .quick-actions {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-version {
+                top: 1rem;
+                right: 1rem;
+                font-size: 0.6rem;
+                padding: 0.25rem 0.625rem;
+            }
+        }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="row">
-    <!-- Stats Cards -->
-    <div class="col-md-3 mb-4">
-        <div class="stats-card">
-            <div class="icon purple">
-                <i class="fas fa-users"></i>
-            </div>
-            <h3>{{ total_users }}</h3>
-            <p>Total Users</p>
-        </div>
+<!-- Hero Section -->
+<div class="hero-section animate-fade-in-up">
+    <!-- Hero Version Badge -->
+    <div class="hero-version" title="Dashboard Version 072025">
+        <i class="fas fa-star me-1"></i>072025
     </div>
-    <div class="col-md-3 mb-4">
-        <div class="stats-card">
-            <div class="icon orange">
-                <i class="fas fa-box"></i>
+    
+    <div class="hero-content">
+        <h1 class="hero-title">Welcome back, Admin!</h1>
+        <p class="hero-subtitle">Here's what's happening with your platform today</p>
+        
+        <div class="hero-stats">
+            <div class="hero-stat">
+                <div class="hero-stat-value">{{ total_users }}</div>
+                <div class="hero-stat-label">Total Users</div>
             </div>
-            <h3>{{ total_products }}</h3>
-            <p>Total Products</p>
-        </div>
-    </div>
-    <div class="col-md-3 mb-4">
-        <div class="stats-card">
-            <div class="icon green">
-                <i class="fas fa-shopping-cart"></i>
+            <div class="hero-stat">
+                <div class="hero-stat-value">{{ total_products }}</div>
+                <div class="hero-stat-label">Products</div>
             </div>
-            <h3>{{ total_orders }}</h3>
-            <p>Total Orders</p>
-        </div>
-    </div>
-    <div class="col-md-3 mb-4">
-        <div class="stats-card">
-            <div class="icon blue">
-                <i class="fas fa-user-plus"></i>
+            <div class="hero-stat">
+                <div class="hero-stat-value">{{ total_orders }}</div>
+                <div class="hero-stat-label">Orders</div>
             </div>
-            <h3>{{ pending_applications }}</h3>
-            <p>Pending Applications</p>
+            <div class="hero-stat">
+                <div class="hero-stat-value">${{ revenue|default:"0" }}</div>
+                <div class="hero-stat-label">Revenue</div>
+            </div>
         </div>
     </div>
 </div>
 
-<div class="row">
-    <!-- Recent Applications -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Recent Seller Applications</span>
-                <a href="{% url 'admin_panel:seller_applications' %}" class="btn btn-sm btn-outline-purple">View All</a>
+<!-- Quick Actions -->
+<div class="quick-actions">
+    <a href="{% url 'admin_panel:seller_applications' %}" class="quick-action">
+        <div class="quick-action-icon">
+            <i class="fas fa-user-plus"></i>
+        </div>
+        <div class="quick-action-title">Review Applications</div>
+        <div class="quick-action-description">Approve new sellers and artists</div>
+    </a>
+    
+    <a href="{% url 'admin_panel:product_management' %}" class="quick-action">
+        <div class="quick-action-icon">
+            <i class="fas fa-plus-circle"></i>
+        </div>
+        <div class="quick-action-title">Add Product</div>
+        <div class="quick-action-description">Create new product listings</div>
+    </a>
+    
+    <a href="{% url 'admin_panel:order_management' %}" class="quick-action">
+        <div class="quick-action-icon">
+            <i class="fas fa-list-check"></i>
+        </div>
+        <div class="quick-action-title">Manage Orders</div>
+        <div class="quick-action-description">Track and update order status</div>
+    </a>
+    
+    <a href="{% url 'admin_panel:reports' %}" class="quick-action">
+        <div class="quick-action-icon">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="quick-action-title">View Analytics</div>
+        <div class="quick-action-description">Detailed reports and insights</div>
+    </a>
+</div>
+
+    <!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="stats-card animate-fade-in-up" style="animation-delay: 0.1s;">
+            <div class="stats-icon primary">
+                <i class="fas fa-users"></i>
             </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Type</th>
-                                <th>Date</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for app in recent_applications %}
-                            <tr>
-                                <td>
-                                    <a href="{% url 'admin_panel:seller_application_detail' app.id %}">{{ app.name }}</a>
-                                </td>
-                                <td>{{ app.get_user_type_display }}</td>
-                                <td>{{ app.submitted_at|date:"M d, Y" }}</td>
-                                <td>
-                                    <span class="badge bg-warning">Pending</span>
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="4" class="text-center">No pending applications</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
+            <div class="stats-value">{{ total_users }}</div>
+            <div class="stats-label">Total Users</div>
+            <div class="stats-change positive">
+                <i class="fas fa-arrow-up me-1"></i>
+                +12% from last month
             </div>
         </div>
     </div>
     
-    <!-- Recent Orders -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Recent Orders</span>
-                <a href="{% url 'admin_panel:order_management' %}" class="btn btn-sm btn-outline-purple">View All</a>
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="stats-card animate-fade-in-up" style="animation-delay: 0.2s;">
+            <div class="stats-icon success">
+                <i class="fas fa-box"></i>
             </div>
-            <div class="card-body">
+            <div class="stats-value">{{ total_products }}</div>
+            <div class="stats-label">Active Products</div>
+            <div class="stats-change positive">
+                <i class="fas fa-arrow-up me-1"></i>
+                +8% from last week
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="stats-card animate-fade-in-up" style="animation-delay: 0.3s;">
+            <div class="stats-icon warning">
+                <i class="fas fa-shopping-cart"></i>
+            </div>
+            <div class="stats-value">{{ total_orders }}</div>
+            <div class="stats-label">Total Orders</div>
+            <div class="stats-change positive">
+                <i class="fas fa-arrow-up me-1"></i>
+                +24% from yesterday
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-4">
+        <div class="stats-card animate-fade-in-up" style="animation-delay: 0.4s;">
+            <div class="stats-icon info">
+                <i class="fas fa-user-clock"></i>
+            </div>
+            <div class="stats-value">{{ pending_applications }}</div>
+            <div class="stats-label">Pending Applications</div>
+            {% if pending_applications > 0 %}
+            <div class="stats-change negative">
+                <i class="fas fa-exclamation-circle me-1"></i>
+                Needs attention
+            </div>
+            {% else %}
+            <div class="stats-change positive">
+                <i class="fas fa-check-circle me-1"></i>
+                All caught up!
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Charts and Tables Row -->
+<div class="row">
+    <!-- Charts Column -->
+    <div class="col-lg-8 mb-4">
+        <!-- Sales Chart -->
+        <div class="chart-card mb-4">
+            <div class="chart-header">
+                <h3 class="chart-title">Sales Overview</h3>
+                <div class="chart-actions">
+                    <button class="chart-action active" data-period="7d">7 Days</button>
+                    <button class="chart-action" data-period="30d">30 Days</button>
+                    <button class="chart-action" data-period="90d">90 Days</button>
+                </div>
+            </div>
+            <div class="chart-body">
+                <canvas id="salesChart"></canvas>
+        </div>
+    </div>
+    
+        <!-- Recent Orders Table -->
+        <div class="recent-table">
+            <div class="table-header">
+                <h3 class="table-title">Recent Orders</h3>
+                <a href="{% url 'admin_panel:order_management' %}" class="view-all-btn">View All</a>
+            </div>
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                <table class="table">
                         <thead>
                             <tr>
                                 <th>Order ID</th>
                                 <th>Customer</th>
+                            <th>Product</th>
                                 <th>Amount</th>
                                 <th>Status</th>
+                            <th>Date</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for order in recent_orders %}
                             <tr>
-                                <td>#{{ order.id }}</td>
-                                <td>{{ order.user.email }}</td>
-                                <td>${{ order.total_amount }}</td>
+                            <td><strong>#{{ order.id }}</strong></td>
+                            <td>{{ order.user.email|truncatechars:20 }}</td>
+                            <td>{{ order.items.first.product.name|truncatechars:25 }}</td>
+                            <td><strong>${{ order.total_amount }}</strong></td>
                                 <td>
                                     {% if order.status == 'pending' %}
-                                    <span class="badge bg-warning">Pending</span>
+                                <span class="badge badge-warning">Pending</span>
                                     {% elif order.status == 'processing' %}
-                                    <span class="badge bg-info">Processing</span>
+                                <span class="badge badge-info">Processing</span>
                                     {% elif order.status == 'shipped' %}
-                                    <span class="badge bg-primary">Shipped</span>
+                                <span class="badge badge-primary">Shipped</span>
                                     {% elif order.status == 'delivered' %}
-                                    <span class="badge bg-success">Delivered</span>
+                                <span class="badge badge-success">Delivered</span>
                                     {% elif order.status == 'cancelled' %}
-                                    <span class="badge bg-danger">Cancelled</span>
+                                <span class="badge badge-danger">Cancelled</span>
                                     {% else %}
-                                    <span class="badge bg-secondary">{{ order.status }}</span>
+                                <span class="badge badge-secondary">{{ order.status|title }}</span>
                                     {% endif %}
                                 </td>
+                            <td>{{ order.created_at|date:"M d, Y" }}</td>
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="4" class="text-center">No recent orders</td>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                <i class="fas fa-shopping-cart fa-2x mb-2 d-block"></i>
+                                No recent orders
+                            </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sidebar Column -->
+    <div class="col-lg-4">
+        <!-- Performance Metrics -->
+        <div class="progress-card mb-4">
+            <h3 class="table-title mb-3">Performance Metrics</h3>
+            
+            <div class="progress-item">
+                <div class="progress-header">
+                    <span class="progress-label">User Growth</span>
+                    <span class="progress-value">84%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: 84%;"></div>
+                </div>
+            </div>
+            
+            <div class="progress-item">
+                <div class="progress-header">
+                    <span class="progress-label">Sales Target</span>
+                    <span class="progress-value">67%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: 67%;"></div>
+                </div>
+            </div>
+            
+            <div class="progress-item">
+                <div class="progress-header">
+                    <span class="progress-label">Customer Satisfaction</span>
+                    <span class="progress-value">92%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: 92%;"></div>
+                </div>
+            </div>
+            
+            <div class="progress-item">
+                <div class="progress-header">
+                    <span class="progress-label">Platform Uptime</span>
+                    <span class="progress-value">99.8%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: 99.8%;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Activity -->
+        <div class="recent-table">
+            <div class="table-header">
+                <h3 class="table-title">Recent Activity</h3>
+            </div>
+            <div class="activity-feed">
+                <div class="activity-item">
+                    <div class="activity-icon new-user">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-title">New user registered</div>
+                        <div class="activity-description">Ahmed Mohamed joined as a customer</div>
+                    </div>
+                    <div class="activity-time">2m ago</div>
+                </div>
+                
+                <div class="activity-item">
+                    <div class="activity-icon new-order">
+                        <i class="fas fa-shopping-cart"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-title">New order placed</div>
+                        <div class="activity-description">Order #1234 - $150.00</div>
+                    </div>
+                    <div class="activity-time">5m ago</div>
+                </div>
+                
+                <div class="activity-item">
+                    <div class="activity-icon application">
+                        <i class="fas fa-file-alt"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-title">Seller application</div>
+                        <div class="activity-description">Sara Ali applied to become an artist</div>
+                    </div>
+                    <div class="activity-time">12m ago</div>
+                </div>
+                
+                <div class="activity-item">
+                    <div class="activity-icon new-product">
+                        <i class="fas fa-box"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-title">Product added</div>
+                        <div class="activity-description">New painting "Sunset Dreams" uploaded</div>
+                    </div>
+                    <div class="activity-time">20m ago</div>
+                </div>
+                
+                <div class="activity-item">
+                    <div class="activity-icon new-user">
+                        <i class="fas fa-store"></i>
+                    </div>
+                    <div class="activity-content">
+                        <div class="activity-title">Store approved</div>
+                        <div class="activity-description">Creative Arts Store is now active</div>
+                    </div>
+                    <div class="activity-time">1h ago</div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- User Distribution Chart -->
 <div class="row">
-    <!-- User Stats Chart -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header">
-                User Distribution
+    <div class="col-lg-6 mb-4">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">User Distribution</h3>
             </div>
-            <div class="card-body">
-                <canvas id="userChart" height="300"></canvas>
+            <div class="chart-body">
+                <canvas id="userChart"></canvas>
             </div>
         </div>
     </div>
     
-    <!-- Order Stats Chart -->
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header">
-                Monthly Orders
+    <div class="col-lg-6 mb-4">
+        <div class="chart-card">
+            <div class="chart-header">
+                <h3 class="chart-title">Category Performance</h3>
             </div>
-            <div class="card-body">
-                <canvas id="orderChart" height="300"></canvas>
+            <div class="chart-body">
+                <canvas id="categoryChart"></canvas>
             </div>
         </div>
     </div>
@@ -170,50 +763,209 @@
 
 {% block extra_js %}
 <script>
-    // Initialize charts with loading state
-    const userCtx = document.getElementById('userChart').getContext('2d');
-    const orderCtx = document.getElementById('orderChart').getContext('2d');
+    // Chart.js default configuration with your color scheme
+    Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+    Chart.defaults.color = '#5A645A';
+    Chart.defaults.backgroundColor = 'rgba(172, 186, 166, 0.1)';
+    Chart.defaults.borderColor = '#ACBAA6';
     
-    let userChart = new Chart(userCtx, {
-        type: 'pie',
+    // Initialize charts
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    const userCtx = document.getElementById('userChart').getContext('2d');
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    
+    // Sales Chart
+    const salesChart = new Chart(salesCtx, {
+        type: 'line',
         data: {
-            labels: ['Loading...'],
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
             datasets: [{
-                data: [1],
-                backgroundColor: ['#e0e0e0']
+                label: 'Sales',
+                data: [120, 190, 300, 500, 200, 300, 450],
+                borderColor: '#ACBAA6',
+                backgroundColor: 'rgba(172, 186, 166, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#ACBAA6',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 6,
+                pointHoverRadius: 8
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    border: {
+                        display: false
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: '#f3f4f6'
+                    },
+                    border: {
+                        display: false
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value;
+                        }
+                    }
+                }
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            }
+        }
+    });
+    
+    // User Distribution Chart
+    const userChart = new Chart(userCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Customers', 'Artists', 'Stores'],
+            datasets: [{
+                data: [65, 25, 10],
+                backgroundColor: [
+                    '#ACBAA6',
+                    '#C4CFC0',
+                    '#8B9B85'
+                ],
+                borderWidth: 0,
+                cutout: '60%'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: {
                     position: 'bottom',
+                    labels: {
+                        padding: 20,
+                        usePointStyle: true,
+                        pointStyle: 'circle'
+                    }
                 }
             }
         }
     });
     
-    let orderChart = new Chart(orderCtx, {
+    // Category Performance Chart
+    const categoryChart = new Chart(categoryCtx, {
         type: 'bar',
         data: {
-            labels: ['Loading...'],
+            labels: ['لوحات فنية', 'نسيج بإبداع', 'لمسات منزلية', 'تحف نادرة'],
             datasets: [{
-                label: 'Orders',
-                data: [0],
-                backgroundColor: '#e0e0e0'
+                label: 'Sales',
+                data: [85, 60, 45, 30],
+                backgroundColor: [
+                    '#ACBAA6',
+                    '#C4CFC0',
+                    '#8B9B85',
+                    '#DAA520'
+                ],
+                borderRadius: 8,
+                borderSkipped: false,
+                maxBarThickness: 40
             }]
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
             scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    border: {
+                        display: false
+                    }
+                },
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    grid: {
+                        color: '#f3f4f6'
+                    },
+                    border: {
+                        display: false
+                    }
                 }
             }
         }
     });
     
-    // Fetch real data via API
+    // Chart period toggle
+    document.querySelectorAll('.chart-action').forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            document.querySelectorAll('.chart-action').forEach(btn => btn.classList.remove('active'));
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            // Update chart data based on period
+            const period = this.dataset.period;
+            updateSalesChart(period);
+        });
+    });
+    
+    function updateSalesChart(period) {
+        let newData, newLabels;
+        
+        switch(period) {
+            case '7d':
+                newLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                newData = [120, 190, 300, 500, 200, 300, 450];
+                break;
+            case '30d':
+                newLabels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+                newData = [1200, 1900, 2300, 2100];
+                break;
+            case '90d':
+                newLabels = ['Month 1', 'Month 2', 'Month 3'];
+                newData = [8500, 9200, 10100];
+                break;
+        }
+        
+        salesChart.data.labels = newLabels;
+        salesChart.data.datasets[0].data = newData;
+        salesChart.update('active');
+    }
+    
+    // Animate progress bars on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(() => {
+            document.querySelectorAll('.progress-bar-fill').forEach(bar => {
+                const width = bar.style.width;
+                bar.style.width = '0%';
+                setTimeout(() => {
+                    bar.style.width = width;
+                }, 100);
+            });
+        }, 500);
+    });
+    
+    // Fetch real-time data
+    function fetchDashboardData() {
     fetch('{% url "admin_panel:admin_stats_api" %}', {
         method: 'GET',
         headers: {
@@ -221,64 +973,27 @@
             'X-CSRFToken': getCSRFToken()
         }
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-    })
+        .then(response => response.json())
     .then(data => {
         // Update user chart with real data
-        userChart.data.labels = ['Customers', 'Artists', 'Stores'];
+            if (data.users) {
         userChart.data.datasets[0].data = [
-            data.users.customers,
-            data.users.artists,
-            data.users.stores
-        ];
-        userChart.data.datasets[0].backgroundColor = [
-            '#7e57c2',
-            '#ff9800',
-            '#4caf50'
+                    data.users.customers || 0,
+                    data.users.artists || 0,
+                    data.users.stores || 0
         ];
         userChart.update();
-        
-        // Update order chart with real data (monthly data)
-        const currentDate = new Date();
-        const monthLabels = [];
-        const monthlyOrderData = [];
-        
-        // Generate last 6 months
-        for (let i = 5; i >= 0; i--) {
-            const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
-            const monthName = monthDate.toLocaleDateString('en', { month: 'short' });
-            monthLabels.push(monthName);
-            
-            // Use some data from the API or generate sample data
-            // In a real implementation, you'd fetch monthly order data
-            monthlyOrderData.push(Math.floor(Math.random() * 50) + 10);
-        }
-        
-        orderChart.data.labels = monthLabels;
-        orderChart.data.datasets[0].data = monthlyOrderData;
-        orderChart.data.datasets[0].backgroundColor = '#5e35b1';
-        orderChart.data.datasets[0].label = 'Monthly Orders';
-        orderChart.update();
-        
+            }
     })
     .catch(error => {
-        console.error('Error fetching stats:', error);
-        
-        // Show error state in charts
-        userChart.data.labels = ['Error loading data'];
-        userChart.data.datasets[0].data = [1];
-        userChart.data.datasets[0].backgroundColor = ['#f44336'];
-        userChart.update();
-        
-        orderChart.data.labels = ['Error'];
-        orderChart.data.datasets[0].data = [0];
-        orderChart.data.datasets[0].backgroundColor = '#f44336';
-        orderChart.data.datasets[0].label = 'Error loading data';
-        orderChart.update();
-    });
+            console.error('Error fetching dashboard data:', error);
+        });
+    }
+    
+    // Initial data fetch
+    fetchDashboardData();
+    
+    // Refresh data every 5 minutes
+    setInterval(fetchDashboardData, 300000);
 </script>
 {% endblock %} 
