@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
 from .models import User, Customer, Artist, Store
+from .address_models import UserAddress
 
 class CustomerInline(admin.StackedInline):
     model = Customer
@@ -68,7 +69,14 @@ class StoreAdmin(admin.ModelAdmin):
     list_filter = ('is_verified', 'has_physical_store')
     search_fields = ('user__email', 'store_name', 'tax_id')
 
+class UserAddressAdmin(admin.ModelAdmin):
+    list_display = ('name', 'user', 'recipient_name', 'city', 'region', 'is_default', 'created_at')
+    list_filter = ('is_default', 'city', 'region')
+    search_fields = ('user__email', 'name', 'recipient_name', 'street', 'city', 'region')
+    readonly_fields = ('created_at', 'updated_at')
+
 admin.site.register(User, UserAdmin)
 admin.site.register(Customer, CustomerAdmin)
 admin.site.register(Artist, ArtistAdmin)
 admin.site.register(Store, StoreAdmin)
+admin.site.register(UserAddress, UserAddressAdmin)

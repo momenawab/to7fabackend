@@ -27,6 +27,7 @@ class Product(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField()
     base_price = models.DecimalField(max_digits=10, decimal_places=2)  # Base price for the product
+    stock_quantity = models.PositiveIntegerField(default=0, help_text="Stock quantity for products without variants")
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='products')
     seller = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -71,8 +72,13 @@ class Product(models.Model):
     
     @property
     def stock(self):
-        """Returns total stock across all variants"""
-        return sum(variant.stock_count for variant in self.variants.filter(is_active=True))
+        """Returns stock - either from variants or direct product stock"""
+        if self.has_variants:
+            # For products with variants, sum variant stock
+            return sum(variant.stock_count for variant in self.variants.filter(is_active=True))
+        else:
+            # For products without variants, use direct stock
+            return self.stock_quantity
     
     # Variant management methods
     def get_available_attributes(self):
@@ -93,13 +99,14 @@ class Product(models.Model):
             )
         return variants
     
+    @property
     def has_variants(self):
         """Check if product has any variants"""
         return self.variants.filter(is_active=True).exists()
     
     def get_price_range(self):
         """Get min and max price across all variants"""
-        if not self.has_variants():
+        if not self.has_variants:
             return self.base_price, self.base_price
         
         variants = self.variants.filter(is_active=True)

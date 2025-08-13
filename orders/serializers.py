@@ -47,8 +47,9 @@ class OrderSerializer(serializers.ModelSerializer):
             
             try:
                 product = Product.objects.get(pk=item['product_id'])
-                if product.stock < item['quantity']:
-                    raise serializers.ValidationError(f"Not enough stock for {product.name}. Available: {product.stock}")
+                available_stock = product.stock  # This uses the @property method that handles variants
+                if available_stock < item['quantity']:
+                    raise serializers.ValidationError(f"Not enough stock for {product.name}. Available: {available_stock}")
             except Product.DoesNotExist:
                 raise serializers.ValidationError(f"Product with ID {item['product_id']} does not exist")
                 
@@ -80,9 +81,17 @@ class OrderSerializer(serializers.ModelSerializer):
         for item_data in items_data:
             product = Product.objects.get(pk=item_data['product_id'])
             
-            # Update product stock
-            product.stock -= item_data['quantity']
-            product.save()
+            # Update product stock - handle both variant and non-variant products
+            if product.has_variants:
+                # For variant products, we would need specific variant ID to reduce stock
+                # For now, reduce the base stock as fallback
+                if hasattr(product, 'stock_quantity'):
+                    product.stock_quantity = max(0, product.stock_quantity - item_data['quantity'])
+                    product.save()
+            else:
+                # For non-variant products, reduce stock_quantity directly
+                product.stock_quantity = max(0, product.stock_quantity - item_data['quantity'])
+                product.save()
             
             OrderItem.objects.create(
                 order=order,

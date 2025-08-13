@@ -5,11 +5,31 @@ from products.models import Product
 class ProductMinimalSerializer(serializers.ModelSerializer):
     """Minimal product information for cart display"""
     seller_name = serializers.CharField(read_only=True)
+    image = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'stock', 'seller_name']
+        fields = ['id', 'name', 'price', 'stock', 'seller_name', 'image']
         read_only_fields = fields
+        
+    def get_image(self, obj):
+        """Get primary product image URL"""
+        primary_image = obj.images.filter(is_primary=True).first()
+        if primary_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(primary_image.image.url)
+            return primary_image.image.url
+        
+        # Fallback to first image if no primary
+        first_image = obj.images.first()
+        if first_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(first_image.image.url)
+            return first_image.image.url
+        
+        return None
 
 
 class CartItemSerializer(serializers.ModelSerializer):
@@ -20,8 +40,17 @@ class CartItemSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'product_id', 'quantity', 'line_total', 'added_at', 'updated_at']
+        fields = ['id', 'product', 'product_id', 'quantity', 'selected_variants', 'variant_id', 'line_total', 'added_at', 'updated_at']
         read_only_fields = ['id', 'line_total', 'added_at', 'updated_at']
+        
+    def to_representation(self, instance):
+        """Override to pass context to nested serializers"""
+        representation = super().to_representation(instance)
+        if self.context:
+            # Pass context to nested ProductMinimalSerializer
+            product_serializer = ProductMinimalSerializer(instance.product, context=self.context)
+            representation['product'] = product_serializer.data
+        return representation
     
     def validate_product_id(self, value):
         """Validate that the product exists and is active"""
@@ -65,12 +94,23 @@ class CartSerializer(serializers.ModelSerializer):
         model = Cart
         fields = ['id', 'user', 'items', 'total_items', 'subtotal', 'created_at', 'updated_at']
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+        
+    def to_representation(self, instance):
+        """Override to pass context to nested serializers"""
+        representation = super().to_representation(instance)
+        if self.context:
+            # Pass context to nested CartItemSerializer
+            items_serializer = CartItemSerializer(instance.items.all(), many=True, context=self.context)
+            representation['items'] = items_serializer.data
+        return representation
 
 
 class AddToCartSerializer(serializers.Serializer):
     """Serializer for adding items to cart"""
     product_id = serializers.IntegerField()
     quantity = serializers.IntegerField(default=1, min_value=1)
+    selected_variants = serializers.JSONField(required=False, allow_null=True)
+    variant_id = serializers.IntegerField(required=False, allow_null=True)
     
     def validate_product_id(self, value):
         """Validate that the product exists and is active"""

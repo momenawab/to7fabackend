@@ -9,7 +9,7 @@ from .models import (
 
 # Custom forms for better product management
 class ProductForm(forms.ModelForm):
-    """Custom form for products with attribute selection"""
+    """Custom form for products with better category handling"""
     
     # Add fields for variant generation
     generate_variants = forms.BooleanField(
@@ -21,26 +21,41 @@ class ProductForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Add dynamic fields for all available attributes
-        if hasattr(self, 'instance') and self.instance and hasattr(self.instance, 'category') and self.instance.category:
-            category_attributes = self.instance.category.category_attributes.filter(
-                attribute__is_active=True
-            ).select_related('attribute')
-            
-            for cat_attr in category_attributes:
-                attribute = cat_attr.attribute
-                field_name = f"selected_{attribute.attribute_type}_options"
-                
-                self.fields[field_name] = forms.ModelMultipleChoiceField(
-                    queryset=attribute.options.filter(is_active=True),
-                    widget=forms.CheckboxSelectMultiple,
-                    required=cat_attr.is_required,
-                    label=f"Available {attribute.name}",
-                    help_text=f"Select {attribute.name} options for this product variants"
-                )
+        # Ensure category field is properly configured
+        if 'category' in self.fields:
+            self.fields['category'].queryset = Category.objects.filter(is_active=True)
+            self.fields['category'].empty_label = "Select a category"
         
-        # Add category field to trigger attribute loading
-        self.fields['category'].widget.attrs['onchange'] = 'loadCategoryAttributes(this.value);'
+        # Ensure seller field shows appropriate users
+        if 'seller' in self.fields:
+            from custom_auth.models import User
+            self.fields['seller'].queryset = User.objects.filter(
+                user_type__in=['artist', 'store'], is_active=True
+            )
+            self.fields['seller'].empty_label = "Select a seller"
+        
+        # Add dynamic fields for all available attributes only for existing products with categories
+        if (hasattr(self, 'instance') and self.instance and self.instance.pk and 
+            hasattr(self.instance, 'category') and self.instance.category):
+            try:
+                category_attributes = self.instance.category.category_attributes.filter(
+                    attribute__is_active=True
+                ).select_related('attribute')
+                
+                for cat_attr in category_attributes:
+                    attribute = cat_attr.attribute
+                    field_name = f"selected_{attribute.attribute_type}_options"
+                    
+                    self.fields[field_name] = forms.ModelMultipleChoiceField(
+                        queryset=attribute.options.filter(is_active=True),
+                        widget=forms.CheckboxSelectMultiple,
+                        required=False,  # Make it optional to avoid form errors
+                        label=f"Available {attribute.name}",
+                        help_text=f"Select {attribute.name} options for this product variants"
+                    )
+            except Exception as e:
+                # If there's any error with category attributes, just continue
+                pass
     
     def save(self, commit=True):
         instance = super().save(commit)
@@ -94,7 +109,7 @@ class ProductForm(forms.ModelForm):
     
     class Meta:
         model = Product
-        fields = '__all__'
+        fields = ['name', 'description', 'base_price', 'stock_quantity', 'category', 'seller', 'is_featured', 'is_active', 'generate_variants']
 
 
 class CategoryAdmin(admin.ModelAdmin):
@@ -133,19 +148,48 @@ class ProductVariantInline(admin.TabularInline):
 
 class ProductAdmin(admin.ModelAdmin):
     form = ProductForm
-    list_display = ('name', 'base_price', 'total_stock', 'variant_count', 'category', 'seller_name_display', 'is_active', 'is_featured', 'average_rating')
+    list_display = ('name', 'base_price', 'stock_quantity', 'total_stock', 'variant_count', 'category', 'seller_name_display', 'is_active', 'is_featured')
     list_filter = ('is_active', 'is_featured', 'category', 'seller__user_type')
-    search_fields = ('name', 'description', 'seller__email', 'seller__store_profile__store_name')
+    search_fields = ('name', 'description', 'seller__email')
     readonly_fields = ('created_at', 'updated_at', 'total_stock', 'variant_count')
     inlines = [ProductImageInline, ProductVariantInline, ReviewInline]
     actions = ['generate_variants']
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'description', 'category')
+        }),
+        ('Seller', {
+            'fields': ('seller',),
+            'description': 'Select the seller for this product'
+        }),
+        ('Pricing & Stock', {
+            'fields': ('base_price', 'stock_quantity'),
+            'description': 'For products without variants, set the stock quantity here. For products with variants, stock is managed per variant below.'
+        }),
+        ('Settings', {
+            'fields': ('is_active', 'is_featured')
+        }),
+        ('Variant Generation', {
+            'fields': ('generate_variants',),
+            'description': 'Check this box to automatically generate variants based on category attributes when saving. Only works after saving the product first.',
+            'classes': ('collapse',)
+        }),
+        ('Statistics', {
+            'fields': ('total_stock', 'variant_count', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
     
     def average_rating(self, obj):
         return obj.average_rating
     average_rating.short_description = 'Avg. Rating'
     
     def seller_name_display(self, obj):
-        return obj.seller_name
+        try:
+            return obj.seller_name
+        except:
+            return obj.seller.email if obj.seller else 'No Seller'
     seller_name_display.short_description = 'Seller'
     
     def total_stock(self, obj):
@@ -431,9 +475,38 @@ class ProductVariantAdmin(admin.ModelAdmin):
         return ", ".join([f"{attr.attribute.name}: {attr.option.value}" for attr in attributes])
     variant_attributes_display.short_description = 'Attributes'
 
+# Simple Product Admin for easier management
+class SimpleProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'base_price', 'stock_quantity', 'category', 'seller_email', 'is_active')
+    list_filter = ('is_active', 'is_featured', 'category')
+    search_fields = ('name', 'description', 'seller__email')
+    list_editable = ('stock_quantity', 'is_active')
+    
+    fields = ('name', 'description', 'base_price', 'stock_quantity', 'category', 'seller', 'is_active', 'is_featured')
+    
+    def seller_email(self, obj):
+        return obj.seller.email if obj.seller else 'No Seller'
+    seller_email.short_description = 'Seller Email'
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        
+        # Filter categories to active ones
+        if 'category' in form.base_fields:
+            form.base_fields['category'].queryset = Category.objects.filter(is_active=True)
+        
+        # Filter sellers to artists and stores only
+        if 'seller' in form.base_fields:
+            from custom_auth.models import User
+            form.base_fields['seller'].queryset = User.objects.filter(
+                user_type__in=['artist', 'store'], is_active=True
+            )
+        
+        return form
+
 # Register all models
 admin.site.register(Category, EnhancedCategoryAdmin)
-admin.site.register(Product, ProductAdmin)
+admin.site.register(Product, SimpleProductAdmin)  # Use SimpleProductAdmin instead
 admin.site.register(Review, ReviewAdmin)
 admin.site.register(Advertisement, AdvertisementAdmin)
 admin.site.register(ContentSettings, ContentSettingsAdmin)

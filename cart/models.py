@@ -22,52 +22,77 @@ class Cart(models.Model):
         """Calculate the subtotal of all items in the cart"""
         return sum(item.line_total for item in self.items.all())
     
-    def add_item(self, product, quantity=1):
+    def add_item(self, product, quantity=1, selected_variants=None, variant_id=None):
         """Add a product to the cart or update quantity if already exists"""
         if quantity <= 0:
             raise ValueError("Quantity must be positive")
             
         if product.stock < quantity:
             raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
-            
-        cart_item, created = CartItem.objects.get_or_create(
-            cart=self,
-            product=product,
-            defaults={'quantity': quantity}
-        )
         
-        if not created:
-            # Item already exists, update quantity
-            cart_item.quantity += quantity
-            if cart_item.quantity > product.stock:
-                raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
-            cart_item.save()
+        # For variant products, check if exact variant combination already exists
+        if selected_variants or variant_id:
+            existing_items = self.items.filter(
+                product=product,
+                selected_variants=selected_variants,
+                variant_id=variant_id
+            )
+            if existing_items.exists():
+                cart_item = existing_items.first()
+                cart_item.quantity += quantity
+                if cart_item.quantity > product.stock:
+                    raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
+                cart_item.save()
+            else:
+                cart_item = CartItem.objects.create(
+                    cart=self,
+                    product=product,
+                    quantity=quantity,
+                    selected_variants=selected_variants,
+                    variant_id=variant_id
+                )
+        else:
+            # Regular product without variants
+            cart_item, created = CartItem.objects.get_or_create(
+                cart=self,
+                product=product,
+                selected_variants=None,
+                variant_id=None,
+                defaults={'quantity': quantity}
+            )
+            
+            if not created:
+                # Item already exists, update quantity
+                cart_item.quantity += quantity
+                if cart_item.quantity > product.stock:
+                    raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
+                cart_item.save()
             
         self.save()  # Update cart timestamp
         return cart_item
     
-    def update_item(self, product, quantity):
-        """Update the quantity of a product in the cart"""
+    def update_item_by_id(self, cart_item_id, quantity):
+        """Update the quantity of a specific cart item by ID"""
         if quantity <= 0:
-            return self.remove_item(product)
+            return self.remove_item_by_id(cart_item_id)
             
         try:
-            cart_item = self.items.get(product=product)
+            cart_item = self.items.get(id=cart_item_id)
             
-            if product.stock < quantity:
-                raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
+            if cart_item.product.stock < quantity:
+                raise ValueError(f"Not enough stock available. Only {cart_item.product.stock} items left.")
                 
             cart_item.quantity = quantity
             cart_item.save()
             self.save()  # Update cart timestamp
             return cart_item
         except CartItem.DoesNotExist:
-            return self.add_item(product, quantity)
+            raise ValueError("Cart item not found")
     
-    def remove_item(self, product):
-        """Remove a product from the cart"""
+    def remove_item_by_id(self, cart_item_id):
+        """Remove a specific cart item by ID"""
         try:
-            cart_item = self.items.get(product=product)
+            cart_item = self.items.get(id=cart_item_id)
             cart_item.delete()
             self.save()  # Update cart timestamp
             return True
@@ -86,11 +111,14 @@ class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
+    selected_variants = models.JSONField(null=True, blank=True, help_text="Selected product variants as key-value pairs")
+    variant_id = models.IntegerField(null=True, blank=True, help_text="Specific variant ID if applicable")
     added_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        unique_together = ('cart', 'product')
+        # Remove unique_together since we now allow same product with different variants
+        pass
         
     def __str__(self):
         return f"{self.quantity} x {self.product.name} in {self.cart}"
