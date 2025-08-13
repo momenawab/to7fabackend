@@ -834,10 +834,18 @@ def create_product_with_variants(request):
             if isinstance(is_featured, str):
                 is_featured = is_featured.lower() in ('true', '1', 'yes', 'on')
             
+            # Get stock quantity (default to 0 if not provided)
+            stock_quantity = request.data.get('stock_quantity', 0)
+            try:
+                stock_quantity = int(stock_quantity) if stock_quantity else 0
+            except (ValueError, TypeError):
+                stock_quantity = 0
+                
             product_data = {
                 'name': name,
                 'description': description,
                 'base_price': base_price,
+                'stock_quantity': stock_quantity,
                 'category_id': category_id,
                 'is_featured': bool(is_featured),
                 'seller': request.user,
@@ -1086,6 +1094,13 @@ def update_product_with_variants(request, product_id):
             product.name = request.data.get('name', product.name)
             product.description = request.data.get('description', product.description)
             product.base_price = float(request.data.get('base_price', product.base_price))
+            
+            # Update stock quantity
+            stock_quantity = request.data.get('stock_quantity', product.stock_quantity)
+            try:
+                product.stock_quantity = int(stock_quantity) if stock_quantity else 0
+            except (ValueError, TypeError):
+                product.stock_quantity = product.stock_quantity  # Keep current value if invalid
             
             category_id = request.data.get('category')
             if category_id:

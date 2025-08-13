@@ -22,7 +22,7 @@ def cart_detail(request):
     """
     # Get or create cart for the user
     cart, created = Cart.objects.get_or_create(user=request.user)
-    serializer = CartSerializer(cart)
+    serializer = CartSerializer(cart, context={'request': request})
     return Response(serializer.data)
 
 @api_view(['POST'])
@@ -35,6 +35,8 @@ def add_to_cart(request):
     if serializer.is_valid():
         product_id = serializer.validated_data['product_id']
         quantity = serializer.validated_data['quantity']
+        selected_variants = serializer.validated_data.get('selected_variants')
+        variant_id = serializer.validated_data.get('variant_id')
         
         # Get the product
         product = get_object_or_404(Product, id=product_id, is_active=True)
@@ -43,11 +45,16 @@ def add_to_cart(request):
         cart, created = Cart.objects.get_or_create(user=request.user)
         
         try:
-            # Add the product to the cart
-            cart_item = cart.add_item(product, quantity)
+            # Add the product to the cart with variant information
+            cart_item = cart.add_item(
+                product=product, 
+                quantity=quantity,
+                selected_variants=selected_variants,
+                variant_id=variant_id
+            )
             
             # Return the updated cart
-            cart_serializer = CartSerializer(cart)
+            cart_serializer = CartSerializer(cart, context={'request': request})
             return Response(cart_serializer.data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -84,13 +91,13 @@ def update_cart_item(request, item_id):
         try:
             if quantity > 0:
                 # Update the item quantity
-                cart.update_item(cart_item.product, quantity)
+                cart.update_item_by_id(item_id, quantity)
             else:
                 # Remove the item if quantity is 0
-                cart.remove_item(cart_item.product)
+                cart.remove_item_by_id(item_id)
             
             # Return the updated cart
-            cart_serializer = CartSerializer(cart)
+            cart_serializer = CartSerializer(cart, context={'request': request})
             return Response(cart_serializer.data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -117,10 +124,10 @@ def remove_from_cart(request, item_id):
     cart = cart_item.cart
     
     # Remove the item
-    cart.remove_item(cart_item.product)
+    cart.remove_item_by_id(item_id)
     
     # Return the updated cart
-    cart_serializer = CartSerializer(cart)
+    cart_serializer = CartSerializer(cart, context={'request': request})
     return Response(cart_serializer.data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
@@ -136,5 +143,5 @@ def clear_cart(request):
     cart.clear()
     
     # Return the empty cart
-    cart_serializer = CartSerializer(cart)
+    cart_serializer = CartSerializer(cart, context={'request': request})
     return Response(cart_serializer.data, status=status.HTTP_200_OK)

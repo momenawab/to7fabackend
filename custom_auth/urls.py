@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from rest_framework.authtoken import views as auth_views
 from . import views
 from . import api_views
@@ -25,4 +25,5 @@ urlpatterns = [
     path('api/stores/top/', api_views.top_stores, name='top_stores'),
     path('api/stores/featured/', api_views.featured_stores, name='featured_stores'),
     path('api/stores/search/', api_views.search_stores, name='search_stores'),
+    
 ] 
