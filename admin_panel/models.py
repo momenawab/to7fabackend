@@ -16,6 +16,7 @@ class SellerApplication(models.Model):
         ('pending', 'Pending'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
+        ('rejected_permanently', 'Rejected Permanently'),
     )
     USER_TYPE_CHOICES = (
         ('artist', 'Artist'),
@@ -56,7 +57,7 @@ class SellerApplication(models.Model):
     physical_address = models.TextField(blank=True, null=True)
     
     # Application status
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending')
     admin_notes = models.TextField(blank=True, null=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(blank=True, null=True)

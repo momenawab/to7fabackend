@@ -4,31 +4,103 @@
 
 {% block page_title %}Seller Application Details{% endblock %}
 
+{% block extra_css %}
+<style>
+    .info-card {
+        border-left: 4px solid #6f42c1;
+        background: #f8f9fa;
+    }
+    .shipping-available {
+        color: #28a745;
+        font-weight: bold;
+    }
+    .shipping-unavailable {
+        color: #dc3545;
+        text-decoration: line-through;
+    }
+    .badge-category {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .badge-subcategory {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+    .id-document {
+        max-width: 300px;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        transition: transform 0.2s;
+    }
+    .id-document:hover {
+        transform: scale(1.05);
+        border-color: #6f42c1;
+    }
+    .social-link {
+        display: inline-block;
+        margin: 5px 10px 5px 0;
+        padding: 8px 15px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 20px;
+        text-decoration: none;
+        color: #6f42c1;
+        transition: all 0.2s;
+    }
+    .social-link:hover {
+        background: #6f42c1;
+        color: white;
+        text-decoration: none;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-md-8">
-        <!-- Application Details Card -->
-        <div class="card mb-4">
+        <!-- Application Status Card -->
+        <div class="card mb-4 info-card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Application #{{ application.id }}</span>
+                <span><strong>Application #{{ application.id }}</strong></span>
                 <div>
                     {% if application.status == 'pending' %}
-                    <span class="badge bg-warning">Pending</span>
+                    <span class="badge bg-warning text-dark">⏳ Pending Review</span>
                     {% elif application.status == 'approved' %}
-                    <span class="badge bg-success">Approved</span>
+                    <span class="badge bg-success">✅ Approved</span>
                     {% elif application.status == 'rejected' %}
-                    <span class="badge bg-danger">Rejected</span>
+                    <span class="badge bg-danger">❌ Rejected</span>
+                    {% elif application.status == 'rejected_permanently' %}
+                    <span class="badge bg-dark">🚫 Permanently Rejected</span>
                     {% endif %}
                 </div>
             </div>
             <div class="card-body">
-                <div class="row mb-4">
+                <div class="row">
                     <div class="col-md-6">
-                        <h5 class="mb-3">Basic Information</h5>
+                        <h6 class="text-muted">📅 SUBMITTED</h6>
+                        <p class="mb-2">{{ application.submitted_at|date:"F d, Y H:i" }}</p>
+                    </div>
+                    {% if application.processed_at %}
+                    <div class="col-md-6">
+                        <h6 class="text-muted">⚡ PROCESSED</h6>
+                        <p class="mb-2">{{ application.processed_at|date:"F d, Y H:i" }}</p>
+                        <small class="text-muted">by {{ application.processed_by.email }}</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Basic Information Card -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">👤 Basic Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
                         <table class="table table-borderless">
                             <tr>
                                 <th style="width: 120px;">Name:</th>
-                                <td>{{ application.name }}</td>
+                                <td><strong>{{ application.name }}</strong></td>
                             </tr>
                             <tr>
                                 <th>Email:</th>
@@ -39,158 +111,295 @@
                                 <td>{{ application.phone_number }}</td>
                             </tr>
                             <tr>
-                                <th>Address:</th>
-                                <td>{{ application.address }}</td>
-                            </tr>
-                            <tr>
                                 <th>Type:</th>
-                                <td>{{ application.get_user_type_display }}</td>
-                            </tr>
-                            <tr>
-                                <th>Submitted:</th>
-                                <td>{{ application.submitted_at|date:"F d, Y H:i" }}</td>
-                            </tr>
-                        </table>
-                    </div>
-                    <div class="col-md-6">
-                        <h5 class="mb-3">Shipping Information</h5>
-                        <table class="table table-borderless">
-                            <tr>
-                                <th style="width: 150px;">Shipping Company:</th>
-                                <td>{{ application.shipping_company }}</td>
-                            </tr>
-                            <tr>
-                                <th>Shipping Costs:</th>
                                 <td>
-                                    <ul class="list-unstyled">
-                                        {% for governorate, cost in application.shipping_costs.items %}
-                                        <li>{{ governorate }}: ${{ cost }}</li>
-                                        {% endfor %}
-                                    </ul>
+                                    {% if application.user_type == 'artist' %}
+                                    <span class="badge bg-primary">🎨 Artist</span>
+                                    {% else %}
+                                    <span class="badge bg-info">🏪 Store</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                         </table>
                     </div>
-                </div>
-                
-                <hr>
-                
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Details</h5>
-                        <p>{{ application.details }}</p>
-                    </div>
-                </div>
-                
-                <hr>
-                
-                <!-- User Type Specific Fields -->
-                {% if application.user_type == 'artist' %}
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Artist Information</h5>
+                    <div class="col-md-6">
                         <table class="table table-borderless">
                             <tr>
-                                <th style="width: 120px;">Specialty:</th>
-                                <td>{{ application.specialty }}</td>
+                                <th style="width: 120px;">Address:</th>
+                                <td>{{ application.address }}</td>
                             </tr>
+                            {% if application.bio %}
                             <tr>
                                 <th>Bio:</th>
                                 <td>{{ application.bio }}</td>
                             </tr>
+                            {% endif %}
+                            {% if application.terms_accepted_at %}
+                            <tr>
+                                <th>Terms Accepted:</th>
+                                <td>{{ application.terms_accepted_at|date:"F d, Y H:i" }}</td>
+                            </tr>
+                            {% endif %}
                         </table>
                     </div>
                 </div>
-                {% elif application.user_type == 'store' %}
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Store Information</h5>
-                        <table class="table table-borderless">
-                            <tr>
-                                <th style="width: 150px;">Store Name:</th>
-                                <td>{{ application.store_name }}</td>
-                            </tr>
-                            <tr>
-                                <th>Tax ID:</th>
-                                <td>{{ application.tax_id }}</td>
-                            </tr>
-                            <tr>
-                                <th>Physical Store:</th>
-                                <td>{{ application.has_physical_store|yesno:"Yes,No" }}</td>
-                            </tr>
+            </div>
+        </div>
+
+        <!-- User Type Specific Information -->
+        {% if application.user_type == 'artist' %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">🎨 Artist Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th style="width: 120px;">Specialty:</th>
+                        <td><span class="badge bg-primary">{{ application.specialty }}</span></td>
+                    </tr>
+                    {% if application.bio %}
+                    <tr>
+                        <th>Bio:</th>
+                        <td>{{ application.bio }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        {% elif application.user_type == 'store' %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">🏪 Store Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <th style="width: 150px;">Store Name:</th>
+                        <td><strong>{{ application.store_name }}</strong></td>
+                    </tr>
+                    {% if application.tax_id %}
+                    <tr>
+                        <th>Tax ID:</th>
+                        <td>{{ application.tax_id }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <th>Physical Store:</th>
+                        <td>
                             {% if application.has_physical_store %}
-                            <tr>
-                                <th>Physical Address:</th>
-                                <td>{{ application.physical_address }}</td>
-                            </tr>
+                            <span class="badge bg-success">✅ Yes</span>
+                            {% else %}
+                            <span class="badge bg-secondary">❌ No</span>
                             {% endif %}
-                        </table>
+                        </td>
+                    </tr>
+                    {% if application.has_physical_store and application.physical_address %}
+                    <tr>
+                        <th>Physical Address:</th>
+                        <td>{{ application.physical_address }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Categories & Subcategories -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">🏷️ Categories & Subcategories</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <h6>Main Categories:</h6>
+                    <div class="d-flex flex-wrap">
+                        {% for category in category_names %}
+                        <span class="badge badge-category me-2 mb-2 p-2">
+                            {{ category.name }}
+                            <small class="opacity-75">(ID: {{ category.id }})</small>
+                        </span>
+                        {% empty %}
+                        <span class="text-muted">No categories selected</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                {% if subcategories %}
+                <div class="mb-3">
+                    <h6>Subcategories:</h6>
+                    <div class="d-flex flex-wrap">
+                        {% for subcategory in subcategories %}
+                        <span class="badge badge-subcategory me-2 mb-2 p-2">
+                            {{ subcategory.name }}
+                            <small class="opacity-75">(ID: {{ subcategory.id }})</small>
+                        </span>
+                        {% endfor %}
                     </div>
                 </div>
                 {% endif %}
-                
-                <hr>
-                
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Categories</h5>
-                        <div class="d-flex flex-wrap">
-                            {% for category_id in application.categories %}
-                            <span class="badge bg-purple me-2 mb-2 p-2">Category ID: {{ category_id }}</span>
+            </div>
+        </div>
+
+        <!-- Social Media -->
+        {% if application.social_media %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">🌐 Social Media</h5>
+            </div>
+            <div class="card-body">
+                {% for platform, url in application.social_media.items %}
+                    {% if url %}
+                    <a href="{{ url }}" target="_blank" class="social-link">
+                        {% if platform == 'facebook' %}📘 Facebook
+                        {% elif platform == 'instagram' %}📷 Instagram  
+                        {% elif platform == 'behance' %}🎨 Behance
+                        {% else %}🔗 {{ platform|capfirst }}
+                        {% endif %}
+                    </a>
+                    {% endif %}
+                {% empty %}
+                <p class="text-muted">No social media links provided</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Shipping Information -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between">
+                <h5 class="mb-0">🚚 Shipping Information</h5>
+                <span class="badge bg-info">{{ shipping_stats.available }}/{{ shipping_stats.total }} Available</span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-success">✅ Available Shipping:</h6>
+                        <ul class="list-unstyled">
+                            {% for shipping in shipping_costs_with_names %}
+                                {% if shipping.available %}
+                                <li class="shipping-available">{{ shipping.name }}: {{ shipping.cost }} EGP</li>
+                                {% endif %}
+                            {% empty %}
+                            <li class="text-muted">No available shipping locations</li>
                             {% endfor %}
-                        </div>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-danger">❌ Not Available:</h6>
+                        <ul class="list-unstyled">
+                            {% for shipping in shipping_costs_with_names %}
+                                {% if not shipping.available %}
+                                <li class="shipping-unavailable">{{ shipping.name }}</li>
+                                {% endif %}
+                            {% endfor %}
+                        </ul>
                     </div>
                 </div>
-                
-                {% if application.photo %}
-                <hr>
-                
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <h5 class="mb-3">Photo</h5>
-                        <img src="{{ application.photo.url }}" alt="{{ application.name }}" class="img-fluid rounded" style="max-height: 300px;">
+            </div>
+        </div>
+
+        <!-- ID Documents -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">🆔 ID Documents</h5>
+            </div>
+            <div class="card-body text-center">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Front ID</h6>
+                        {% if application.id_front %}
+                        <a href="{{ application.id_front.url }}" target="_blank">
+                            <img src="{{ application.id_front.url }}" alt="ID Front" class="img-fluid id-document">
+                        </a>
+                        {% else %}
+                        <div class="alert alert-warning">No front ID uploaded</div>
+                        {% endif %}
                     </div>
+                    <div class="col-md-6">
+                        <h6>Back ID</h6>
+                        {% if application.id_back %}
+                        <a href="{{ application.id_back.url }}" target="_blank">
+                            <img src="{{ application.id_back.url }}" alt="ID Back" class="img-fluid id-document">
+                        </a>
+                        {% else %}
+                        <div class="alert alert-warning">No back ID uploaded</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Additional Details -->
+        {% if application.details %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">📝 Additional Details</h5>
+            </div>
+            <div class="card-body">
+                <pre class="bg-light p-3 rounded">{{ application.details }}</pre>
+            </div>
+        </div>
+        {% endif %}
+                
+        <!-- Process Application -->
+        {% if application.status == 'pending' %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">⚡ Process Application</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'admin_panel:process_application' application.id %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="admin_notes" class="form-label">Admin Notes</label>
+                        <textarea class="form-control" id="admin_notes" name="admin_notes" rows="4" 
+                                  placeholder="Add notes about this application..."></textarea>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" name="action" value="approve" class="btn btn-success btn-lg">
+                            ✅ Approve Application
+                        </button>
+                        <button type="submit" name="action" value="reject" class="btn btn-warning">
+                            ❌ Reject (Can Reapply)
+                        </button>
+                        <button type="submit" name="action" value="reject_permanently" class="btn btn-danger">
+                            🚫 Reject Permanently
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Admin Notes & Status -->
+        {% if application.admin_notes or application.processed_at %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">📝 Admin Notes & Processing</h5>
+            </div>
+            <div class="card-body">
+                {% if application.admin_notes %}
+                <div class="alert alert-info">
+                    <strong>Admin Notes:</strong><br>
+                    {{ application.admin_notes|linebreaks }}
                 </div>
                 {% endif %}
                 
-                {% if application.status == 'pending' %}
-                <hr>
-                
-                <div class="row">
-                    <div class="col-12">
-                        <h5 class="mb-3">Process Application</h5>
-                        <form method="post" action="{% url 'admin_panel:process_application' application.id %}">
-                            {% csrf_token %}
-                            <div class="mb-3">
-                                <label for="notes" class="form-label">Admin Notes</label>
-                                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
-                            </div>
-                            <div class="d-flex">
-                                <button type="submit" name="action" value="approve" class="btn btn-success me-2">
-                                    <i class="fas fa-check me-1"></i> Approve
-                                </button>
-                                <button type="submit" name="action" value="reject" class="btn btn-danger">
-                                    <i class="fas fa-times me-1"></i> Reject
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                {% else %}
-                <hr>
-                
-                <div class="row">
-                    <div class="col-12">
-                        <h5 class="mb-3">Admin Notes</h5>
-                        <p>{{ application.admin_notes|default:"No notes provided" }}</p>
-                        <p class="text-muted">
-                            {% if application.processed_at %}
-                            Processed on {{ application.processed_at|date:"F d, Y H:i" }} by {{ application.processed_by.email }}
-                            {% endif %}
-                        </p>
-                    </div>
+                {% if application.processed_at %}
+                <div class="text-muted">
+                    <small>
+                        <i class="fas fa-clock"></i> 
+                        Processed on {{ application.processed_at|date:"F d, Y H:i" }}
+                        {% if application.processed_by %}
+                        by <strong>{{ application.processed_by.email }}</strong>
+                        {% endif %}
+                    </small>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+        {% endif %}
             </div>
         </div>
     </div>
