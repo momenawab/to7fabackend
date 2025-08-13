@@ -115,6 +115,42 @@ class SellerApplicationCreateSerializer(serializers.ModelSerializer):
         allow_empty=True,
         help_text="List of subcategory IDs"
     )
+    details = serializers.CharField(required=False, allow_blank=True, default='')
+    
+    def to_internal_value(self, data):
+        # Convert QueryDict to regular dict and handle multipart form data
+        from django.http import QueryDict
+        if isinstance(data, QueryDict):
+            # Convert QueryDict to regular dict, extracting first value from lists
+            processed_data = {}
+            for key, value_list in data.lists():
+                if key in ['id_front', 'id_back']:
+                    # Keep file uploads as-is
+                    processed_data[key] = value_list[0] if value_list else None
+                else:
+                    # For other fields, take the first value
+                    processed_data[key] = value_list[0] if value_list else None
+            data = processed_data
+        
+        # Handle form data where JSON fields are sent as strings
+        if isinstance(data, dict):
+            # Parse JSON string fields that come from multipart form data
+            json_fields = ['categories', 'subcategories', 'social_media', 'shipping_costs']
+            for field in json_fields:
+                if field in data and isinstance(data[field], str):
+                    try:
+                        import json
+                        data[field] = json.loads(data[field])
+                    except (json.JSONDecodeError, TypeError):
+                        pass  # Let the field validator handle the error
+            
+            # Handle boolean fields that come as strings in form data
+            bool_fields = ['terms_accepted', 'has_physical_store']
+            for field in bool_fields:
+                if field in data and isinstance(data[field], str):
+                    data[field] = data[field].lower() in ('true', '1', 'yes', 'on')
+        
+        return super().to_internal_value(data)
     
     class Meta:
         model = SellerApplication
@@ -165,6 +201,35 @@ class SellerApplicationCreateSerializer(serializers.ModelSerializer):
         if invalid_categories:
             raise serializers.ValidationError(
                 f"Invalid category IDs: {list(invalid_categories)}"
+            )
+            
+        return value
+        
+    def validate_subcategories(self, value):
+        """Validate that subcategories exist and are active"""
+        # Handle empty values
+        if not value or value == [] or value == '[]':
+            return []
+            
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Subcategories must be a list")
+        
+        # Ensure all items are integers
+        try:
+            value = [int(item) for item in value]
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("All subcategory IDs must be integers")
+        
+        # Check that all subcategory IDs exist and are active
+        from products.models import Category
+        existing_subcategories = Category.objects.filter(
+            id__in=value, is_active=True, parent__isnull=False
+        ).values_list('id', flat=True)
+        
+        invalid_subcategories = set(value) - set(existing_subcategories)
+        if invalid_subcategories:
+            raise serializers.ValidationError(
+                f"Invalid subcategory IDs: {list(invalid_subcategories)}"
             )
             
         return value

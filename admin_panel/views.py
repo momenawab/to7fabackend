@@ -145,8 +145,74 @@ def seller_applications(request):
 def seller_application_detail(request, application_id):
     application = get_object_or_404(SellerApplication, id=application_id)
     
+    # Get category names instead of IDs
+    category_names = []
+    if application.categories:
+        for cat_id in application.categories:
+            try:
+                category = Category.objects.get(id=cat_id)
+                category_names.append({'id': cat_id, 'name': category.name})
+            except Category.DoesNotExist:
+                category_names.append({'id': cat_id, 'name': f'Unknown Category (ID: {cat_id})'})
+    
+    # Get subcategories from details if available
+    subcategories = []
+    if application.details and 'subcategories:' in application.details.lower():
+        import re
+        import json
+        lines = application.details.split('\n')
+        for line in lines:
+            if 'subcategories:' in line.lower():
+                try:
+                    match = re.search(r'subcategories:\s*(\[.*?\])', line)
+                    if match:
+                        subcat_ids = json.loads(match.group(1))
+                        for subcat_id in subcat_ids:
+                            try:
+                                subcategory = Category.objects.get(id=subcat_id)
+                                subcategories.append({'id': subcat_id, 'name': subcategory.name})
+                            except Category.DoesNotExist:
+                                subcategories.append({'id': subcat_id, 'name': f'Unknown Subcategory (ID: {subcat_id})'})
+                except:
+                    pass
+    
+    # Egyptian governorates mapping for shipping costs
+    gov_names = {
+        '1': 'القاهرة', '2': 'الجيزة', '3': 'الأقصر', '4': 'أسوان', '5': 'أسيوط',
+        '6': 'البحيرة', '7': 'بني سويف', '8': 'البحر الأحمر', '9': 'الدقهلية', '10': 'دمياط',
+        '11': 'الفيوم', '12': 'الغربية', '13': 'الإسماعيلية', '14': 'كفر الشيخ', '15': 'مطروح',
+        '16': 'المنيا', '17': 'المنوفية', '18': 'الوادي الجديد', '19': 'شمال سيناء', '20': 'بورسعيد',
+        '21': 'القليوبية', '22': 'قنا', '23': 'الشرقية', '24': 'سوهاج', '25': 'جنوب سيناء',
+        '26': 'السويس', '27': 'الإسكندرية'
+    }
+    
+    # Process shipping costs with names
+    shipping_costs_with_names = []
+    if application.shipping_costs:
+        for gov_id, cost in application.shipping_costs.items():
+            gov_name = gov_names.get(str(gov_id), f'Governorate {gov_id}')
+            shipping_costs_with_names.append({
+                'id': gov_id,
+                'name': gov_name,
+                'cost': float(cost),
+                'available': float(cost) > 0
+            })
+        # Sort by availability first, then by name
+        shipping_costs_with_names.sort(key=lambda x: (not x['available'], x['name']))
+    
+    # Calculate shipping statistics
+    shipping_stats = {
+        'total': len(shipping_costs_with_names),
+        'available': sum(1 for item in shipping_costs_with_names if item['available']),
+        'unavailable': sum(1 for item in shipping_costs_with_names if not item['available'])
+    }
+    
     context = {
         'application': application,
+        'category_names': category_names,
+        'subcategories': subcategories,
+        'shipping_costs_with_names': shipping_costs_with_names,
+        'shipping_stats': shipping_stats,
         'active_tab': 'applications'
     }
     
@@ -251,9 +317,29 @@ def process_application(request, application_id):
             AdminActivity.objects.create(
                 admin=request.user,
                 action='reject',
-                description=f"Rejected seller application #{application.id} for {application.name}",
+                description=f"Rejected seller application #{application.id} for {application.name} - can reapply",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
+            
+            messages.success(request, f"Application #{application.id} has been rejected. User can reapply.")
+        
+        elif action == 'reject_permanently':
+            # Update application status
+            application.status = 'rejected_permanently'
+            application.admin_notes = admin_notes or 'Application permanently rejected. User cannot reapply.'
+            application.processed_at = timezone.now()
+            application.processed_by = request.user
+            application.save()
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='reject',
+                description=f"Permanently rejected seller application #{application.id} for {application.name}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+            
+            messages.warning(request, f"Application #{application.id} has been permanently rejected.")
             
             # Send notification to user
             notes_message = f"\n\nReason for rejection: {admin_notes}" if admin_notes else ""

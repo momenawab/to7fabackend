@@ -1517,6 +1517,19 @@ def create_seller_application(request):
             'status': existing_application.status
         }, status=status.HTTP_400_BAD_REQUEST)
     
+    # Check if user has been permanently rejected
+    permanently_rejected = SellerApplication.objects.filter(
+        user=request.user,
+        status='rejected_permanently'
+    ).first()
+    
+    if permanently_rejected:
+        return Response({
+            'error': 'Your seller application has been permanently rejected. You cannot apply again.',
+            'status': 'rejected_permanently',
+            'admin_notes': permanently_rejected.admin_notes
+        }, status=status.HTTP_403_FORBIDDEN)
+    
     serializer = SellerApplicationCreateSerializer(
         data=request.data, 
         context={'request': request}
