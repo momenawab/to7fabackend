@@ -16,7 +16,7 @@ from orders.models import Order, OrderItem
 from .models import SellerApplication, AdminActivity, AdminNotification
 from .serializers import (
     SellerApplicationSerializer, UserSerializer, ProductSerializer,
-    OrderSerializer, AdminNotificationSerializer
+    OrderSerializer, AdminNotificationSerializer, SellerApplicationCreateSerializer
 )
 
 class AdminPagination(PageNumberPagination):
@@ -1497,3 +1497,160 @@ def manage_advertisement_detail(request, ad_id):
             return Response({
                 'error': f'Failed to delete advertisement: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Seller Registration API Endpoints
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])  # Only authenticated users can apply
+def create_seller_application(request):
+    """API endpoint for users to submit seller applications"""
+    
+    # Check if user already has a pending/approved application
+    existing_application = SellerApplication.objects.filter(
+        user=request.user,
+        status__in=['pending', 'approved']
+    ).first()
+    
+    if existing_application:
+        return Response({
+            'error': 'You already have a pending or approved seller application',
+            'status': existing_application.status
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    serializer = SellerApplicationCreateSerializer(
+        data=request.data, 
+        context={'request': request}
+    )
+    
+    if serializer.is_valid():
+        application = serializer.save()
+        
+        # Create admin notification
+        AdminNotification.objects.create(
+            title='New Seller Application',
+            message=f'New {application.get_user_type_display()} application from {application.name} ({application.email})',
+            notification_type='new_application',
+            link=f'/admin/seller-applications/{application.id}/'
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Seller application submitted successfully',
+            'application_id': application.id
+        }, status=status.HTTP_201_CREATED)
+    
+    return Response({
+        'errors': serializer.errors
+    }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([])  # Allow any user to get categories
+def get_categories_for_seller(request):
+    """API endpoint to get categories for seller registration"""
+    from products.models import Category
+    
+    categories = Category.objects.filter(is_active=True, parent__isnull=True).order_by('name')
+    
+    categories_data = []
+    for category in categories:
+        categories_data.append({
+            'id': category.id,
+            'name': category.name,
+            'description': category.description or '',
+        })
+    
+    return Response(categories_data)
+
+
+@api_view(['GET'])
+@permission_classes([])  # Allow any user to get subcategories
+def get_subcategories_for_seller(request, category_id):
+    """API endpoint to get subcategories for a main category"""
+    from products.models import Category
+    
+    try:
+        # Check if main category exists
+        main_category = Category.objects.get(id=category_id, is_active=True)
+        
+        # Get subcategories
+        subcategories = Category.objects.filter(
+            parent=main_category, 
+            is_active=True
+        ).order_by('name')
+        
+        subcategories_data = []
+        for subcategory in subcategories:
+            subcategories_data.append({
+                'id': subcategory.id,
+                'name': subcategory.name,
+                'description': subcategory.description or '',
+                'parent_id': subcategory.parent_id,
+            })
+        
+        return Response(subcategories_data)
+        
+    except Category.DoesNotExist:
+        return Response({
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([])  # Allow any user to get governorates
+def get_egyptian_governorates(request):
+    """API endpoint to get Egyptian governorates for shipping costs"""
+    
+    # Egyptian governorates list
+    governorates = [
+        {'id': 1, 'name': 'القاهرة', 'name_en': 'Cairo'},
+        {'id': 2, 'name': 'الجيزة', 'name_en': 'Giza'},
+        {'id': 3, 'name': 'الأقصر', 'name_en': 'Luxor'},
+        {'id': 4, 'name': 'أسوان', 'name_en': 'Aswan'},
+        {'id': 5, 'name': 'أسيوط', 'name_en': 'Asyut'},
+        {'id': 6, 'name': 'البحيرة', 'name_en': 'Beheira'},
+        {'id': 7, 'name': 'بني سويف', 'name_en': 'Beni Suef'},
+        {'id': 8, 'name': 'البحر الأحمر', 'name_en': 'Red Sea'},
+        {'id': 9, 'name': 'الدقهلية', 'name_en': 'Dakahlia'},
+        {'id': 10, 'name': 'دمياط', 'name_en': 'Damietta'},
+        {'id': 11, 'name': 'الفيوم', 'name_en': 'Fayyum'},
+        {'id': 12, 'name': 'الغربية', 'name_en': 'Gharbia'},
+        {'id': 13, 'name': 'الإسماعيلية', 'name_en': 'Ismailia'},
+        {'id': 14, 'name': 'كفر الشيخ', 'name_en': 'Kafr el-Sheikh'},
+        {'id': 15, 'name': 'مطروح', 'name_en': 'Matrouh'},
+        {'id': 16, 'name': 'المنيا', 'name_en': 'Minya'},
+        {'id': 17, 'name': 'المنوفية', 'name_en': 'Monufia'},
+        {'id': 18, 'name': 'الوادي الجديد', 'name_en': 'New Valley'},
+        {'id': 19, 'name': 'شمال سيناء', 'name_en': 'North Sinai'},
+        {'id': 20, 'name': 'بورسعيد', 'name_en': 'Port Said'},
+        {'id': 21, 'name': 'القليوبية', 'name_en': 'Qalyubia'},
+        {'id': 22, 'name': 'قنا', 'name_en': 'Qena'},
+        {'id': 23, 'name': 'الشرقية', 'name_en': 'Sharqia'},
+        {'id': 24, 'name': 'سوهاج', 'name_en': 'Sohag'},
+        {'id': 25, 'name': 'جنوب سيناء', 'name_en': 'South Sinai'},
+        {'id': 26, 'name': 'السويس', 'name_en': 'Suez'},
+        {'id': 27, 'name': 'الإسكندرية', 'name_en': 'Alexandria'},
+    ]
+    
+    return Response(governorates)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_application_status(request):
+    """API endpoint to check user's seller application status"""
+    
+    try:
+        application = SellerApplication.objects.get(user=request.user)
+        return Response({
+            'has_application': True,
+            'status': application.status,
+            'status_display': application.get_status_display(),
+            'submitted_at': application.submitted_at.isoformat(),
+            'processed_at': application.processed_at.isoformat() if application.processed_at else None,
+            'admin_notes': application.admin_notes
+        })
+    except SellerApplication.DoesNotExist:
+        return Response({
+            'has_application': False
+        })

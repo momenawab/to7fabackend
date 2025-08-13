@@ -3,6 +3,7 @@ from custom_auth.models import User, Artist, Store
 from products.models import Product, Category
 from orders.models import Order, OrderItem
 from .models import SellerApplication, AdminActivity, AdminNotification
+from django.utils import timezone
 
 class SellerApplicationSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
@@ -104,4 +105,72 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = AdminNotification
         fields = ('id', 'title', 'message', 'notification_type', 
-                  'notification_type_display', 'is_read', 'link', 'created_at') 
+                  'notification_type_display', 'is_read', 'link', 'created_at')
+
+class SellerApplicationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating seller applications from frontend"""
+    subcategories = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+        help_text="List of subcategory IDs"
+    )
+    
+    class Meta:
+        model = SellerApplication
+        fields = (
+            'user_type', 'name', 'phone_number', 'email', 'address', 'details',
+            'categories', 'subcategories', 'social_media', 'shipping_costs', 
+            'id_front', 'id_back', 'terms_accepted', 'bio', 'specialty', 
+            'store_name', 'tax_id', 'has_physical_store', 'physical_address'
+        )
+        
+    def create(self, validated_data):
+        # Set the user from the request context
+        user = self.context['request'].user
+        validated_data['user'] = user
+        
+        # Handle subcategories - they're not a model field, so remove from validated_data
+        subcategories = validated_data.pop('subcategories', [])
+        
+        # Set terms accepted timestamp
+        if validated_data.get('terms_accepted'):
+            validated_data['terms_accepted_at'] = timezone.now()
+            
+        # Create the application
+        application = super().create(validated_data)
+        
+        # TODO: Store subcategories if needed (you can add a separate model or field for this)
+        # For now, we'll just store them in the details field if they exist
+        if subcategories:
+            details = application.details or ''
+            details += f'\nSelected subcategories: {subcategories}'
+            application.details = details
+            application.save()
+            
+        return application
+        
+    def validate_categories(self, value):
+        """Validate that categories exist and are active"""
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Categories must be a list")
+        
+        # Check that all category IDs exist and are active
+        from products.models import Category
+        existing_categories = Category.objects.filter(
+            id__in=value, is_active=True
+        ).values_list('id', flat=True)
+        
+        invalid_categories = set(value) - set(existing_categories)
+        if invalid_categories:
+            raise serializers.ValidationError(
+                f"Invalid category IDs: {list(invalid_categories)}"
+            )
+            
+        return value
+        
+    def validate_terms_accepted(self, value):
+        """Ensure terms are accepted"""
+        if not value:
+            raise serializers.ValidationError("Terms must be accepted to submit application")
+        return value 

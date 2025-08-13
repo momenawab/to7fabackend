@@ -14,7 +14,7 @@ from decimal import Decimal
 def order_list(request):
     """Get all orders for the authenticated user"""
     orders = Order.objects.filter(user=request.user).order_by('-created_at')
-    serializer = OrderSerializer(orders, many=True)
+    serializer = OrderSerializer(orders, many=True, context={'request': request})
     return Response(serializer.data)
 
 @api_view(['GET'])
@@ -31,7 +31,7 @@ def order_detail(request, pk):
         return Response({"error": "You don't have permission to view this order"}, 
                         status=status.HTTP_403_FORBIDDEN)
     
-    serializer = OrderDetailSerializer(order)
+    serializer = OrderDetailSerializer(order, context={'request': request})
     return Response(serializer.data)
 
 @api_view(['POST'])
@@ -49,7 +49,7 @@ def create_order(request):
     if serializer.is_valid():
         try:
             order = serializer.save()
-            return Response(OrderDetailSerializer(order).data, status=status.HTTP_201_CREATED)
+            return Response(OrderDetailSerializer(order, context={'request': request}).data, status=status.HTTP_201_CREATED)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -76,7 +76,7 @@ def cancel_order(request, pk):
             product.stock += item.quantity
             product.save()
     
-    return Response(OrderDetailSerializer(order).data)
+    return Response(OrderDetailSerializer(order, context={'request': request}).data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -92,7 +92,7 @@ def seller_orders(request):
     order_ids = order_items.values_list('order_id', flat=True).distinct()
     orders = Order.objects.filter(id__in=order_ids).order_by('-created_at')
     
-    serializer = OrderSerializer(orders, many=True)
+    serializer = OrderSerializer(orders, many=True, context={'request': request})
     return Response(serializer.data)
 
 @api_view(['PUT'])
@@ -120,4 +120,4 @@ def update_order_status(request, pk):
     order.status = new_status
     order.save()
     
-    return Response(OrderDetailSerializer(order).data)
+    return Response(OrderDetailSerializer(order, context={'request': request}).data)

@@ -60,4 +60,11 @@ urlpatterns = [
     path('products/admin/categories/', api_views.get_categories_for_admin, name='get_categories_for_admin'),
     path('products/admin/categories/<int:category_id>/attributes/', api_views.get_category_attributes_for_admin, name='get_category_attributes_for_admin'),
     path('products/admin/attributes/<str:attribute_type>/options/', api_views.get_attribute_options_for_admin, name='get_attribute_options_for_admin'),
+    
+    # Seller Registration (Public endpoints for app users)
+    path('seller/apply/', api_views.create_seller_application, name='create_seller_application'),
+    path('seller/categories/', api_views.get_categories_for_seller, name='get_categories_for_seller'),
+    path('seller/subcategories/<int:category_id>/', api_views.get_subcategories_for_seller, name='get_subcategories_for_seller'),
+    path('seller/governorates/', api_views.get_egyptian_governorates, name='get_egyptian_governorates'),
+    path('seller/status/', api_views.get_user_application_status, name='get_user_application_status'),
 ] 

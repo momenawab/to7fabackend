@@ -29,10 +29,21 @@ class SellerApplication(models.Model):
     phone_number = models.CharField(max_length=20)
     email = models.EmailField()
     address = models.TextField()
-    shipping_company = models.CharField(max_length=100)
+    shipping_company = models.CharField(max_length=100, blank=True, null=True)
     shipping_costs = models.JSONField(default=default_dict)  # Store costs per governorate
     details = models.TextField()
     categories = models.JSONField(default=default_list)  # List of category IDs
+    
+    # Social Media fields
+    social_media = models.JSONField(default=default_dict)  # {facebook: '', instagram: '', behance: ''}
+    
+    # ID Documents
+    id_front = models.ImageField(upload_to='seller_applications/ids/', blank=True, null=True)
+    id_back = models.ImageField(upload_to='seller_applications/ids/', blank=True, null=True)
+    
+    # Terms acceptance
+    terms_accepted = models.BooleanField(default=False)
+    terms_accepted_at = models.DateTimeField(blank=True, null=True)
     
     # Artist-specific fields
     specialty = models.CharField(max_length=100, blank=True, null=True)

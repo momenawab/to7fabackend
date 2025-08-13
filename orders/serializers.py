@@ -14,6 +14,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = ('id', 'product_id', 'product', 'quantity', 'price', 'seller', 'commission_rate', 'commission_amount')
         read_only_fields = ('price', 'seller', 'commission_rate', 'commission_amount')
     
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Pass request context to the nested ProductSerializer
+        if self.context.get('request'):
+            product_serializer = ProductSerializer(instance.product, context=self.context)
+            representation['product'] = product_serializer.data
+        return representation
+    
     def validate_product_id(self, value):
         try:
             product = Product.objects.get(pk=value)
@@ -28,6 +36,14 @@ class OrderSerializer(serializers.ModelSerializer):
         write_only=True
     )
     shipping_cost = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Pass request context to nested OrderItemSerializer
+        if self.context.get('request'):
+            items_serializer = OrderItemSerializer(instance.items.all(), many=True, context=self.context)
+            representation['items'] = items_serializer.data
+        return representation
     
     class Meta:
         model = Order
