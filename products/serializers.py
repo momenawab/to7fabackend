@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
     Category, Product, ProductImage, Review, ProductAttribute, 
-    ProductAttributeOption, CategoryAttribute, ProductVariant, ProductVariantAttribute
+    ProductAttributeOption, CategoryAttribute, CategoryVariantType, 
+    CategoryVariantOption, ProductCategoryVariantOption
 )
 from django.contrib.auth import get_user_model
 
@@ -58,27 +59,39 @@ class CategoryAttributeSerializer(serializers.ModelSerializer):
         model = CategoryAttribute
         fields = ('id', 'attribute', 'is_required', 'sort_order')
 
-# Serializers for Product Variants
-class ProductVariantAttributeSerializer(serializers.ModelSerializer):
-    attribute = ProductAttributeSerializer(read_only=True)
-    option = ProductAttributeOptionSerializer(read_only=True)
-    
+# Serializers for Category Variants
+class CategoryVariantTypeBasicSerializer(serializers.ModelSerializer):
+    """Basic variant type serializer without options to avoid circular reference"""
     class Meta:
-        model = ProductVariantAttribute
-        fields = ('id', 'attribute', 'option')
+        model = CategoryVariantType
+        fields = ('id', 'name', 'is_required')
 
-class ProductVariantSerializer(serializers.ModelSerializer):
-    variant_attributes = ProductVariantAttributeSerializer(many=True, read_only=True)
-    final_price = serializers.ReadOnlyField()
-    stock_status = serializers.SerializerMethodField()
+class CategoryVariantOptionSerializer(serializers.ModelSerializer):
+    variant_type = CategoryVariantTypeBasicSerializer(read_only=True)
+    variant_type_name = serializers.ReadOnlyField(source='variant_type.name')
     
     class Meta:
-        model = ProductVariant
-        fields = ('id', 'sku', 'stock_count', 'price_adjustment', 'final_price', 
-                 'stock_status', 'is_active', 'variant_attributes')
+        model = CategoryVariantOption
+        fields = ('id', 'value', 'extra_price', 'is_active', 'variant_type', 'variant_type_name')
+
+class CategoryVariantTypeSerializer(serializers.ModelSerializer):
+    options = CategoryVariantOptionSerializer(many=True, read_only=True)
     
-    def get_stock_status(self, obj):
-        return obj.stock_status
+    class Meta:
+        model = CategoryVariantType
+        fields = ('id', 'name', 'is_required', 'options')
+
+class ProductCategoryVariantSelectionSerializer(serializers.ModelSerializer):
+    category_variant_option = CategoryVariantOptionSerializer(read_only=True)
+    final_price = serializers.ReadOnlyField()
+    variant_type_name = serializers.ReadOnlyField()
+    variant_option_value = serializers.ReadOnlyField()
+    stock_status = serializers.ReadOnlyField()
+    
+    class Meta:
+        model = ProductCategoryVariantOption
+        fields = ('id', 'category_variant_option', 'stock_count', 'price_adjustment', 
+                 'final_price', 'is_active', 'variant_type_name', 'variant_option_value', 'stock_status')
 
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.ReadOnlyField(source='category.name')
@@ -86,9 +99,9 @@ class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     average_rating = serializers.ReadOnlyField()
     
-    # Variant-related fields
-    variants = ProductVariantSerializer(many=True, read_only=True)
-    available_attributes = serializers.SerializerMethodField()
+    # CategoryVariant-related fields
+    selected_variants = ProductCategoryVariantSelectionSerializer(many=True, read_only=True)
+    available_variant_types = CategoryVariantTypeSerializer(many=True, read_only=True)
     price_range = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
     has_variants = serializers.ReadOnlyField()
@@ -105,14 +118,13 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = ('id', 'name', 'description', 'base_price', 'price', 'stock', 'stock_quantity', 'category', 'category_name', 
                  'seller', 'seller_name', 'is_featured', 'is_active', 'created_at', 
-                 'updated_at', 'images', 'average_rating', 'variants', 'available_attributes',
+                 'updated_at', 'images', 'average_rating', 'selected_variants', 'available_variant_types',
                  'price_range', 'stock_status', 'has_variants', 'colors', 'sizes')
         read_only_fields = ('seller',)
     
-    def get_available_attributes(self, obj):
-        """Get available attributes for this product's category"""
-        category_attributes = obj.category.category_attributes.filter(attribute__is_active=True).order_by('sort_order')
-        return CategoryAttributeSerializer(category_attributes, many=True).data
+    def get_stock_status(self, obj):
+        """Get stock status for this product"""
+        return obj.get_stock_status()
     
     def get_price_range(self, obj):
         """Get price range for this product"""
@@ -125,22 +137,18 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_colors(self, obj):
         """Get available colors for backward compatibility"""
         colors = []
-        for attr in obj.get_available_attributes():
-            if attr.attribute.attribute_type in ['color', 'frame_color']:
-                colors.extend([option.value for option in attr.attribute.options.filter(is_active=True)])
+        for variant_type in obj.available_variant_types.all():
+            if variant_type.name.lower() in ['لون', 'color', 'لون الإطار', 'frame_color']:
+                colors.extend([option.value for option in variant_type.options.filter(is_active=True)])
         return colors if colors else ['أبيض', 'أسود', 'ذهبي']  # Default fallback
     
     def get_sizes(self, obj):
         """Get available sizes for backward compatibility"""
         sizes = []
-        for attr in obj.get_available_attributes():
-            if attr.attribute.attribute_type == 'size':
-                sizes.extend([option.value for option in attr.attribute.options.filter(is_active=True)])
+        for variant_type in obj.available_variant_types.all():
+            if variant_type.name.lower() in ['حجم', 'size', 'الحجم']:
+                sizes.extend([option.value for option in variant_type.options.filter(is_active=True)])
         return sizes if sizes else ['20x30cm', '30x40cm', '40x50cm']  # Default fallback
-    
-    def get_stock_status(self, obj):
-        """Get stock status for the product"""
-        return obj.get_stock_status()
     
     def create(self, validated_data):
         user = self.context['request'].user

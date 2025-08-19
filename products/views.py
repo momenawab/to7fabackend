@@ -6,7 +6,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
     Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct,
-    ProductAttribute, ProductAttributeOption, CategoryAttribute
+    ProductAttribute, ProductAttributeOption, CategoryAttribute, Tag, CategoryVariantType,
+    CategoryVariantOption, DiscountRequest, ProductVariant, ProductVariantOption
 )
 from .serializers import (
     ProductSerializer, ProductDetailSerializer, CategorySerializer, ReviewSerializer,
@@ -1453,4 +1454,106 @@ def debug_arabic_encoding(request):
     except Exception as e:
         return Response({
             'error': f'Debug endpoint failed: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# New Product Wizard API Endpoints
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def categories_for_product_wizard(request):
+    """Get all active categories with descriptions for product creation wizard"""
+    try:
+        categories = Category.objects.filter(is_active=True, parent__isnull=True).order_by('name')
+        
+        category_data = []
+        for category in categories:
+            category_data.append({
+                'id': category.id,
+                'name': category.name,
+                'description': category.description or f'منتجات {category.name} عالية الجودة',
+                'image': category.image.url if category.image else None
+            })
+        
+        return Response({
+            'categories': category_data
+        })
+    except Exception as e:
+        return Response({
+            'categories': [],
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def category_variants(request, category_id):
+    """Get all variant types and options for a specific category"""
+    try:
+        category = Category.objects.get(id=category_id, is_active=True)
+        variant_types = CategoryVariantType.objects.filter(category=category).order_by('name')
+        
+        variants_data = []
+        for variant_type in variant_types:
+            options_data = []
+            for option in variant_type.options.filter(is_active=True):
+                options_data.append({
+                    'id': option.id,
+                    'value': option.value,
+                    'extra_price': float(option.extra_price) if option.extra_price else 0
+                })
+            
+            variants_data.append({
+                'id': variant_type.id,
+                'name': variant_type.name,
+                'is_required': variant_type.is_required,
+                'options': options_data
+            })
+        
+        return Response({
+            'variants': variants_data
+        })
+    except Category.DoesNotExist:
+        return Response({
+            'variants': [],
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'variants': [],
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def category_tags(request, category_id):
+    """Get all predefined tags for a specific category"""
+    try:
+        category = Category.objects.get(id=category_id, is_active=True)
+        tags = Tag.objects.filter(
+            Q(category=category) | Q(category__isnull=True),
+            is_predefined=True
+        ).order_by('name')
+        
+        tags_data = []
+        for tag in tags:
+            tags_data.append({
+                'id': tag.id,
+                'name': tag.name,
+                'category_specific': tag.category is not None
+            })
+        
+        return Response({
+            'tags': tags_data
+        })
+    except Category.DoesNotExist:
+        return Response({
+            'tags': [],
+            'error': 'Category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'tags': [],
+            'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

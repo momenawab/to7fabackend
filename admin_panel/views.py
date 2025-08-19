@@ -15,10 +15,10 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 
-from custom_auth.models import User, Artist, Store
-from products.models import Product, Category
+from custom_auth.models import User, Artist, Store, SellerApplication
+from products.models import Product, Category, ProductImage
 from orders.models import Order
-from .models import SellerApplication, AdminActivity, AdminNotification
+from .models import AdminActivity, AdminNotification
 from notifications.models import Notification
 
 # Helper function to check if user is admin
@@ -90,7 +90,7 @@ def admin_dashboard(request):
     # Recent applications with optimized queries
     recent_applications = SellerApplication.objects.select_related('user').filter(
         status='pending'
-    ).order_by('-submitted_at')[:5]
+    ).order_by('-created_at')[:5]
     
     # Recent orders with optimized queries
     recent_orders = Order.objects.select_related('user').all().order_by('-created_at')[:5]
@@ -117,23 +117,49 @@ def admin_dashboard(request):
 @login_required
 @user_passes_test(is_admin)
 def seller_applications(request):
+    """View for managing seller applications - pending, approved, rejected applications"""
     status_filter = request.GET.get('status', 'pending')
+    seller_type_filter = request.GET.get('seller_type', 'all')
+    search_query = request.GET.get('q', '')
     
-    if status_filter == 'all':
-        applications = SellerApplication.objects.select_related('user', 'processed_by').all().order_by('-submitted_at')
-    else:
-        applications = SellerApplication.objects.select_related('user', 'processed_by').filter(
-            status=status_filter
-        ).order_by('-submitted_at')
+    # Base queryset
+    applications = SellerApplication.objects.select_related('user', 'reviewed_by')
+    
+    # Apply filters
+    if status_filter != 'all':
+        applications = applications.filter(status=status_filter)
+    
+    if seller_type_filter != 'all':
+        applications = applications.filter(seller_type=seller_type_filter)
+    
+    if search_query:
+        applications = applications.filter(
+            Q(business_name__icontains=search_query) |
+            Q(user__email__icontains=search_query) |
+            Q(description__icontains=search_query)
+        )
+    
+    applications = applications.order_by('-created_at')
     
     # Pagination
     paginator = Paginator(applications, 10)
     page_number = request.GET.get('page', 1)
     applications_page = paginator.get_page(page_number)
     
+    # Statistics
+    stats = {
+        'pending': SellerApplication.objects.filter(status='pending').count(),
+        'approved': SellerApplication.objects.filter(status='approved').count(),
+        'rejected': SellerApplication.objects.filter(status='rejected').count(),
+        'total': SellerApplication.objects.count(),
+    }
+    
     context = {
         'applications': applications_page,
         'status_filter': status_filter,
+        'seller_type_filter': seller_type_filter,
+        'search_query': search_query,
+        'stats': stats,
         'active_tab': 'applications'
     }
     
@@ -143,69 +169,58 @@ def seller_applications(request):
 @login_required
 @user_passes_test(is_admin)
 def seller_application_detail(request, application_id):
+    """View detailed information about a seller application"""
     application = get_object_or_404(SellerApplication, id=application_id)
     
-    # Get category names instead of IDs
+    # Process categories data
     category_names = []
     if application.categories:
-        for cat_id in application.categories:
-            try:
-                category = Category.objects.get(id=cat_id)
-                category_names.append({'id': cat_id, 'name': category.name})
-            except Category.DoesNotExist:
-                category_names.append({'id': cat_id, 'name': f'Unknown Category (ID: {cat_id})'})
+        from products.models import Category
+        category_ids = application.categories if isinstance(application.categories, list) else []
+        category_names = Category.objects.filter(id__in=category_ids).values('id', 'name')
     
-    # Get subcategories from details if available
+    # Process subcategories data - check if there's a subcategory model
     subcategories = []
-    if application.details and 'subcategories:' in application.details.lower():
-        import re
-        import json
-        lines = application.details.split('\n')
-        for line in lines:
-            if 'subcategories:' in line.lower():
-                try:
-                    match = re.search(r'subcategories:\s*(\[.*?\])', line)
-                    if match:
-                        subcat_ids = json.loads(match.group(1))
-                        for subcat_id in subcat_ids:
-                            try:
-                                subcategory = Category.objects.get(id=subcat_id)
-                                subcategories.append({'id': subcat_id, 'name': subcategory.name})
-                            except Category.DoesNotExist:
-                                subcategories.append({'id': subcat_id, 'name': f'Unknown Subcategory (ID: {subcat_id})'})
-                except:
-                    pass
+    if application.subcategories:
+        # For now, just display the subcategory data as is since we don't have a Subcategory model
+        subcategories = application.subcategories if isinstance(application.subcategories, list) else []
     
-    # Egyptian governorates mapping for shipping costs
-    gov_names = {
-        '1': 'القاهرة', '2': 'الجيزة', '3': 'الأقصر', '4': 'أسوان', '5': 'أسيوط',
-        '6': 'البحيرة', '7': 'بني سويف', '8': 'البحر الأحمر', '9': 'الدقهلية', '10': 'دمياط',
-        '11': 'الفيوم', '12': 'الغربية', '13': 'الإسماعيلية', '14': 'كفر الشيخ', '15': 'مطروح',
-        '16': 'المنيا', '17': 'المنوفية', '18': 'الوادي الجديد', '19': 'شمال سيناء', '20': 'بورسعيد',
-        '21': 'القليوبية', '22': 'قنا', '23': 'الشرقية', '24': 'سوهاج', '25': 'جنوب سيناء',
-        '26': 'السويس', '27': 'الإسكندرية'
-    }
-    
-    # Process shipping costs with names
+    # Process shipping costs data - using Egyptian governorates
     shipping_costs_with_names = []
-    if application.shipping_costs:
-        for gov_id, cost in application.shipping_costs.items():
-            gov_name = gov_names.get(str(gov_id), f'Governorate {gov_id}')
-            shipping_costs_with_names.append({
-                'id': gov_id,
-                'name': gov_name,
-                'cost': float(cost),
-                'available': float(cost) > 0
-            })
-        # Sort by availability first, then by name
-        shipping_costs_with_names.sort(key=lambda x: (not x['available'], x['name']))
+    shipping_stats = {'available': 0, 'total': 0}
     
-    # Calculate shipping statistics
-    shipping_stats = {
-        'total': len(shipping_costs_with_names),
-        'available': sum(1 for item in shipping_costs_with_names if item['available']),
-        'unavailable': sum(1 for item in shipping_costs_with_names if not item['available'])
-    }
+    # List of Egyptian governorates (same as in custom_auth/views.py)
+    governorates = [
+        'Cairo', 'Alexandria', 'Giza', 'Qalyubia', 'Sharqia',
+        'Dakahlia', 'Gharbia', 'Menoufia', 'Beheira', 'Kafr El Sheikh',
+        'Damietta', 'Port Said', 'Ismailia', 'Suez', 'North Sinai',
+        'South Sinai', 'Beni Suef', 'Fayoum', 'Minya', 'Assiut',
+        'Sohag', 'Qena', 'Luxor', 'Aswan', 'Red Sea',
+        'New Valley', 'Matruh'
+    ]
+    
+    if application.shipping_costs:
+        for index, governorate in enumerate(governorates, 1):
+            # Shipping costs are stored with string indices (1, 2, 3, etc.)
+            cost_data = application.shipping_costs.get(str(index), 0)
+            
+            if isinstance(cost_data, dict):
+                is_available = cost_data.get('available', False)
+                cost = cost_data.get('cost', 0) if is_available else 0
+            else:
+                # Handle case where cost_data is just a number
+                is_available = cost_data > 0 if isinstance(cost_data, (int, float)) else False
+                cost = cost_data if is_available else 0
+            
+            shipping_costs_with_names.append({
+                'name': governorate,
+                'cost': cost,
+                'available': is_available
+            })
+            
+            shipping_stats['total'] += 1
+            if is_available:
+                shipping_stats['available'] += 1
     
     context = {
         'application': application,
@@ -229,6 +244,7 @@ def process_application(request, application_id):
     if request.method == 'POST':
         action = request.POST.get('action')
         admin_notes = request.POST.get('admin_notes', '')
+        rejection_reason = request.POST.get('rejection_reason', '')
         
         if action == 'approve':
             # Use atomic transaction to ensure data consistency
@@ -236,52 +252,56 @@ def process_application(request, application_id):
                 # Update application status
                 application.status = 'approved'
                 application.admin_notes = admin_notes
-                application.processed_at = timezone.now()
-                application.processed_by = request.user
+                application.reviewed_at = timezone.now()
+                application.reviewed_by = request.user
                 application.save()
                 
                 # Update user type and create profile
                 user = application.user
-                user.user_type = application.user_type
+                user.user_type = application.seller_type
                 user.save()
                 
-                if application.user_type == 'artist':
+                if application.seller_type == 'artist':
                     # Use select_for_update to prevent race conditions
                     try:
                         artist_profile = Artist.objects.select_for_update().get(user=user)
                         # Update existing profile
-                        artist_profile.specialty = application.specialty
-                        artist_profile.bio = application.bio
+                        artist_profile.specialty = application.specialty or ''
+                        artist_profile.bio = application.description
+                        artist_profile.social_media = application.social_media
                         artist_profile.is_verified = True
                         artist_profile.save()
                     except Artist.DoesNotExist:
                         # Create new profile if it doesn't exist
                         Artist.objects.create(
                             user=user,
-                            specialty=application.specialty,
-                            bio=application.bio,
+                            specialty=application.specialty or '',
+                            bio=application.description,
+                            social_media=application.social_media,
                             is_verified=True
                         )
                         
-                elif application.user_type == 'store':
+                elif application.seller_type == 'store':
                     # Use select_for_update to prevent race conditions
                     try:
                         store_profile = Store.objects.select_for_update().get(user=user)
                         # Update existing profile
-                        store_profile.store_name = application.store_name
-                        store_profile.tax_id = application.tax_id
+                        store_profile.store_name = application.business_name
+                        store_profile.tax_id = application.tax_id or ''
                         store_profile.has_physical_store = application.has_physical_store
-                        store_profile.physical_address = application.physical_address
+                        store_profile.physical_address = application.physical_address or ''
+                        store_profile.social_media = application.social_media
                         store_profile.is_verified = True
                         store_profile.save()
                     except Store.DoesNotExist:
                         # Create new profile if it doesn't exist
                         Store.objects.create(
                             user=user,
-                            store_name=application.store_name,
-                            tax_id=application.tax_id,
+                            store_name=application.business_name,
+                            tax_id=application.tax_id or '',
                             has_physical_store=application.has_physical_store,
-                            physical_address=application.physical_address,
+                            physical_address=application.physical_address or '',
+                            social_media=application.social_media,
                             is_verified=True
                         )
             
@@ -289,7 +309,7 @@ def process_application(request, application_id):
             AdminActivity.objects.create(
                 admin=request.user,
                 action='approve',
-                description=f"Approved seller application #{application.id} for {application.name}",
+                description=f"Approved seller application #{application.id} for {application.business_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             
@@ -298,7 +318,7 @@ def process_application(request, application_id):
             Notification.create_notification(
                 user=user,
                 title="Your seller application has been approved!",
-                message=f"Congratulations! Your application to become a {application.user_type} has been approved.{notes_message}",
+                message=f"Congratulations! Your application to become a {application.seller_type} has been approved.{notes_message}",
                 notification_type="system",
                 related_object=application
             )
@@ -309,33 +329,45 @@ def process_application(request, application_id):
             # Update application status
             application.status = 'rejected'
             application.admin_notes = admin_notes
-            application.processed_at = timezone.now()
-            application.processed_by = request.user
+            application.rejection_reason = rejection_reason
+            application.reviewed_at = timezone.now()
+            application.reviewed_by = request.user
             application.save()
             
             # Log activity
             AdminActivity.objects.create(
                 admin=request.user,
                 action='reject',
-                description=f"Rejected seller application #{application.id} for {application.name} - can reapply",
+                description=f"Rejected seller application #{application.id} for {application.business_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             
-            messages.success(request, f"Application #{application.id} has been rejected. User can reapply.")
+            # Send notification to user
+            rejection_message = f"Reason: {rejection_reason}" if rejection_reason else ""
+            notes_message = f"\n\nAdmin notes: {admin_notes}" if admin_notes else ""
+            Notification.create_notification(
+                user=application.user,
+                title="Your seller application has been rejected",
+                message=f"Unfortunately, your application to become a {application.seller_type} has been rejected. {rejection_message}{notes_message}",
+                notification_type="system",
+                related_object=application
+            )
+            
+            messages.success(request, f"Application #{application.id} has been rejected.")
         
         elif action == 'reject_permanently':
             # Update application status
             application.status = 'rejected_permanently'
             application.admin_notes = admin_notes or 'Application permanently rejected. User cannot reapply.'
-            application.processed_at = timezone.now()
-            application.processed_by = request.user
+            application.reviewed_at = timezone.now()
+            application.reviewed_by = request.user
             application.save()
             
             # Log activity
             AdminActivity.objects.create(
                 admin=request.user,
                 action='reject',
-                description=f"Permanently rejected seller application #{application.id} for {application.name}",
+                description=f"Permanently rejected seller application #{application.id} for {application.business_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
             
@@ -346,7 +378,7 @@ def process_application(request, application_id):
             Notification.create_notification(
                 user=application.user,
                 title="Your seller application was not approved",
-                message=f"We're sorry, but your application to become a {application.user_type} was not approved at this time.{notes_message}",
+                message=f"We're sorry, but your application to become a {application.seller_type} was not approved at this time.{notes_message}",
                 notification_type="system",
                 related_object=application
             )
@@ -370,7 +402,7 @@ def user_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
     
-    users = User.objects.all()
+    users = User.objects.all().order_by('-date_joined')
     
     # Apply filters
     if user_type != 'all':
@@ -411,7 +443,7 @@ def product_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
     
-    products = Product.objects.select_related('category', 'seller').all()
+    products = Product.objects.select_related('category', 'seller').all().order_by('-created_at')
     
     # Apply filters
     if category_id != 'all':
@@ -447,6 +479,124 @@ def product_management(request):
     
     return render(request, 'admin_panel/product_management.html', context)
 
+# Product Approval Management
+@login_required
+@user_passes_test(is_admin)
+def product_approval(request):
+    """View for managing product approvals - pending, approved, rejected products"""
+    status_filter = request.GET.get('status', 'pending')
+    search_query = request.GET.get('q', '')
+    category_id = request.GET.get('category', 'all')
+    
+    # Get products based on approval status
+    if status_filter == 'pending':
+        products = Product.objects.filter(is_active=False).select_related('category', 'seller').order_by('-created_at')
+    elif status_filter == 'approved':
+        products = Product.objects.filter(is_active=True).select_related('category', 'seller').order_by('-created_at')
+    else:  # all
+        products = Product.objects.all().select_related('category', 'seller').order_by('-created_at')
+    
+    # Apply filters
+    if category_id != 'all':
+        products = products.filter(category_id=category_id)
+    
+    if search_query:
+        products = products.filter(
+            Q(name__icontains=search_query) | 
+            Q(description__icontains=search_query) |
+            Q(seller__email__icontains=search_query)
+        )
+    
+    # Get categories for filter dropdown
+    categories = Category.objects.all()
+    
+    # Get statistics
+    stats = {
+        'pending': Product.objects.filter(is_active=False).count(),
+        'approved': Product.objects.filter(is_active=True).count(),
+        'total': Product.objects.count(),
+    }
+    
+    # Pagination
+    paginator = Paginator(products, 15)
+    page_number = request.GET.get('page', 1)
+    products_page = paginator.get_page(page_number)
+    
+    context = {
+        'products': products_page,
+        'categories': categories,
+        'category_id': category_id,
+        'status_filter': status_filter,
+        'search_query': search_query,
+        'stats': stats,
+        'active_tab': 'product_approval'
+    }
+    
+    return render(request, 'admin_panel/product_approval.html', context)
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def process_product_approval(request, product_id):
+    """Process product approval - approve, reject, or edit"""
+    product = get_object_or_404(Product, id=product_id)
+    action = request.POST.get('action')
+    admin_notes = request.POST.get('admin_notes', '')
+    
+    if action == 'approve':
+        product.is_active = True
+        product.save()
+        
+        # Create notification for seller
+        Notification.objects.create(
+            user=product.seller,
+            title='تم قبول المنتج',
+            message=f'تم قبول منتجك "{product.name}" ونشره في المتجر.',
+            notification_type='product_approved'
+        )
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='approve_product',
+            description=f'Approved product "{product.name}" (ID: {product.id}) by {product.seller.email}',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        messages.success(request, f'تم قبول المنتج "{product.name}" بنجاح')
+        
+    elif action == 'reject':
+        rejection_reason = request.POST.get('rejection_reason', 'لم يتم تحديد السبب')
+        
+        # For now, we'll keep the product but mark it as inactive
+        # In the future, you might want to add a rejection reason field to the Product model
+        product.is_active = False
+        product.save()
+        
+        # Create notification for seller
+        Notification.objects.create(
+            user=product.seller,
+            title='تم رفض المنتج',
+            message=f'تم رفض منتجك "{product.name}". السبب: {rejection_reason}',
+            notification_type='product_rejected'
+        )
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='reject_product',
+            description=f'Rejected product "{product.name}" (ID: {product.id}) by {product.seller.email}. Reason: {rejection_reason}',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        messages.success(request, f'تم رفض المنتج "{product.name}" بنجاح')
+        
+    elif action == 'edit':
+        # Redirect to edit page
+        return redirect('admin_panel:edit_product_with_variants', product_id=product.id)
+    
+    return redirect('admin_panel:product_approval')
+
 # Order Management
 @login_required
 @user_passes_test(is_admin)
@@ -454,7 +604,7 @@ def order_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
     
-    orders = Order.objects.select_related('user').all()
+    orders = Order.objects.select_related('user').all().order_by('-created_at')
     
     # Apply filters
     if status != 'all':
@@ -566,7 +716,7 @@ def activity_log(request):
     date_to = request.GET.get('date_to')
     
     # Filter activities
-    activities = AdminActivity.objects.all()
+    activities = AdminActivity.objects.all().order_by('-timestamp')
     
     if admin_id:
         activities = activities.filter(admin_id=admin_id)
@@ -845,3 +995,251 @@ def get_category_attributes_json(request, category_id):
         
     except Category.DoesNotExist:
         return JsonResponse({'error': 'Category not found'}, status=404)
+
+
+@login_required
+@user_passes_test(is_admin)
+def variant_management(request):
+    """Variant management page for categories"""
+    from products.models import Category, CategoryVariantType, CategoryVariantOption
+    
+    # Get all categories with their variant counts
+    categories = Category.objects.annotate(
+        variant_types_count=Count('variant_types'),
+        total_options_count=Count('variant_types__options')
+    ).order_by('name')
+    
+    # Get categories with variants for summary
+    categories_with_variants = categories.filter(variant_types_count__gt=0)
+    total_variant_types = CategoryVariantType.objects.count()
+    total_variant_options = CategoryVariantOption.objects.count()
+    
+    # Log admin activity
+    AdminActivity.objects.create(
+        admin=request.user,
+        action='other',
+        description=f'Viewed variant management page'
+    )
+    
+    context = {
+        'active_tab': 'variants',
+        'categories': categories,
+        'categories_with_variants': categories_with_variants,
+        'stats': {
+            'total_categories': categories.count(),
+            'categories_with_variants': categories_with_variants.count(),
+            'total_variant_types': total_variant_types,
+            'total_variant_options': total_variant_options,
+        }
+    }
+    
+    return render(request, 'admin_panel/variant_management.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def create_variant_type(request):
+    """Create a new variant type for a category"""
+    from products.models import Category, CategoryVariantType
+    
+    try:
+        category_id = request.POST.get('category_id')
+        name = request.POST.get('name', '').strip()
+        is_required = request.POST.get('is_required') == 'true'
+        
+        if not category_id or not name:
+            return JsonResponse({'success': False, 'error': 'Category ID and name are required'})
+        
+        category = get_object_or_404(Category, id=category_id)
+        
+        # Check if variant type already exists for this category
+        if CategoryVariantType.objects.filter(category=category, name=name).exists():
+            return JsonResponse({'success': False, 'error': f'Variant type "{name}" already exists for this category'})
+        
+        # Create the variant type
+        variant_type = CategoryVariantType.objects.create(
+            category=category,
+            name=name,
+            is_required=is_required
+        )
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='create',
+            description=f'Created variant type "{name}" for category "{category.name}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'variant_type': {
+                'id': variant_type.id,
+                'name': variant_type.name,
+                'is_required': variant_type.is_required,
+                'category_name': category.name
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def create_variant_option(request):
+    """Create a new variant option for a variant type"""
+    from products.models import CategoryVariantType, CategoryVariantOption
+    
+    try:
+        variant_type_id = request.POST.get('variant_type_id')
+        value = request.POST.get('value', '').strip()
+        extra_price = request.POST.get('extra_price', '0')
+        is_active = request.POST.get('is_active', 'true') == 'true'
+        
+        if not variant_type_id or not value:
+            return JsonResponse({'success': False, 'error': 'Variant type ID and value are required'})
+        
+        variant_type = get_object_or_404(CategoryVariantType, id=variant_type_id)
+        
+        # Check if option already exists for this variant type
+        if CategoryVariantOption.objects.filter(variant_type=variant_type, value=value).exists():
+            return JsonResponse({'success': False, 'error': f'Option "{value}" already exists for this variant type'})
+        
+        # Convert extra_price to float
+        try:
+            extra_price = float(extra_price)
+        except (ValueError, TypeError):
+            extra_price = 0.0
+        
+        # Create the variant option
+        variant_option = CategoryVariantOption.objects.create(
+            variant_type=variant_type,
+            value=value,
+            extra_price=extra_price,
+            is_active=is_active
+        )
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='create',
+            description=f'Created variant option "{value}" for variant type "{variant_type.name}" in category "{variant_type.category.name}"'
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'variant_option': {
+                'id': variant_option.id,
+                'value': variant_option.value,
+                'extra_price': float(variant_option.extra_price),
+                'is_active': variant_option.is_active,
+                'variant_type_name': variant_type.name
+            }
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@user_passes_test(is_admin)
+def get_category_variants_json(request, category_id):
+    """JSON endpoint to get category variants for the admin panel"""
+    from products.models import Category, CategoryVariantType
+    
+    try:
+        category = get_object_or_404(Category, id=category_id)
+        
+        variant_types = CategoryVariantType.objects.filter(category=category).prefetch_related('options')
+        
+        variants_data = []
+        for variant_type in variant_types:
+            options_data = []
+            for option in variant_type.options.all().order_by('id'):
+                options_data.append({
+                    'id': option.id,
+                    'value': option.value,
+                    'extra_price': float(option.extra_price),
+                    'is_active': option.is_active
+                })
+            
+            variants_data.append({
+                'id': variant_type.id,
+                'name': variant_type.name,
+                'is_required': variant_type.is_required,
+                'options': options_data
+            })
+        
+        return JsonResponse({'variants': variants_data})
+        
+    except Category.DoesNotExist:
+        return JsonResponse({'error': 'Category not found'}, status=404)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def delete_variant_type(request):
+    """Delete a variant type and all its options"""
+    from products.models import CategoryVariantType
+    
+    try:
+        variant_type_id = request.POST.get('variant_type_id')
+        
+        if not variant_type_id:
+            return JsonResponse({'success': False, 'error': 'Variant type ID is required'})
+        
+        variant_type = get_object_or_404(CategoryVariantType, id=variant_type_id)
+        category_name = variant_type.category.name
+        variant_name = variant_type.name
+        
+        # Delete the variant type (this will cascade delete all options)
+        variant_type.delete()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='delete',
+            description=f'Deleted variant type "{variant_name}" from category "{category_name}"'
+        )
+        
+        return JsonResponse({'success': True, 'message': f'Variant type "{variant_name}" deleted successfully'})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def delete_variant_option(request):
+    """Delete a variant option"""
+    from products.models import CategoryVariantOption
+    
+    try:
+        option_id = request.POST.get('option_id')
+        
+        if not option_id:
+            return JsonResponse({'success': False, 'error': 'Option ID is required'})
+        
+        option = get_object_or_404(CategoryVariantOption, id=option_id)
+        variant_type_name = option.variant_type.name
+        category_name = option.variant_type.category.name
+        option_value = option.value
+        
+        # Delete the option
+        option.delete()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='delete',
+            description=f'Deleted variant option "{option_value}" from variant type "{variant_type_name}" in category "{category_name}"'
+        )
+        
+        return JsonResponse({'success': True, 'message': f'Variant option "{option_value}" deleted successfully'})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

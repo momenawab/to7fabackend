@@ -1,116 +1,274 @@
 {% extends 'admin_panel/base.html' %}
+{% load static %}
 
-{% block title %}Seller Applications - To7fa Admin Panel{% endblock %}
+{% block title %}Seller Applications Management{% endblock %}
 
-{% block page_title %}Seller Applications{% endblock %}
+{% block extra_css %}
+<style>
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    .status-pending {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+    .status-approved {
+        background-color: #d1fae5;
+        color: #065f46;
+    }
+    .status-rejected {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+    .application-card {
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: white;
+    }
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+        text-align: center;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span>Seller Applications</span>
-        <div>
-            <a href="?status=pending" class="btn btn-sm {% if status_filter == 'pending' %}btn-purple{% else %}btn-outline-purple{% endif %} me-2">
-                Pending
-            </a>
-            <a href="?status=approved" class="btn btn-sm {% if status_filter == 'approved' %}btn-purple{% else %}btn-outline-purple{% endif %} me-2">
-                Approved
-            </a>
-            <a href="?status=rejected" class="btn btn-sm {% if status_filter == 'rejected' %}btn-purple{% else %}btn-outline-purple{% endif %} me-2">
-                Rejected
-            </a>
-            <a href="?status=all" class="btn btn-sm {% if status_filter == 'all' %}btn-purple{% else %}btn-outline-purple{% endif %}">
-                All
-            </a>
-        </div>
-    </div>
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Type</th>
-                        <th>Submitted</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for app in applications %}
-                    <tr>
-                        <td>#{{ app.id }}</td>
-                        <td>{{ app.name }}</td>
-                        <td>{{ app.email }}</td>
-                        <td>{{ app.get_user_type_display }}</td>
-                        <td>{{ app.submitted_at|date:"M d, Y" }}</td>
-                        <td>
-                            {% if app.status == 'pending' %}
-                            <span class="badge bg-warning">Pending</span>
-                            {% elif app.status == 'approved' %}
-                            <span class="badge bg-success">Approved</span>
-                            {% elif app.status == 'rejected' %}
-                            <span class="badge bg-danger">Rejected</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <a href="{% url 'admin_panel:seller_application_detail' app.id %}" class="btn btn-sm btn-outline-purple">
-                                <i class="fas fa-eye"></i> View
-                            </a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="7" class="text-center">No applications found</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Pagination -->
-        {% if applications.has_other_pages %}
-        <nav aria-label="Page navigation" class="mt-4">
-            <ul class="pagination justify-content-center">
-                {% if applications.has_previous %}
-                <li class="page-item">
-                    <a class="page-link" href="?status={{ status_filter }}&page={{ applications.previous_page_number }}" aria-label="Previous">
-                        <span aria-hidden="true">&laquo;</span>
-                    </a>
-                </li>
-                {% else %}
-                <li class="page-item disabled">
-                    <a class="page-link" href="#" aria-label="Previous">
-                        <span aria-hidden="true">&laquo;</span>
-                    </a>
-                </li>
-                {% endif %}
-                
-                {% for i in applications.paginator.page_range %}
-                    {% if applications.number == i %}
-                    <li class="page-item active"><a class="page-link" href="#">{{ i }}</a></li>
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3">Seller Applications Management</h1>
+                <div class="d-flex gap-2">
+                    <span class="badge bg-warning">{{ stats.pending }} Pending</span>
+                    <span class="badge bg-success">{{ stats.approved }} Approved</span>
+                    <span class="badge bg-secondary">{{ stats.total }} Total</span>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="stats-card">
+                        <h3 class="mb-0">{{ stats.pending }}</h3>
+                        <p class="mb-0">Pending Applications</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                        <h3 class="mb-0">{{ stats.approved }}</h3>
+                        <p class="mb-0">Approved Applications</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%);">
+                        <h3 class="mb-0">{{ stats.rejected }}</h3>
+                        <p class="mb-0">Rejected Applications</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <h3 class="mb-0">{{ stats.total }}</h3>
+                        <p class="mb-0">Total Applications</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
+                                <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+                                <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
+                                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Seller Type</label>
+                            <select name="seller_type" class="form-select">
+                                <option value="all" {% if seller_type_filter == 'all' %}selected{% endif %}>All Types</option>
+                                <option value="artist" {% if seller_type_filter == 'artist' %}selected{% endif %}>Artist</option>
+                                <option value="store" {% if seller_type_filter == 'store' %}selected{% endif %}>Store</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Search</label>
+                            <input type="text" name="q" class="form-control" placeholder="Search applications..." value="{{ search_query }}">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-primary w-100">Filter</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Applications List -->
+            <div class="card">
+                <div class="card-body">
+                    {% if applications %}
+                        {% for application in applications %}
+                        <div class="application-card">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <h5 class="mb-1">{{ application.business_name }}</h5>
+                                    <p class="text-muted mb-1">{{ application.description|truncatechars:100 }}</p>
+                                    <small class="text-muted">
+                                        Email: {{ application.user.email }} | 
+                                        Type: {{ application.get_seller_type_display }} |
+                                        Phone: {{ application.phone_number }}
+                                    </small>
+                                    <br>
+                                    <small class="text-muted">Applied: {{ application.created_at|date:"M d, Y H:i" }}</small>
+                                </div>
+                                <div class="col-md-3">
+                                    {% if application.status == 'pending' %}
+                                        <span class="status-badge status-pending">Pending</span>
+                                    {% elif application.status == 'approved' %}
+                                        <span class="status-badge status-approved">Approved</span>
+                                    {% elif application.status == 'rejected' %}
+                                        <span class="status-badge status-rejected">Rejected</span>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="action-buttons">
+                                        <a href="{% url 'admin_panel:seller_application_detail' application.id %}" class="btn btn-info btn-sm">
+                                            <i class="fas fa-eye"></i> View Details
+                                        </a>
+                                        {% if application.status == 'pending' %}
+                                            <button class="btn btn-success btn-sm" onclick="approveApplication({{ application.id }}, '{{ application.business_name }}')">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                            <button class="btn btn-danger btn-sm" onclick="rejectApplication({{ application.id }}, '{{ application.business_name }}')">
+                                                <i class="fas fa-times"></i> Reject
+                                            </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+
+                        <!-- Pagination -->
+                        {% if applications.has_other_pages %}
+                        <nav aria-label="Applications pagination">
+                            <ul class="pagination justify-content-center">
+                                {% if applications.has_previous %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ applications.previous_page_number }}&status={{ status_filter }}&seller_type={{ seller_type_filter }}&q={{ search_query }}">Previous</a>
+                                    </li>
+                                {% endif %}
+                                
+                                {% for page_num in applications.paginator.page_range %}
+                                    {% if page_num == applications.number %}
+                                        <li class="page-item active">
+                                            <span class="page-link">{{ page_num }}</span>
+                                        </li>
+                                    {% elif page_num > applications.number|add:'-3' and page_num < applications.number|add:'3' %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_num }}&status={{ status_filter }}&seller_type={{ seller_type_filter }}&q={{ search_query }}">{{ page_num }}</a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if applications.has_next %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="?page={{ applications.next_page_number }}&status={{ status_filter }}&seller_type={{ seller_type_filter }}&q={{ search_query }}">Next</a>
+                                    </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
                     {% else %}
-                    <li class="page-item"><a class="page-link" href="?status={{ status_filter }}&page={{ i }}">{{ i }}</a></li>
+                        <div class="text-center py-5">
+                            <i class="fas fa-file-alt fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No applications found</h5>
+                            <p class="text-muted">No seller applications match your current filters.</p>
+                        </div>
                     {% endif %}
-                {% endfor %}
-                
-                {% if applications.has_next %}
-                <li class="page-item">
-                    <a class="page-link" href="?status={{ status_filter }}&page={{ applications.next_page_number }}" aria-label="Next">
-                        <span aria-hidden="true">&raquo;</span>
-                    </a>
-                </li>
-                {% else %}
-                <li class="page-item disabled">
-                    <a class="page-link" href="#" aria-label="Next">
-                        <span aria-hidden="true">&raquo;</span>
-                    </a>
-                </li>
-                {% endif %}
-            </ul>
-        </nav>
-        {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+
+<!-- Reject Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Reject Application</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="rejectForm" method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="reject">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Application: <span id="rejectApplicationName"></span></label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rejection_reason" class="form-label">Rejection Reason *</label>
+                        <textarea class="form-control" name="rejection_reason" id="rejection_reason" rows="3" required 
+                            placeholder="Please provide a reason for rejecting this application..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="admin_notes" class="form-label">Admin Notes (Optional)</label>
+                        <textarea class="form-control" name="admin_notes" id="admin_notes" rows="2" 
+                            placeholder="Additional notes for internal use..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Reject Application</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function approveApplication(applicationId, applicationName) {
+    if (confirm(`Are you sure you want to approve "${applicationName}"?`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/dashboard/applications/${applicationId}/process/`;
+        
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        form.innerHTML = `
+            <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+            <input type="hidden" name="action" value="approve">
+        `;
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function rejectApplication(applicationId, applicationName) {
+    document.getElementById('rejectApplicationName').textContent = applicationName;
+    document.getElementById('rejectForm').action = `/dashboard/applications/${applicationId}/process/`;
+    const modal = new bootstrap.Modal(document.getElementById('rejectModal'));
+    modal.show();
+}
+</script>
 {% endblock %} 

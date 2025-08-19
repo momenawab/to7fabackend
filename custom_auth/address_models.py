@@ -20,6 +20,11 @@ class UserAddress(models.Model):
             message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
         )]
     )
+    # Location coordinates (supports worldwide coordinates with 8 decimal precision)
+    latitude = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True, help_text="Latitude coordinate")
+    longitude = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True, help_text="Longitude coordinate")
+    location_notes = models.TextField(blank=True, null=True, help_text="Additional location notes from user")
+    
     is_default = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

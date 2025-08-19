@@ -9,7 +9,7 @@ from django.utils.translation import gettext_lazy as _
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
-    description = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True, help_text="Description to help sellers understand what products belong in this category")
     parent = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='children')
     image = models.ImageField(upload_to='category_images/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -21,6 +21,101 @@ class Category(models.Model):
     
     class Meta:
         verbose_name_plural = 'Categories'
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    is_predefined = models.BooleanField(default=False, help_text="True if created by admin, False if custom tag by seller")
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, blank=True, related_name='tags', help_text="Category this tag belongs to (optional)")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return self.name
+    
+    class Meta:
+        unique_together = ['name', 'category']
+
+
+class CategoryVariantType(models.Model):
+    """Define what types of variants each category can have"""
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='variant_types')
+    name = models.CharField(max_length=50, help_text="e.g., 'Size', 'Color', 'Storage', 'Material'")
+    is_required = models.BooleanField(default=True, help_text="Whether this variant type is required for products in this category")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.category.name} - {self.name}"
+    
+    class Meta:
+        unique_together = ['category', 'name']
+
+
+class CategoryVariantOption(models.Model):
+    """Define the available options for each variant type"""
+    variant_type = models.ForeignKey(CategoryVariantType, on_delete=models.CASCADE, related_name='options')
+    value = models.CharField(max_length=50, help_text="e.g., 'Small', 'Red', '64GB', 'Cotton'")
+    extra_price = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text="Additional price for this variant option")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.variant_type.name}: {self.value}"
+    
+    class Meta:
+        unique_together = ['variant_type', 'value']
+
+
+class ProductCategoryVariantOption(models.Model):
+    """Junction table linking products to selected category variant options with stock/price info"""
+    product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='selected_variants')
+    category_variant_option = models.ForeignKey(CategoryVariantOption, on_delete=models.CASCADE)
+    stock_count = models.PositiveIntegerField(default=0, help_text="Stock for this variant combination")
+    price_adjustment = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0, 
+        help_text="Price adjustment from base price for this variant option"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.product.name} - {self.category_variant_option.variant_type.name}: {self.category_variant_option.value}"
+    
+    @property
+    def final_price(self):
+        """Calculate final price including extra price from variant option and price adjustment"""
+        base_price = self.product.base_price
+        extra_price = self.category_variant_option.extra_price
+        return base_price + extra_price + self.price_adjustment
+    
+    @property
+    def variant_type_name(self):
+        return self.category_variant_option.variant_type.name
+    
+    @property
+    def variant_option_value(self):
+        return self.category_variant_option.value
+    
+    @property
+    def is_in_stock(self):
+        return self.stock_count > 0 and self.is_active
+    
+    @property
+    def stock_status(self):
+        if not self.is_active:
+            return "Inactive"
+        elif self.stock_count > 10:
+            return "In stock"
+        elif self.stock_count > 0:
+            return f"{self.stock_count} left"
+        else:
+            return "Out of stock"
+    
+    class Meta:
+        unique_together = ['product', 'category_variant_option']
+        verbose_name = 'Product Variant Selection'
+        verbose_name_plural = 'Product Variant Selections'
 
 
 class Product(models.Model):
@@ -35,8 +130,20 @@ class Product(models.Model):
         related_name='products',
         limit_choices_to=Q(user_type='artist') | Q(user_type='store')
     )
+    
+    # Tags relationship
+    tags = models.ManyToManyField(Tag, blank=True, related_name='products')
+    
+    # Admin moderated fields
     is_featured = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    
+    # Admin request tracking
+    featured_request_pending = models.BooleanField(default=False, help_text="Seller has requested featured status")
+    offers_request_pending = models.BooleanField(default=False, help_text="Seller has requested to be in latest offers")
+    featured_requested_at = models.DateTimeField(null=True, blank=True)
+    offers_requested_at = models.DateTimeField(null=True, blank=True)
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -72,44 +179,46 @@ class Product(models.Model):
     
     @property
     def stock(self):
-        """Returns stock - either from variants or direct product stock"""
+        """Returns stock - either from selected variants or direct product stock"""
         if self.has_variants:
-            # For products with variants, sum variant stock
-            return sum(variant.stock_count for variant in self.variants.filter(is_active=True))
+            # For products with variants, sum selected variant stock
+            return sum(variant.stock_count for variant in self.selected_variants.filter(is_active=True))
         else:
             # For products without variants, use direct stock
             return self.stock_quantity
     
-    # Variant management methods
-    def get_available_attributes(self):
-        """Get all attributes available for this product's category"""
-        return self.category.category_attributes.filter(attribute__is_active=True).order_by('sort_order')
+    # Category Variant management methods
+    def get_available_category_variants(self):
+        """Get all category variant types available for this product's category"""
+        return self.category.variant_types.all().order_by('name')
     
-    def get_attribute_options(self, attribute):
-        """Get available options for a specific attribute"""
-        return attribute.options.filter(is_active=True).order_by('sort_order')
+    def get_category_variant_options(self, variant_type):
+        """Get available options for a specific category variant type"""
+        return variant_type.options.filter(is_active=True).order_by('value')
     
-    def get_variants_by_attributes(self, **attributes):
-        """Find variants matching specific attribute values"""
-        variants = self.variants.filter(is_active=True)
-        for attr_name, value in attributes.items():
-            variants = variants.filter(
-                variant_attributes__attribute__attribute_type=attr_name,
-                variant_attributes__option__value=value
-            )
-        return variants
+    def get_selected_variants_by_type(self, variant_type_name):
+        """Find selected variants matching specific variant type"""
+        return self.selected_variants.filter(
+            category_variant_option__variant_type__name=variant_type_name,
+            is_active=True
+        )
     
     @property
     def has_variants(self):
-        """Check if product has any variants"""
-        return self.variants.filter(is_active=True).exists()
+        """Check if product has any selected variants"""
+        return self.selected_variants.filter(is_active=True).exists()
+    
+    @property
+    def available_variant_types(self):
+        """Get all available variant types for this product's category"""
+        return self.category.variant_types.all().order_by('name')
     
     def get_price_range(self):
-        """Get min and max price across all variants"""
+        """Get min and max price across all selected variants"""
         if not self.has_variants:
             return self.base_price, self.base_price
         
-        variants = self.variants.filter(is_active=True)
+        variants = self.selected_variants.filter(is_active=True)
         prices = [v.final_price for v in variants]
         return min(prices), max(prices)
     
@@ -409,7 +518,7 @@ class CategoryAttribute(models.Model):
 
 
 class ProductVariant(models.Model):
-    """Individual product variants with specific attribute combinations"""
+    """Individual product variants with specific category variant combinations"""
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
     sku = models.CharField(max_length=100, unique=True, blank=True)  # Auto-generated SKU
     stock_count = models.PositiveIntegerField(default=0)
@@ -419,13 +528,18 @@ class ProductVariant(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     def __str__(self):
-        attributes = self.variant_attributes.all()
-        attr_str = ", ".join([f"{attr.attribute.name}: {attr.option.value}" for attr in attributes])
-        return f"{self.product.name} - {attr_str}"
+        variant_options = self.variant_options.all()
+        if variant_options:
+            options_str = ", ".join([f"{opt.variant_type.name}: {opt.value}" for opt in variant_options])
+            return f"{self.product.name} - {options_str}"
+        return f"{self.product.name} - No variants"
     
     @property
     def final_price(self):
-        return self.product.base_price + self.price_adjustment
+        # Calculate final price including extra prices from variant options
+        base_price = self.product.base_price + self.price_adjustment
+        extra_price = sum(option.extra_price for option in self.variant_options.all())
+        return base_price + extra_price
     
     @property
     def is_in_stock(self):
@@ -442,11 +556,11 @@ class ProductVariant(models.Model):
     
     def save(self, *args, **kwargs):
         if not self.sku:
-            # Generate SKU based on product ID and variant attributes
+            # Generate SKU based on product ID and variant options
             super().save(*args, **kwargs)  # Save first to get ID
-            attrs = self.variant_attributes.all()
-            attr_codes = [attr.option.value[:3].upper() for attr in attrs]
-            self.sku = f"P{self.product.id}V{self.id}-{''.join(attr_codes)}"
+            options = self.variant_options.all()
+            option_codes = [opt.value[:3].upper() for opt in options]
+            self.sku = f"P{self.product.id}V{self.id}-{''.join(option_codes)}"
             super().save(update_fields=['sku'])
         else:
             super().save(*args, **kwargs)
@@ -456,8 +570,36 @@ class ProductVariant(models.Model):
         verbose_name_plural = 'Product Variants'
 
 
+class ProductVariantOption(models.Model):
+    """Links variants to their specific category variant options"""
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='variant_options')
+    category_variant_option = models.ForeignKey(CategoryVariantOption, on_delete=models.CASCADE)
+    
+    def __str__(self):
+        return f"{self.variant} - {self.category_variant_option}"
+    
+    # Convenience properties for easier access
+    @property
+    def variant_type(self):
+        return self.category_variant_option.variant_type
+    
+    @property
+    def value(self):
+        return self.category_variant_option.value
+    
+    @property
+    def extra_price(self):
+        return self.category_variant_option.extra_price
+    
+    class Meta:
+        unique_together = ['variant', 'category_variant_option']
+        verbose_name = 'Product Variant Option'
+        verbose_name_plural = 'Product Variant Options'
+
+
+# Keep the old models for backward compatibility during migration
 class ProductVariantAttribute(models.Model):
-    """Links variants to their specific attribute values"""
+    """DEPRECATED: Links variants to their specific attribute values - kept for backward compatibility"""
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name='variant_attributes')
     attribute = models.ForeignKey(ProductAttribute, on_delete=models.CASCADE)
     option = models.ForeignKey(ProductAttributeOption, on_delete=models.CASCADE)
@@ -467,3 +609,54 @@ class ProductVariantAttribute(models.Model):
     
     class Meta:
         unique_together = ['variant', 'attribute']
+
+
+class DiscountRequest(models.Model):
+    """Model for handling seller discount requests that need admin approval"""
+    DISCOUNT_STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='discount_requests')
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='discount_requests')
+    
+    # Discount details
+    original_price = models.DecimalField(max_digits=10, decimal_places=2)
+    requested_discount_percentage = models.PositiveIntegerField(validators=[MinValueValidator(1), MaxValueValidator(90)])
+    final_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_reason = models.TextField(help_text="Seller's reason for requesting this discount")
+    
+    # Admin approval
+    status = models.CharField(max_length=20, choices=DISCOUNT_STATUS_CHOICES, default='pending')
+    admin_notes = models.TextField(blank=True, null=True, help_text="Admin notes about the approval/rejection")
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_discounts')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Offer placement requests
+    request_featured = models.BooleanField(default=False, help_text="Request to add to featured products")
+    request_latest_offers = models.BooleanField(default=False, help_text="Request to add to latest offers section")
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Discount Request: {self.product.name} - {self.requested_discount_percentage}% OFF"
+    
+    def save(self, *args, **kwargs):
+        # Calculate final price if not provided
+        if not self.final_price:
+            discount_decimal = Decimal(self.requested_discount_percentage) / Decimal('100')
+            self.final_price = self.original_price * (Decimal('1') - discount_decimal)
+        super().save(*args, **kwargs)
+    
+    @property
+    def savings_amount(self):
+        """Calculate savings amount"""
+        return self.original_price - self.final_price
+    
+    class Meta:
+        verbose_name = 'Discount Request'
+        verbose_name_plural = 'Discount Requests'
+        ordering = ['-created_at']

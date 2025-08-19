@@ -12,7 +12,8 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from admin_panel.models import SellerApplication, AdminNotification
+from .models import SellerApplication
+from admin_panel.models import AdminNotification
 from django.contrib import messages
 from products.models import Category
 
@@ -204,49 +205,38 @@ class SellerApplicationView(APIView):
                 # Create application object
                 application = SellerApplication(
                     user=request.user,
-                    user_type=user_type,
-                    name=request.POST.get('name'),
-                    email=request.POST.get('email'),
+                    seller_type=user_type,
+                    business_name=request.POST.get('business_name'),
                     phone_number=request.POST.get('phone_number'),
-                    address=request.POST.get('address'),
-                    shipping_company=request.POST.get('shipping_company'),
-                    details=request.POST.get('details')
+                    description=request.POST.get('description', '')
                 )
                 
-                # Handle photo upload
-                if 'photo' in request.FILES:
-                    application.photo = request.FILES['photo']
+                # Handle documents upload
+                if 'business_license' in request.FILES:
+                    application.business_license = request.FILES['business_license']
+                if 'id_document' in request.FILES:
+                    application.id_document = request.FILES['id_document']
                 
-                # Process shipping costs
-                shipping_costs = {}
-                for key, value in request.POST.items():
-                    if key.startswith('governorate_name_'):
-                        index = key.split('_')[-1]
-                        cost_key = f'governorate_cost_{index}'
-                        if cost_key in request.POST:
-                            governorate = request.POST[key]
-                            cost = request.POST[cost_key]
-                            shipping_costs[governorate] = float(cost)
-                
-                application.shipping_costs = shipping_costs
-                
-                # Process categories
-                categories = request.POST.getlist('categories')
-                application.categories = categories
+                # Process social media
+                social_media = {}
+                for platform in ['facebook', 'instagram', 'twitter', 'behance']:
+                    url = request.POST.get(f'social_{platform}', '').strip()
+                    if url:
+                        social_media[platform] = url
+                application.social_media = social_media
                 
                 # Handle artist specific fields
                 if user_type == 'artist':
-                    application.specialty = request.POST.get('specialty')
-                    application.bio = request.POST.get('bio')
+                    application.specialty = request.POST.get('specialty', '')
+                    application.portfolio_link = request.POST.get('portfolio_link', '')
                 
                 # Handle store specific fields
                 elif user_type == 'store':
-                    application.store_name = request.POST.get('store_name')
-                    application.tax_id = request.POST.get('tax_id')
+                    application.tax_id = request.POST.get('tax_id', '')
                     application.has_physical_store = 'has_physical_store' in request.POST
                     
                     if application.has_physical_store:
-                        application.physical_address = request.POST.get('physical_address')
+                        application.physical_address = request.POST.get('physical_address', '')
                 
                 application.save()
                 
@@ -275,7 +265,7 @@ class ApplicationStatusView(APIView):
         # Get the user's most recent application
         application = SellerApplication.objects.filter(
             user=request.user
-        ).order_by('-submitted_at').first()
+        ).order_by('-created_at').first()
         
         context = {
             'application': application

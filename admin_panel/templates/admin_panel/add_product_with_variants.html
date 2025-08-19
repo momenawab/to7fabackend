@@ -248,16 +248,16 @@ function loadCategoryAttributes() {
         return;
     }
 
-    console.log('Loading attributes for category:', categoryId);
+    console.log('Loading category variants for category:', categoryId);
     $.ajax({
-        url: `/dashboard/api/categories/${categoryId}/attributes/`,
+        url: `/dashboard/api/categories/${categoryId}/variants/`,
         method: 'GET',
         headers: {
             'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val(),
             'X-Requested-With': 'XMLHttpRequest'
         },
         success: function(response) {
-            console.log('Attributes loaded:', response);
+            console.log('Category variants loaded:', response);
             allAttributes = {};
             selectedAttributes = {};
             
@@ -266,46 +266,46 @@ function loadCategoryAttributes() {
             $('#sizes-section').hide();
             $('#other-attributes-section').empty();
             
-            response.forEach(categoryAttr => {
-                const attribute = categoryAttr.attribute;
-                allAttributes[attribute.attribute_type] = attribute;
-                selectedAttributes[attribute.attribute_type] = [];
+            response.variants.forEach(variantType => {
+                allAttributes[variantType.id] = variantType;
+                selectedAttributes[variantType.id] = [];
                 
-                if (attribute.attribute_type === 'frame_color') {
-                    renderFrameColors(attribute);
-                } else if (attribute.attribute_type === 'size') {
-                    renderSizes(attribute);
+                // Check variant type name to determine display style
+                const lowerName = variantType.name.toLowerCase();
+                if (lowerName.includes('لون') || lowerName.includes('إطار') || lowerName.includes('color')) {
+                    renderColors(variantType);
+                } else if (lowerName.includes('حجم') || lowerName.includes('size')) {
+                    renderSizes(variantType);
                 } else {
-                    renderOtherAttribute(attribute, categoryAttr.is_required);
+                    renderOtherVariant(variantType);
                 }
             });
             
             $('#attributes-section').show();
         },
         error: function(xhr) {
-            console.error('Attributes error:', xhr.status, xhr.statusText, xhr.responseText);
-            showAlert('Failed to load category attributes: ' + getErrorMessage(xhr), 'danger');
+            console.error('Category variants error:', xhr.status, xhr.statusText, xhr.responseText);
+            showAlert('Failed to load category variants: ' + getErrorMessage(xhr), 'danger');
         }
     });
 }
 
-function renderFrameColors(attribute) {
+function renderColors(variantType) {
     const container = $('#frame-colors-list');
     container.empty();
     
-    attribute.options.forEach(option => {
+    variantType.options.forEach(option => {
         if (!option.is_active) return;
         
-        const colorBox = option.color_code ? 
-            `<span class="color-preview me-2" style="background-color: ${option.color_code}; width: 20px; height: 20px; display: inline-block; border: 1px solid #ccc; border-radius: 3px;"></span>` : '';
-        
+        // Simple color display for CategoryVariantOptions (no color_code field)
         container.append(`
             <div class="col-md-3 mb-2">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="color_${option.id}" 
-                           value="${option.id}" onchange="updateSelectedAttribute('frame_color', ${option.id}, this.checked)">
+                           value="${option.id}" onchange="updateSelectedAttribute(${variantType.id}, ${option.id}, this.checked)">
                     <label class="form-check-label" for="color_${option.id}">
-                        ${colorBox}${option.display_name}
+                        ${option.value}
+                        ${option.extra_price > 0 ? ` (+${option.extra_price} ج.م)` : ''}
                     </label>
                 </div>
             </div>
@@ -315,20 +315,21 @@ function renderFrameColors(attribute) {
     $('#frame-colors-section').show();
 }
 
-function renderSizes(attribute) {
+function renderSizes(variantType) {
     const container = $('#sizes-list');
     container.empty();
     
-    attribute.options.forEach(option => {
+    variantType.options.forEach(option => {
         if (!option.is_active) return;
         
         container.append(`
             <div class="col-md-3 mb-2">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" id="size_${option.id}" 
-                           value="${option.id}" onchange="updateSelectedAttribute('size', ${option.id}, this.checked)">
+                           value="${option.id}" onchange="updateSelectedAttribute(${variantType.id}, ${option.id}, this.checked)">
                     <label class="form-check-label" for="size_${option.id}">
-                        ${option.display_name}
+                        ${option.value}
+                        ${option.extra_price > 0 ? ` (+${option.extra_price} ج.م)` : ''}
                     </label>
                 </div>
             </div>
@@ -338,22 +339,23 @@ function renderSizes(attribute) {
     $('#sizes-section').show();
 }
 
-function renderOtherAttribute(attribute, isRequired) {
+function renderOtherVariant(variantType) {
     const container = $('#other-attributes-section');
     
-    const requiredText = isRequired ? ' *' : '';
+    const requiredText = variantType.is_required ? ' *' : '';
     let optionsHtml = '';
     
-    attribute.options.forEach(option => {
+    variantType.options.forEach(option => {
         if (!option.is_active) return;
         
         optionsHtml += `
             <div class="col-md-3 mb-2">
                 <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="${attribute.attribute_type}_${option.id}" 
-                           value="${option.id}" onchange="updateSelectedAttribute('${attribute.attribute_type}', ${option.id}, this.checked)">
-                    <label class="form-check-label" for="${attribute.attribute_type}_${option.id}">
-                        ${option.display_name}
+                    <input class="form-check-input" type="checkbox" id="variant_${variantType.id}_${option.id}" 
+                           value="${option.id}" onchange="updateSelectedAttribute(${variantType.id}, ${option.id}, this.checked)">
+                    <label class="form-check-label" for="variant_${variantType.id}_${option.id}">
+                        ${option.value}
+                        ${option.extra_price > 0 ? ` (+${option.extra_price} ج.م)` : ''}
                     </label>
                 </div>
             </div>
@@ -362,23 +364,23 @@ function renderOtherAttribute(attribute, isRequired) {
     
     container.append(`
         <div class="mb-4">
-            <h5>${attribute.name}${requiredText}</h5>
+            <h5>${variantType.name}${requiredText}</h5>
             <div class="row">${optionsHtml}</div>
         </div>
     `);
 }
 
-function updateSelectedAttribute(attributeType, optionId, isSelected) {
-    if (!selectedAttributes[attributeType]) {
-        selectedAttributes[attributeType] = [];
+function updateSelectedAttribute(variantTypeId, optionId, isSelected) {
+    if (!selectedAttributes[variantTypeId]) {
+        selectedAttributes[variantTypeId] = [];
     }
     
     if (isSelected) {
-        if (!selectedAttributes[attributeType].includes(optionId)) {
-            selectedAttributes[attributeType].push(optionId);
+        if (!selectedAttributes[variantTypeId].includes(optionId)) {
+            selectedAttributes[variantTypeId].push(optionId);
         }
     } else {
-        selectedAttributes[attributeType] = selectedAttributes[attributeType].filter(id => id !== optionId);
+        selectedAttributes[variantTypeId] = selectedAttributes[variantTypeId].filter(id => id !== optionId);
     }
     
     // Auto-preview variants when attributes are selected
@@ -386,8 +388,8 @@ function updateSelectedAttribute(attributeType, optionId, isSelected) {
 }
 
 function autoPreviewVariants() {
-    // Check if at least one attribute has selections
-    const hasSelections = Object.keys(selectedAttributes).some(type => selectedAttributes[type].length > 0);
+    // Check if at least one variant type has selections
+    const hasSelections = Object.keys(selectedAttributes).some(variantTypeId => selectedAttributes[variantTypeId].length > 0);
     
     if (hasSelections) {
         const variants = generateVariantCombinations();
@@ -412,17 +414,18 @@ function previewVariants() {
 }
 
 function generateVariantCombinations() {
-    const attributeTypes = Object.keys(selectedAttributes);
-    const validAttributes = attributeTypes.filter(type => selectedAttributes[type].length > 0);
+    const variantTypeIds = Object.keys(selectedAttributes);
+    const validVariantTypes = variantTypeIds.filter(variantTypeId => selectedAttributes[variantTypeId].length > 0);
     
-    if (validAttributes.length === 0) return [];
+    if (validVariantTypes.length === 0) return [];
     
     // Generate all combinations
-    const combinations = cartesianProduct(validAttributes.map(type => 
-        selectedAttributes[type].map(optionId => ({
-            attributeType: type,
+    const combinations = cartesianProduct(validVariantTypes.map(variantTypeId => 
+        selectedAttributes[variantTypeId].map(optionId => ({
+            variantTypeId: variantTypeId,
             optionId: optionId,
-            option: findOptionById(type, optionId)
+            option: findOptionById(variantTypeId, optionId),
+            variantType: allAttributes[variantTypeId]
         }))
     ));
     
@@ -435,9 +438,9 @@ function cartesianProduct(arrays) {
     );
 }
 
-function findOptionById(attributeType, optionId) {
-    const attribute = allAttributes[attributeType];
-    return attribute ? attribute.options.find(opt => opt.id === optionId) : null;
+function findOptionById(variantTypeId, optionId) {
+    const variantType = allAttributes[variantTypeId];
+    return variantType ? variantType.options.find(opt => opt.id === optionId) : null;
 }
 
 function renderVariantsTable(variants) {
@@ -447,21 +450,28 @@ function renderVariantsTable(variants) {
     const basePrice = parseFloat($('#base_price').val()) || 0;
     
     variants.forEach((variant, index) => {
-        const variantName = variant.map(attr => `${attr.option.display_name}`).join(' - ');
+        // Calculate the variant name and total extra price
+        const variantName = variant.map(attr => `${attr.option.value}`).join(' - ');
+        const totalExtraPrice = variant.reduce((sum, attr) => sum + (attr.option.extra_price || 0), 0);
+        const defaultPrice = basePrice + totalExtraPrice;
         
         tbody.append(`
             <tr>
-                <td>${variantName}</td>
+                <td>
+                    ${variantName}
+                    <input type="hidden" class="variant-options" data-variant="${index}" 
+                           value='${JSON.stringify(variant.map(attr => attr.optionId))}'>
+                </td>
                 <td>
                     <input type="number" class="form-control variant-stock" 
                            data-variant="${index}" min="0" value="0">
                 </td>
                 <td>
                     <input type="number" class="form-control variant-price-adj" step="0.01" 
-                           data-variant="${index}" value="0" onchange="updateFinalPrice(${index})">
+                           data-variant="${index}" value="${totalExtraPrice}" onchange="updateFinalPrice(${index})">
                 </td>
                 <td>
-                    <span class="final-price" data-variant="${index}">${basePrice.toFixed(2)} ج.م</span>
+                    <span class="final-price" data-variant="${index}">${defaultPrice.toFixed(2)} ج.م</span>
                 </td>
                 <td>
                     <input type="checkbox" class="form-check-input variant-active" 
@@ -523,34 +533,32 @@ function setupFormSubmission() {
         
         const formData = new FormData(this);
         
-        // Add selected attributes
-        Object.keys(selectedAttributes).forEach(attributeType => {
-            selectedAttributes[attributeType].forEach(optionId => {
-                formData.append(`selected_${attributeType}_options`, optionId);
-            });
+        // Add selected variant options - now we store which specific combination options were selected
+        const selectedVariantData = [];
+        $('#variants-tbody tr').each(function(index) {
+            const $row = $(this);
+            const optionIds = JSON.parse($row.find('.variant-options').val());
+            const stockCount = parseInt($row.find('.variant-stock').val()) || 0;
+            const priceAdjustment = parseFloat($row.find('.variant-price-adj').val()) || 0;
+            const isActive = $row.find('.variant-active').is(':checked');
+            
+            if (isActive && stockCount > 0) { // Only include active variants with stock
+                optionIds.forEach(optionId => {
+                    selectedVariantData.push({
+                        option_id: optionId,
+                        stock_count: stockCount,
+                        price_adjustment: priceAdjustment
+                    });
+                });
+            }
         });
+        
+        formData.append('selected_variants', JSON.stringify(selectedVariantData));
         
         // Convert checkbox values to proper booleans
         const isFeatured = $('#is_featured').is(':checked');
         formData.delete('is_featured'); // Remove the original "on" value
         formData.append('is_featured', isFeatured ? 'true' : 'false');
-        
-        // Add variant data
-        const variants = [];
-        $('#variants-tbody tr').each(function(index) {
-            const $row = $(this);
-            const stockCount = $row.find('.variant-stock').val();
-            const priceAdjustment = $row.find('.variant-price-adj').val();
-            const isActive = $row.find('.variant-active').is(':checked');
-            
-            variants.push({
-                stock_count: parseInt(stockCount) || 0,
-                price_adjustment: parseFloat(priceAdjustment) || 0,
-                is_active: isActive ? true : false  // Ensure boolean
-            });
-        });
-        
-        formData.append('variants_data', JSON.stringify(variants));
         
         $.ajax({
             url: '/api/admin/products/admin/create-with-variants/',

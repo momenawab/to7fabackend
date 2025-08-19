@@ -76,13 +76,13 @@
                 <div class="row">
                     <div class="col-md-6">
                         <h6 class="text-muted">📅 SUBMITTED</h6>
-                        <p class="mb-2">{{ application.submitted_at|date:"F d, Y H:i" }}</p>
+                        <p class="mb-2">{{ application.created_at|date:"F d, Y H:i" }}</p>
                     </div>
-                    {% if application.processed_at %}
+                    {% if application.reviewed_at %}
                     <div class="col-md-6">
                         <h6 class="text-muted">⚡ PROCESSED</h6>
-                        <p class="mb-2">{{ application.processed_at|date:"F d, Y H:i" }}</p>
-                        <small class="text-muted">by {{ application.processed_by.email }}</small>
+                        <p class="mb-2">{{ application.reviewed_at|date:"F d, Y H:i" }}</p>
+                        <small class="text-muted">by {{ application.reviewed_by.email }}</small>
                     </div>
                     {% endif %}
                 </div>
@@ -100,11 +100,11 @@
                         <table class="table table-borderless">
                             <tr>
                                 <th style="width: 120px;">Name:</th>
-                                <td><strong>{{ application.name }}</strong></td>
+                                <td><strong>{{ application.business_name }}</strong></td>
                             </tr>
                             <tr>
                                 <th>Email:</th>
-                                <td>{{ application.email }}</td>
+                                <td>{{ application.user.email }}</td>
                             </tr>
                             <tr>
                                 <th>Phone:</th>
@@ -113,7 +113,7 @@
                             <tr>
                                 <th>Type:</th>
                                 <td>
-                                    {% if application.user_type == 'artist' %}
+                                    {% if application.seller_type == 'artist' %}
                                     <span class="badge bg-primary">🎨 Artist</span>
                                     {% else %}
                                     <span class="badge bg-info">🏪 Store</span>
@@ -128,10 +128,10 @@
                                 <th style="width: 120px;">Address:</th>
                                 <td>{{ application.address }}</td>
                             </tr>
-                            {% if application.bio %}
+                            {% if application.description %}
                             <tr>
                                 <th>Bio:</th>
-                                <td>{{ application.bio }}</td>
+                                <td>{{ application.description }}</td>
                             </tr>
                             {% endif %}
                             {% if application.terms_accepted_at %}
@@ -147,7 +147,7 @@
         </div>
 
         <!-- User Type Specific Information -->
-        {% if application.user_type == 'artist' %}
+        {% if application.seller_type == 'artist' %}
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">🎨 Artist Information</h5>
@@ -158,16 +158,16 @@
                         <th style="width: 120px;">Specialty:</th>
                         <td><span class="badge bg-primary">{{ application.specialty }}</span></td>
                     </tr>
-                    {% if application.bio %}
+                    {% if application.description %}
                     <tr>
                         <th>Bio:</th>
-                        <td>{{ application.bio }}</td>
+                        <td>{{ application.description }}</td>
                     </tr>
                     {% endif %}
                 </table>
             </div>
         </div>
-        {% elif application.user_type == 'store' %}
+        {% elif application.seller_type == 'store' %}
         <div class="card mb-4">
             <div class="card-header">
                 <h5 class="mb-0">🏪 Store Information</h5>
@@ -176,7 +176,7 @@
                 <table class="table table-borderless">
                     <tr>
                         <th style="width: 150px;">Store Name:</th>
-                        <td><strong>{{ application.store_name }}</strong></td>
+                        <td><strong>{{ application.business_name }}</strong></td>
                     </tr>
                     {% if application.tax_id %}
                     <tr>
@@ -231,8 +231,7 @@
                     <div class="d-flex flex-wrap">
                         {% for subcategory in subcategories %}
                         <span class="badge badge-subcategory me-2 mb-2 p-2">
-                            {{ subcategory.name }}
-                            <small class="opacity-75">(ID: {{ subcategory.id }})</small>
+                            {{ subcategory }}
                         </span>
                         {% endfor %}
                     </div>
@@ -308,9 +307,9 @@
                 <div class="row">
                     <div class="col-md-6">
                         <h6>Front ID</h6>
-                        {% if application.id_front %}
-                        <a href="{{ application.id_front.url }}" target="_blank">
-                            <img src="{{ application.id_front.url }}" alt="ID Front" class="img-fluid id-document">
+                        {% if application.id_document_front %}
+                        <a href="{{ application.id_document_front.url }}" target="_blank">
+                            <img src="{{ application.id_document_front.url }}" alt="ID Front" class="img-fluid id-document">
                         </a>
                         {% else %}
                         <div class="alert alert-warning">No front ID uploaded</div>
@@ -318,9 +317,9 @@
                     </div>
                     <div class="col-md-6">
                         <h6>Back ID</h6>
-                        {% if application.id_back %}
-                        <a href="{{ application.id_back.url }}" target="_blank">
-                            <img src="{{ application.id_back.url }}" alt="ID Back" class="img-fluid id-document">
+                        {% if application.id_document_back %}
+                        <a href="{{ application.id_document_back.url }}" target="_blank">
+                            <img src="{{ application.id_document_back.url }}" alt="ID Back" class="img-fluid id-document">
                         </a>
                         {% else %}
                         <div class="alert alert-warning">No back ID uploaded</div>
@@ -338,6 +337,35 @@
             </div>
             <div class="card-body">
                 <pre class="bg-light p-3 rounded">{{ application.details }}</pre>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Admin Notes & Status -->
+        {% if application.admin_notes or application.reviewed_at %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">📝 Admin Notes & Processing</h5>
+            </div>
+            <div class="card-body">
+                {% if application.admin_notes %}
+                <div class="alert alert-info">
+                    <strong>Admin Notes:</strong><br>
+                    {{ application.admin_notes|linebreaks }}
+                </div>
+                {% endif %}
+                
+                {% if application.reviewed_at %}
+                <div class="text-muted">
+                    <small>
+                        <i class="fas fa-clock"></i> 
+                        Processed on {{ application.reviewed_at|date:"F d, Y H:i" }}
+                        {% if application.reviewed_by %}
+                        by <strong>{{ application.reviewed_by.email }}</strong>
+                        {% endif %}
+                    </small>
+                </div>
+                {% endif %}
             </div>
         </div>
         {% endif %}
@@ -371,37 +399,6 @@
             </div>
         </div>
         {% endif %}
-        
-        <!-- Admin Notes & Status -->
-        {% if application.admin_notes or application.processed_at %}
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">📝 Admin Notes & Processing</h5>
-            </div>
-            <div class="card-body">
-                {% if application.admin_notes %}
-                <div class="alert alert-info">
-                    <strong>Admin Notes:</strong><br>
-                    {{ application.admin_notes|linebreaks }}
-                </div>
-                {% endif %}
-                
-                {% if application.processed_at %}
-                <div class="text-muted">
-                    <small>
-                        <i class="fas fa-clock"></i> 
-                        Processed on {{ application.processed_at|date:"F d, Y H:i" }}
-                        {% if application.processed_by %}
-                        by <strong>{{ application.processed_by.email }}</strong>
-                        {% endif %}
-                    </small>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-            </div>
-        </div>
     </div>
     
     <div class="col-md-4">

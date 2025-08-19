@@ -4,7 +4,8 @@ from django.contrib.admin.widgets import FilteredSelectMultiple
 from .models import (
     Category, Product, ProductImage, Review, Advertisement, ContentSettings, 
     ProductOffer, FeaturedProduct, ProductAttribute, ProductAttributeOption, 
-    CategoryAttribute, ProductVariant, ProductVariantAttribute
+    CategoryAttribute, ProductVariant, ProductVariantAttribute, Tag, 
+    CategoryVariantType, CategoryVariantOption, DiscountRequest, ProductVariantOption
 )
 
 # Custom forms for better product management
@@ -518,3 +519,137 @@ admin.site.register(ProductAttribute, ProductAttributeAdmin)
 admin.site.register(ProductAttributeOption, ProductAttributeOptionAdmin)
 admin.site.register(CategoryAttribute, CategoryAttributeAdmin)
 admin.site.register(ProductVariant, ProductVariantAdmin)
+
+
+# New Product Wizard Admin Classes
+
+class TagAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'is_predefined', 'created_by', 'created_at')
+    list_filter = ('is_predefined', 'category', 'created_at')
+    search_fields = ('name', 'category__name', 'created_by__username')
+    readonly_fields = ('created_at',)
+    
+    fieldsets = (
+        ('Tag Information', {
+            'fields': ('name', 'category', 'is_predefined', 'created_by')
+        }),
+        ('Metadata', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+
+class CategoryVariantOptionInline(admin.TabularInline):
+    model = CategoryVariantOption
+    extra = 1
+    fields = ('value', 'extra_price', 'is_active')
+
+class CategoryVariantTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'category', 'is_required', 'option_count')
+    list_filter = ('category', 'is_required')
+    search_fields = ('name', 'category__name')
+    inlines = [CategoryVariantOptionInline]
+    
+    def option_count(self, obj):
+        return obj.options.filter(is_active=True).count()
+    option_count.short_description = 'Active Options'
+
+class CategoryVariantOptionAdmin(admin.ModelAdmin):
+    list_display = ('variant_type', 'value', 'extra_price', 'is_active')
+    list_filter = ('variant_type__category', 'variant_type', 'is_active')
+    search_fields = ('variant_type__name', 'value')
+    list_editable = ('extra_price', 'is_active')
+
+class DiscountRequestAdmin(admin.ModelAdmin):
+    list_display = ('product', 'seller', 'requested_discount_percentage', 'final_price', 'status', 'created_at')
+    list_filter = ('status', 'request_featured', 'request_latest_offers', 'created_at')
+    search_fields = ('product__name', 'seller__username', 'discount_reason')
+    readonly_fields = ('final_price', 'savings_amount', 'created_at', 'updated_at')
+    actions = ['approve_discount', 'reject_discount']
+    
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('product', 'seller', 'discount_reason')
+        }),
+        ('Pricing Details', {
+            'fields': ('original_price', 'requested_discount_percentage', 'final_price', 'savings_amount')
+        }),
+        ('Marketing Requests', {
+            'fields': ('request_featured', 'request_latest_offers')
+        }),
+        ('Admin Review', {
+            'fields': ('status', 'admin_notes', 'reviewed_by', 'reviewed_at')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def approve_discount(self, request, queryset):
+        """Approve selected discount requests"""
+        from django.utils import timezone
+        
+        updated = queryset.filter(status='pending').update(
+            status='approved',
+            reviewed_by=request.user,
+            reviewed_at=timezone.now()
+        )
+        
+        self.message_user(request, f'{updated} discount requests approved.')
+    
+    def reject_discount(self, request, queryset):
+        """Reject selected discount requests"""
+        from django.utils import timezone
+        
+        updated = queryset.filter(status='pending').update(
+            status='rejected',
+            reviewed_by=request.user,
+            reviewed_at=timezone.now()
+        )
+        
+        self.message_user(request, f'{updated} discount requests rejected.')
+    
+    approve_discount.short_description = "Approve selected discount requests"
+    reject_discount.short_description = "Reject selected discount requests"
+
+class ProductVariantOptionInline(admin.TabularInline):
+    model = ProductVariantOption
+    extra = 0
+    fields = ('category_variant_option', 'variant_type', 'value', 'extra_price')
+    readonly_fields = ('variant_type', 'value', 'extra_price')
+    
+    def variant_type(self, obj):
+        return obj.category_variant_option.variant_type.name if obj.category_variant_option else ''
+    variant_type.short_description = 'Variant Type'
+    
+    def value(self, obj):
+        return obj.category_variant_option.value if obj.category_variant_option else ''
+    value.short_description = 'Value'
+    
+    def extra_price(self, obj):
+        return obj.category_variant_option.extra_price if obj.category_variant_option else 0
+    extra_price.short_description = 'Extra Price'
+
+# Enhanced Product Variant Admin with new system
+class EnhancedProductVariantAdmin(admin.ModelAdmin):
+    list_display = ('product', 'sku', 'variant_options_display', 'stock_count', 'final_price', 'is_active')
+    list_filter = ('is_active', 'product__category')
+    search_fields = ('product__name', 'sku')
+    readonly_fields = ('sku', 'final_price', 'stock_status')
+    inlines = [ProductVariantOptionInline]
+    
+    def variant_options_display(self, obj):
+        options = obj.variant_options.all()
+        return ", ".join([f"{opt.variant_type.name}: {opt.value}" for opt in options])
+    variant_options_display.short_description = 'Variant Options'
+
+# Register new models
+admin.site.register(Tag, TagAdmin)
+admin.site.register(CategoryVariantType, CategoryVariantTypeAdmin)
+admin.site.register(CategoryVariantOption, CategoryVariantOptionAdmin)
+admin.site.register(DiscountRequest, DiscountRequestAdmin)
+
+# Re-register ProductVariant with enhanced admin
+admin.site.unregister(ProductVariant)
+admin.site.register(ProductVariant, EnhancedProductVariantAdmin)
