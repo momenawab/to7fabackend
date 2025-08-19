@@ -67,4 +67,20 @@ urlpatterns = [
     path('seller/subcategories/<int:category_id>/', api_views.get_subcategories_for_seller, name='get_subcategories_for_seller'),
     path('seller/governorates/', api_views.get_egyptian_governorates, name='get_egyptian_governorates'),
     path('seller/status/', api_views.get_user_application_status, name='get_user_application_status'),
+    
+    # Seller Dashboard APIs (For approved sellers)
+    path('seller/dashboard/test-auth/', api_views.test_seller_auth, name='test_seller_auth'),
+    path('seller/dashboard/stats/', api_views.seller_dashboard_stats, name='seller_dashboard_stats'),
+    path('seller/dashboard/products/', api_views.seller_products, name='seller_products'),
+    path('seller/dashboard/products/<int:product_id>/', api_views.seller_product_detail, name='seller_product_detail'),
+    path('seller/dashboard/products/create/', api_views.create_product_wizard, name='create_product_wizard'),
+    path('seller/dashboard/products/<int:product_id>/toggle-status/', api_views.toggle_seller_product_status, name='toggle_seller_product_status'),
+    path('seller/dashboard/products/<int:product_id>/duplicate/', api_views.duplicate_seller_product, name='duplicate_seller_product'),
+    path('seller/dashboard/products/<int:product_id>/stock/', api_views.update_seller_product_stock, name='update_seller_product_stock'),
+    path('seller/dashboard/products/bulk-edit/', api_views.bulk_edit_seller_products, name='bulk_edit_seller_products'),
+    path('seller/dashboard/products/export/', api_views.export_seller_products, name='export_seller_products'),
+    path('seller/dashboard/analytics/', api_views.seller_product_analytics, name='seller_product_analytics'),
+    path('seller/dashboard/orders/', api_views.seller_orders, name='seller_orders'),
+    path('seller/dashboard/orders/<int:order_id>/status/', api_views.update_order_status, name='update_order_status'),
+    path('seller/dashboard/profile/', api_views.seller_profile, name='seller_profile'),
 ] 

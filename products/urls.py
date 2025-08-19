@@ -41,4 +41,9 @@ urlpatterns = [
     
     # Debug endpoint for Arabic encoding
     path('debug/arabic/', views.debug_arabic_encoding, name='debug_arabic_encoding'),
+    
+    # Product wizard endpoints
+    path('categories/', views.categories_for_product_wizard, name='categories_for_wizard'),
+    path('categories/<int:category_id>/variants/', views.category_variants, name='category_variants'),
+    path('categories/<int:category_id>/tags/', views.category_tags, name='category_tags'),
 ] 

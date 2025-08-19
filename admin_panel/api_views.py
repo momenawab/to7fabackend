@@ -8,12 +8,14 @@ from django.db.models import Count, Sum, Q, F
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse
 from django.db import transaction
+from django.conf import settings
 import csv
 
 from custom_auth.models import User, Artist, Store
-from products.models import Product, Category, Advertisement, ContentSettings
+from products.models import Product, Category, Advertisement, ContentSettings, Tag, CategoryVariantOption, ProductVariant, ProductVariantOption, DiscountRequest
 from orders.models import Order, OrderItem
-from .models import SellerApplication, AdminActivity, AdminNotification
+from .models import AdminActivity, AdminNotification
+from custom_auth.models import SellerApplication
 from .serializers import (
     SellerApplicationSerializer, UserSerializer, ProductSerializer,
     OrderSerializer, AdminNotificationSerializer, SellerApplicationCreateSerializer
@@ -47,7 +49,7 @@ class SellerApplicationListView(generics.ListAPIView):
     
     def get_queryset(self):
         status_filter = self.request.query_params.get('status', None)
-        queryset = SellerApplication.objects.select_related('user', 'processed_by').all().order_by('-submitted_at')
+        queryset = SellerApplication.objects.select_related('user', 'reviewed_by').all().order_by('-created_at')
         
         if status_filter and status_filter != 'all':
             queryset = queryset.filter(status=status_filter)
@@ -69,8 +71,8 @@ def approve_application(request, pk):
     # Process the application
     application.status = 'approved' if action else 'rejected'
     application.admin_notes = notes
-    application.processed_at = timezone.now()
-    application.processed_by = request.user
+    application.reviewed_at = timezone.now()
+    application.reviewed_by = request.user
     application.save()
     
     # Log admin activity
@@ -78,7 +80,7 @@ def approve_application(request, pk):
     AdminActivity.objects.create(
         admin=request.user,
         action=activity_action,
-        description=f"{'Approved' if action else 'Rejected'} seller application #{application.id} for {application.name}",
+        description=f"{'Approved' if action else 'Rejected'} seller application #{application.id} for {application.business_name}",
         ip_address=request.META.get('REMOTE_ADDR')
     )
     
@@ -86,45 +88,49 @@ def approve_application(request, pk):
     if action:
         with transaction.atomic():
             user = application.user
-            user.user_type = application.user_type
+            user.user_type = application.seller_type
             user.save()
             
-            if application.user_type == 'artist':
+            if application.seller_type == 'artist':
                 # Use select_for_update to prevent race conditions
                 try:
                     artist_profile = Artist.objects.select_for_update().get(user=user)
                     # Update existing profile
-                    artist_profile.specialty = application.specialty
-                    artist_profile.bio = application.bio
+                    artist_profile.specialty = application.specialty or ''
+                    artist_profile.bio = application.description
+                    artist_profile.social_media = application.social_media
                     artist_profile.is_verified = True
                     artist_profile.save()
                 except Artist.DoesNotExist:
                     # Create new profile if it doesn't exist
                     Artist.objects.create(
                         user=user,
-                        specialty=application.specialty,
-                        bio=application.bio,
+                        specialty=application.specialty or '',
+                        bio=application.description,
+                        social_media=application.social_media,
                         is_verified=True
                     )
-            elif application.user_type == 'store':
+            elif application.seller_type == 'store':
                 # Use select_for_update to prevent race conditions
                 try:
                     store_profile = Store.objects.select_for_update().get(user=user)
                     # Update existing profile
-                    store_profile.store_name = application.store_name
-                    store_profile.tax_id = application.tax_id
+                    store_profile.store_name = application.business_name
+                    store_profile.tax_id = application.tax_id or ''
                     store_profile.has_physical_store = application.has_physical_store
-                    store_profile.physical_address = application.physical_address
+                    store_profile.physical_address = application.physical_address or ''
+                    store_profile.social_media = application.social_media
                     store_profile.is_verified = True
                     store_profile.save()
                 except Store.DoesNotExist:
                     # Create new profile if it doesn't exist
                     Store.objects.create(
                         user=user,
-                        store_name=application.store_name,
-                        tax_id=application.tax_id,
+                        store_name=application.business_name,
+                        tax_id=application.tax_id or '',
                         has_physical_store=application.has_physical_store,
-                        physical_address=application.physical_address,
+                        physical_address=application.physical_address or '',
+                        social_media=application.social_media,
                         is_verified=True
                     )
     
@@ -769,8 +775,7 @@ def validate_uploaded_files(files):
 def create_product_with_variants(request):
     """API endpoint to create a product with variants"""
     from products.models import (
-        Product, ProductImage, ProductAttribute, ProductAttributeOption, 
-        ProductVariant, ProductVariantAttribute
+        Product, ProductImage, CategoryVariantOption, ProductCategoryVariantOption
     )
     from django.db import transaction
     import json
@@ -1541,7 +1546,7 @@ def create_seller_application(request):
         # Create admin notification
         AdminNotification.objects.create(
             title='New Seller Application',
-            message=f'New {application.get_user_type_display()} application from {application.name} ({application.email})',
+            message=f'New {application.get_seller_type_display()} application from {application.business_name} ({application.user.email})',
             notification_type='new_application',
             link=f'/admin/seller-applications/{application.id}/'
         )
@@ -1654,16 +1659,1083 @@ def get_user_application_status(request):
     """API endpoint to check user's seller application status"""
     
     try:
-        application = SellerApplication.objects.get(user=request.user)
+        # Get the most recent application for this user
+        application = SellerApplication.objects.filter(user=request.user).order_by('-created_at').first()
+        
+        if application:
+            return Response({
+                'has_application': True,
+                'status': application.status,
+                'status_display': application.get_status_display(),
+                # Provide backward compatibility with Flutter app field names
+                'submitted_at': application.created_at.isoformat(),
+                'processed_at': application.reviewed_at.isoformat() if application.reviewed_at else None,
+                'admin_notes': application.admin_notes,
+                'rejection_reason': application.rejection_reason,
+                # Also provide new field names for future use
+                'created_at': application.created_at.isoformat(),
+                'reviewed_at': application.reviewed_at.isoformat() if application.reviewed_at else None,
+                'business_name': application.business_name,
+                'seller_type': application.seller_type,
+                'seller_type_display': application.get_seller_type_display()
+            })
+        else:
+            return Response({
+                'has_application': False
+            })
+    except Exception as e:
         return Response({
-            'has_application': True,
-            'status': application.status,
-            'status_display': application.get_status_display(),
-            'submitted_at': application.submitted_at.isoformat(),
-            'processed_at': application.processed_at.isoformat() if application.processed_at else None,
-            'admin_notes': application.admin_notes
-        })
+            'has_application': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ============================================================================
+# SELLER DASHBOARD APIs - For approved sellers to manage their business
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def seller_dashboard_stats(request):
+    """API endpoint to get seller dashboard statistics"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Verify seller application is approved
+        application = SellerApplication.objects.get(user=request.user, status='approved')
     except SellerApplication.DoesNotExist:
-        return Response({
-            'has_application': False
+        return Response({'error': 'Seller application not found or not approved'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    # Get seller's products
+    products = Product.objects.filter(seller=request.user)
+    total_products = products.count()
+    active_products = products.filter(is_active=True).count()
+    inactive_products = total_products - active_products
+    
+    # Get seller's orders
+    seller_orders = OrderItem.objects.filter(seller=request.user)
+    total_orders = seller_orders.count()
+    
+    # Revenue calculations
+    completed_orders = seller_orders.filter(order__status='delivered')
+    total_revenue = completed_orders.aggregate(
+        revenue=Sum(F('price') * F('quantity'))
+    )['revenue'] or 0
+    
+    # Commission calculations
+    total_commission = completed_orders.aggregate(
+        commission=Sum('commission_amount')
+    )['commission'] or 0
+    
+    net_revenue = total_revenue - total_commission
+    
+    # Order status breakdown
+    order_statuses = seller_orders.values('order__status').annotate(
+        count=Count('id')
+    )
+    status_breakdown = {item['order__status']: item['count'] for item in order_statuses}
+    
+    # Monthly revenue for last 6 months
+    monthly_revenue = []
+    today = timezone.now().date()
+    
+    for i in range(6):
+        month_end = today.replace(day=1) - timezone.timedelta(days=1)
+        month_start = month_end.replace(day=1)
+        
+        month_revenue = seller_orders.filter(
+            order__created_at__date__range=(month_start, month_end),
+            order__status='delivered'
+        ).aggregate(
+            revenue=Sum(F('price') * F('quantity'))
+        )['revenue'] or 0
+        
+        monthly_revenue.append({
+            'month': month_start.strftime('%b %Y'),
+            'revenue': float(month_revenue)
         })
+        
+        today = month_start - timezone.timedelta(days=1)
+    
+    monthly_revenue.reverse()
+    
+    # Top selling products
+    top_products = products.annotate(
+        total_sold=Count('orderitem')
+    ).order_by('-total_sold')[:5]
+    
+    top_products_data = []
+    for product in top_products:
+        revenue = seller_orders.filter(
+            product=product,
+            order__status='delivered'
+        ).aggregate(
+            revenue=Sum(F('price') * F('quantity'))
+        )['revenue'] or 0
+        
+        top_products_data.append({
+            'id': product.id,
+            'name': product.name,
+            'total_sold': product.total_sold,
+            'revenue': float(revenue),
+            'price': float(product.base_price)
+        })
+    
+    # Recent orders (last 10)
+    recent_orders = seller_orders.select_related('order', 'product').order_by('-order__created_at')[:10]
+    recent_orders_data = []
+    
+    for item in recent_orders:
+        recent_orders_data.append({
+            'order_id': item.order.id,
+            'product_name': item.product.name,
+            'quantity': item.quantity,
+            'price': float(item.price),
+            'total': float(item.price * item.quantity),
+            'status': item.order.status,
+            'created_at': item.order.created_at.isoformat(),
+            'customer_email': item.order.user.email
+        })
+    
+    return Response({
+        'products': {
+            'total': total_products,
+            'active': active_products,
+            'inactive': inactive_products
+        },
+        'orders': {
+            'total': total_orders,
+            'status_breakdown': status_breakdown
+        },
+        'revenue': {
+            'total': float(total_revenue),
+            'commission': float(total_commission),
+            'net': float(net_revenue),
+            'monthly': monthly_revenue
+        },
+        'top_products': top_products_data,
+        'recent_orders': recent_orders_data
+    })
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def seller_products(request):
+    """API endpoint for sellers to manage their products"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    if request.method == 'GET':
+        # Get seller's products with filtering and ordering
+        products = Product.objects.filter(seller=request.user).select_related('category').prefetch_related('images').order_by('-created_at')
+        
+        # Apply filters
+        status_filter = request.query_params.get('status')
+        category_filter = request.query_params.get('category')
+        search = request.query_params.get('search')
+        
+        if status_filter == 'active':
+            products = products.filter(is_active=True)
+        elif status_filter == 'inactive':
+            products = products.filter(is_active=False)
+        
+        if category_filter:
+            products = products.filter(category_id=category_filter)
+        
+        if search:
+            products = products.filter(
+                Q(name__icontains=search) | Q(description__icontains=search)
+            )
+        
+        # Paginate results
+        from rest_framework.pagination import PageNumberPagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 20
+        page = paginator.paginate_queryset(products, request)
+        
+        products_data = []
+        for product in page:
+            # Get primary image
+            primary_image = product.images.filter(is_primary=True).first()
+            image_url = primary_image.image.url if primary_image else None
+            
+            # Get sales stats
+            total_sold = OrderItem.objects.filter(product=product).aggregate(
+                total=Count('id')
+            )['total'] or 0
+            
+            revenue = OrderItem.objects.filter(
+                product=product,
+                order__status='delivered'
+            ).aggregate(
+                revenue=Sum(F('price') * F('quantity'))
+            )['revenue'] or 0
+            
+            products_data.append({
+                'id': product.id,
+                'name': product.name,
+                'description': product.description,
+                'price': float(product.base_price),
+                'stock': product.stock,
+                'category': product.category.name,
+                'is_active': product.is_active,
+                'image': image_url,
+                'total_sold': total_sold,
+                'revenue': float(revenue),
+                'created_at': product.created_at.isoformat(),
+                'updated_at': product.updated_at.isoformat()
+            })
+        
+        return paginator.get_paginated_response(products_data)
+    
+    elif request.method == 'POST':
+        # Create new product
+        data = request.data
+        
+        try:
+            with transaction.atomic():
+                product = Product.objects.create(
+                    name=data.get('name'),
+                    description=data.get('description'),
+                    base_price=data.get('price'),
+                    stock_quantity=data.get('stock', 0),
+                    category_id=data.get('category_id'),
+                    seller=request.user,
+                    is_active=data.get('is_active', True)
+                )
+                
+                # Handle images if provided
+                images = request.FILES.getlist('images')
+                for i, image in enumerate(images):
+                    ProductImage.objects.create(
+                        product=product,
+                        image=image,
+                        is_primary=(i == 0)  # First image is primary
+                    )
+                
+                return Response({
+                    'status': 'success',
+                    'message': 'Product created successfully',
+                    'product_id': product.id
+                }, status=status.HTTP_201_CREATED)
+                
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def seller_product_detail(request, product_id):
+    """API endpoint for sellers to manage individual products"""
+    
+    try:
+        product = Product.objects.get(id=product_id, seller=request.user)
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    if request.method == 'GET':
+        # Get product details
+        primary_image = product.images.filter(is_primary=True).first()
+        all_images = product.images.all()
+        
+        total_sold = OrderItem.objects.filter(product=product).count()
+        revenue = OrderItem.objects.filter(
+            product=product,
+            order__status='delivered'
+        ).aggregate(
+            revenue=Sum(F('price') * F('quantity'))
+        )['revenue'] or 0
+        
+        return Response({
+            'id': product.id,
+            'name': product.name,
+            'description': product.description,
+            'price': float(product.base_price),
+            'stock': product.stock,
+            'category': {
+                'id': product.category.id,
+                'name': product.category.name
+            },
+            'is_active': product.is_active,
+            'primary_image': primary_image.image.url if primary_image else None,
+            'images': [img.image.url for img in all_images],
+            'total_sold': total_sold,
+            'revenue': float(revenue),
+            'created_at': product.created_at.isoformat(),
+            'updated_at': product.updated_at.isoformat()
+        })
+    
+    elif request.method == 'PUT':
+        # Update product
+        data = request.data
+        
+        try:
+            product.name = data.get('name', product.name)
+            product.description = data.get('description', product.description)
+            product.base_price = data.get('price', product.base_price)
+            product.stock_quantity = data.get('stock', product.stock_quantity)
+            product.is_active = data.get('is_active', product.is_active)
+            
+            if 'category_id' in data:
+                product.category_id = data['category_id']
+            
+            product.save()
+            
+            return Response({
+                'status': 'success',
+                'message': 'Product updated successfully'
+            })
+            
+        except Exception as e:
+            return Response({
+                'status': 'error',
+                'message': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    elif request.method == 'DELETE':
+        # Delete product
+        product.delete()
+        return Response({
+            'status': 'success',
+            'message': 'Product deleted successfully'
+        })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def seller_orders(request):
+    """API endpoint for sellers to view their orders"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    # Get seller's order items
+    order_items = OrderItem.objects.filter(seller=request.user).select_related('order', 'product')
+    
+    # Apply filters
+    status_filter = request.query_params.get('status')
+    date_from = request.query_params.get('date_from')
+    date_to = request.query_params.get('date_to')
+    search = request.query_params.get('search')
+    
+    if status_filter:
+        order_items = order_items.filter(order__status=status_filter)
+    
+    if date_from:
+        date_from = timezone.datetime.strptime(date_from, '%Y-%m-%d').date()
+        order_items = order_items.filter(order__created_at__date__gte=date_from)
+    
+    if date_to:
+        date_to = timezone.datetime.strptime(date_to, '%Y-%m-%d').date()
+        order_items = order_items.filter(order__created_at__date__lte=date_to)
+    
+    if search:
+        order_items = order_items.filter(
+            Q(order__id__icontains=search) | 
+            Q(product__name__icontains=search) |
+            Q(order__user__email__icontains=search)
+        )
+    
+    # Paginate results
+    from rest_framework.pagination import PageNumberPagination
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+    page = paginator.paginate_queryset(order_items.order_by('-order__created_at'), request)
+    
+    orders_data = []
+    for item in page:
+        orders_data.append({
+            'order_id': item.order.id,
+            'product': {
+                'id': item.product.id,
+                'name': item.product.name,
+                'image': item.product.images.filter(is_primary=True).first().image.url if item.product.images.filter(is_primary=True).exists() else None
+            },
+            'quantity': item.quantity,
+            'price': float(item.price),
+            'total': float(item.price * item.quantity),
+            'commission': float(item.commission_amount),
+            'net_amount': float((item.price * item.quantity) - item.commission_amount),
+            'status': item.order.status,
+            'customer': {
+                'email': item.order.user.email,
+                'name': f"{item.order.user.first_name} {item.order.user.last_name}".strip() or item.order.user.email
+            },
+            'shipping_address': item.order.shipping_address,
+            'created_at': item.order.created_at.isoformat(),
+            'updated_at': item.order.updated_at.isoformat()
+        })
+    
+    return paginator.get_paginated_response(orders_data)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_order_status(request, order_id):
+    """API endpoint for sellers to update order status for their products"""
+    
+    try:
+        # Get the order and verify seller has items in it
+        order = Order.objects.get(id=order_id)
+        seller_items = OrderItem.objects.filter(order=order, seller=request.user)
+        
+        if not seller_items.exists():
+            return Response({'error': 'No items found for this seller in this order'}, 
+                           status=status.HTTP_404_NOT_FOUND)
+        
+        new_status = request.data.get('status')
+        if new_status not in dict(Order.STATUS_CHOICES):
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update order status
+        order.status = new_status
+        order.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Order status updated successfully'
+        })
+        
+    except Order.DoesNotExist:
+        return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def seller_profile(request):
+    """API endpoint for sellers to view their profile information"""
+    
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        application = SellerApplication.objects.get(user=request.user, status='approved')
+        
+        profile_data = {
+            'user_type': application.user_type,
+            'name': application.name,
+            'email': application.email,
+            'phone_number': application.phone_number,
+            'address': application.address,
+            'photo': application.photo.url if application.photo else None,
+            'social_media': application.social_media,
+            'categories': application.categories,
+            'shipping_costs': application.shipping_costs,
+            'details': application.details,
+            'approved_at': application.reviewed_at.isoformat() if application.reviewed_at else None
+        }
+        
+        # Add type-specific data
+        if application.user_type == 'artist':
+            profile_data.update({
+                'specialty': application.specialty,
+                'bio': application.bio
+            })
+        elif application.user_type == 'store':
+            profile_data.update({
+                'store_name': application.store_name,
+                'tax_id': application.tax_id,
+                'has_physical_store': application.has_physical_store,
+                'physical_address': application.physical_address
+            })
+        
+        return Response(profile_data)
+        
+    except SellerApplication.DoesNotExist:
+        return Response({'error': 'Seller application not found'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def test_seller_auth(request):
+    """Test endpoint to check seller authentication"""
+    return Response({
+        'authenticated': True,
+        'user_id': request.user.id,
+        'username': request.user.username,
+        'user_type': getattr(request.user, 'user_type', 'regular'),
+        'is_seller': request.user.user_type in ['artist', 'store'] if hasattr(request.user, 'user_type') else False
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_product_wizard(request):
+    """Create a new product using the 6-step wizard system"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can create products'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Verify seller application is approved
+        application = SellerApplication.objects.get(user=request.user, status='approved')
+    except SellerApplication.DoesNotExist:
+        return Response({'error': 'Seller application not found or not approved'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        with transaction.atomic():
+            # Extract product data
+            name = request.data.get('name', '').strip()
+            description = request.data.get('description', '').strip()
+            base_price = request.data.get('base_price')
+            stock_quantity = request.data.get('stock_quantity')
+            category_id = request.data.get('category_id')
+            
+            # Helper function to parse boolean from string
+            def parse_bool(value):
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    return value.lower() in ('true', '1', 'yes', 'on')
+                return bool(value)
+            
+            # Parse boolean fields
+            featured_request_pending = parse_bool(request.data.get('featured_request_pending', False))
+            offers_request_pending = parse_bool(request.data.get('offers_request_pending', False))
+            
+            print(f"DEBUG: Featured request pending: {featured_request_pending} (type: {type(featured_request_pending)})")
+            print(f"DEBUG: Offers request pending: {offers_request_pending} (type: {type(offers_request_pending)})")
+            
+            # Validation
+            if not name:
+                return Response({'error': 'Product name is required'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            if not description:
+                return Response({'error': 'Product description is required'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            if not base_price or float(base_price) <= 0:
+                return Response({'error': 'Valid base price is required'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            if not stock_quantity or int(stock_quantity) < 0:
+                return Response({'error': 'Valid stock quantity is required'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            if not category_id:
+                return Response({'error': 'Category is required'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get category
+            try:
+                category = Category.objects.get(id=category_id, is_active=True)
+            except Category.DoesNotExist:
+                return Response({'error': 'Invalid category'}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+            # Handle category variants to determine stock management strategy
+            selected_variants = request.data.get('selected_variants', [])
+            if isinstance(selected_variants, str):
+                import json
+                selected_variants = json.loads(selected_variants)
+            
+            # Debug logging
+            print(f"DEBUG: Product creation request received")
+            print(f"DEBUG: All request data keys: {list(request.data.keys())}")
+            print(f"DEBUG: Name: {name}")
+            print(f"DEBUG: Description length: {len(description)}")
+            print(f"DEBUG: Base price: {base_price}")
+            print(f"DEBUG: Stock quantity: {stock_quantity}")
+            print(f"DEBUG: Category ID: {category_id}")
+            print(f"DEBUG: Category: {category}")
+            print(f"DEBUG: Selected variants data: {selected_variants}")
+            print(f"DEBUG: Has variants: {bool(selected_variants)}")
+            
+            print(f"DEBUG: About to create product...")
+            
+            # Create the product (stock handling depends on variants)
+            try:
+                if selected_variants:
+                    print(f"DEBUG: Creating product with category variants...")
+                    # Product with variants - set stock_quantity to 0, manage at variant level
+                    product = Product.objects.create(
+                        name=name,
+                        description=description,
+                        base_price=float(base_price),
+                        stock_quantity=0,  # Managed at variant level
+                        category=category,
+                        seller=request.user,
+                        featured_request_pending=featured_request_pending,
+                        offers_request_pending=offers_request_pending,
+                        is_active=False  # Admin needs to approve first
+                    )
+                else:
+                    print(f"DEBUG: Creating simple product without variants...")
+                    # Simple product without variants - manage stock at product level
+                    product = Product.objects.create(
+                        name=name,
+                        description=description,
+                        base_price=float(base_price),
+                        stock_quantity=int(stock_quantity),
+                        category=category,
+                        seller=request.user,
+                        featured_request_pending=featured_request_pending,
+                        offers_request_pending=offers_request_pending,
+                        is_active=False  # Admin needs to approve first
+                    )
+                print(f"DEBUG: Product created with ID: {product.id}")
+            except Exception as product_creation_error:
+                print(f"DEBUG: Failed to create product: {str(product_creation_error)}")
+                raise
+            
+            # Set request timestamps if requested
+            if product.featured_request_pending:
+                product.featured_requested_at = timezone.now()
+            if product.offers_request_pending:
+                product.offers_requested_at = timezone.now()
+            product.save()
+            
+            # Handle tags
+            tags_data = request.data.get('tags', [])
+            if isinstance(tags_data, str):
+                import json
+                tags_data = json.loads(tags_data)
+            
+            for tag_name in tags_data:
+                if tag_name.strip():
+                    # Try to get existing tag or create new custom tag
+                    tag, created = Tag.objects.get_or_create(
+                        name=tag_name.strip(),
+                        defaults={
+                            'is_predefined': False,
+                            'created_by': request.user
+                        }
+                    )
+                    product.tags.add(tag)
+            
+            # Handle category variants if they exist
+            if selected_variants:
+                print(f"DEBUG: Processing {len(selected_variants)} category variants...")
+                from products.models import CategoryVariantOption, ProductCategoryVariantOption
+                
+                variants_created = 0
+                for variant_data in selected_variants:
+                    try:
+                        option_id = variant_data.get('option_id')
+                        stock_count = int(variant_data.get('stock_count', 0))
+                        price_adjustment = float(variant_data.get('price_adjustment', 0))
+                        is_active = variant_data.get('is_active', True)
+                        
+                        if isinstance(is_active, str):
+                            is_active = is_active.lower() in ('true', '1', 'yes', 'on')
+                        
+                        if option_id:
+                            category_variant_option = CategoryVariantOption.objects.get(id=option_id)
+                            product_variant, created = ProductCategoryVariantOption.objects.get_or_create(
+                                product=product,
+                                category_variant_option=category_variant_option,
+                                defaults={
+                                    'stock_count': stock_count,
+                                    'price_adjustment': price_adjustment,
+                                    'is_active': bool(is_active)
+                                }
+                            )
+                            
+                            if created:
+                                variants_created += 1
+                                print(f"DEBUG: Created variant: {product_variant}")
+                            else:
+                                print(f"DEBUG: Variant already exists: {product_variant}")
+                                
+                    except CategoryVariantOption.DoesNotExist:
+                        print(f"DEBUG: CategoryVariantOption with id {option_id} not found")
+                        continue
+                    except Exception as e:
+                        print(f"DEBUG: Error creating variant: {e}")
+                        continue
+                
+                print(f"DEBUG: Created {variants_created} category variants for product {product.name}")
+                
+                # Update product total stock based on selected variants
+                total_stock = sum(v.stock_count for v in product.selected_variants.filter(is_active=True))
+                product.stock_quantity = total_stock
+                product.save()
+            
+            # Handle images
+            images = request.FILES.getlist('images')
+            if images:
+                # Process and save images (implement as needed)
+                # For now, we'll just note that images were uploaded
+                product.description += f"\n\n[{len(images)} images uploaded]"
+                product.save()
+            
+            # Handle discount request
+            discount_request_data = request.data.get('discount_request')
+            if discount_request_data:
+                if isinstance(discount_request_data, str):
+                    import json
+                    discount_request_data = json.loads(discount_request_data)
+                
+                DiscountRequest.objects.create(
+                    product=product,
+                    seller=request.user,
+                    original_price=float(discount_request_data.get('original_price', base_price)),
+                    requested_discount_percentage=int(discount_request_data.get('requested_discount_percentage', 0)),
+                    discount_reason=discount_request_data.get('discount_reason', ''),
+                    request_featured=discount_request_data.get('request_featured', False),
+                    request_latest_offers=discount_request_data.get('request_latest_offers', False)
+                )
+            
+            # Log admin activity for review (skip if admin field is required)
+            try:
+                AdminActivity.objects.create(
+                    admin=request.user,  # Use the submitting user instead of None
+                    action='create',  # Use valid action choice
+                    description=f"New product '{product.name}' submitted by {request.user.username} for review",
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+            except Exception as activity_error:
+                # Don't fail the product creation if activity logging fails
+                print(f"DEBUG: Failed to log admin activity: {str(activity_error)}")
+            
+            print(f"DEBUG: Product created successfully - ID: {product.id}")
+            
+            return Response({
+                'success': True,
+                'message': 'Product created successfully and submitted for admin review',
+                'product_id': product.id,
+                'data': {
+                    'id': product.id,
+                    'name': product.name,
+                    'price': float(product.base_price),
+                    'status': 'pending_review'
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        print(f"DEBUG: Exception occurred during product creation:")
+        print(f"DEBUG: Error: {str(e)}")
+        print(f"DEBUG: Traceback: {error_traceback}")
+        
+        return Response({
+            'success': False,
+            'message': f'Error creating product: {str(e)}',
+            'debug_info': error_traceback if settings.DEBUG else None
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+# New Seller Product Management Endpoints
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def toggle_seller_product_status(request, product_id):
+    """Toggle product active/inactive status for sellers"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        product = Product.objects.get(id=product_id, seller=request.user)
+        
+        # Store the old status for logging
+        old_status = product.is_active
+        
+        # Toggle the status
+        product.is_active = not product.is_active
+        product.save()
+        
+        # Log the activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='product_status_toggle',
+            description=f'Seller {request.user.email} {"activated" if product.is_active else "deactivated"} product "{product.name}"',
+            ip_address=get_client_ip(request)
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': f'Product {"activated" if product.is_active else "deactivated"} successfully',
+            'is_active': product.is_active,
+            'product': {
+                'id': product.id,
+                'name': product.name,
+                'is_active': product.is_active
+            }
+        })
+        
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found or you do not have permission to modify it'}, 
+                       status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def duplicate_seller_product(request, product_id):
+    """Duplicate a product for sellers"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        original_product = Product.objects.get(id=product_id, seller=request.user)
+        
+        # Create duplicate product
+        duplicate_product = Product.objects.create(
+            name=f"{original_product.name} - نسخة",
+            description=original_product.description,
+            base_price=original_product.base_price,
+            category=original_product.category,
+            seller=request.user,
+            stock_quantity=original_product.stock_quantity,
+            is_active=False,  # Set duplicate as inactive by default
+            featured_request_pending=False
+        )
+        
+        # Copy product images if any
+        for image in original_product.images.all():
+            ProductImage.objects.create(
+                product=duplicate_product,
+                image=image.image,
+                is_primary=image.is_primary
+            )
+        
+        return Response({
+            'status': 'success',
+            'message': 'Product duplicated successfully',
+            'product': {
+                'id': duplicate_product.id,
+                'name': duplicate_product.name,
+                'price': float(duplicate_product.base_price),
+                'is_active': duplicate_product.is_active
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_seller_product_stock(request, product_id):
+    """Update product stock quantity for sellers"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        product = Product.objects.get(id=product_id, seller=request.user)
+        new_stock = request.data.get('stock_quantity')
+        
+        if new_stock is None:
+            return Response({'error': 'stock_quantity is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            new_stock = int(new_stock)
+            if new_stock < 0:
+                raise ValueError("Stock cannot be negative")
+        except ValueError as e:
+            return Response({'error': 'Invalid stock quantity'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        product.stock_quantity = new_stock
+        product.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Stock updated successfully',
+            'new_stock': product.stock_quantity
+        })
+        
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def bulk_edit_seller_products(request):
+    """Bulk edit multiple products for sellers"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        product_ids = request.data.get('product_ids', [])
+        update_data = request.data.get('update_data', {})
+        
+        if not product_ids:
+            return Response({'error': 'product_ids is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get products owned by the seller
+        products = Product.objects.filter(id__in=product_ids, seller=request.user)
+        
+        if not products:
+            return Response({'error': 'No valid products found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        updated_count = 0
+        for product in products:
+            if 'is_active' in update_data:
+                product.is_active = update_data['is_active']
+            if 'base_price' in update_data:
+                product.base_price = update_data['base_price']
+            if 'stock_quantity' in update_data:
+                product.stock_quantity = update_data['stock_quantity']
+            
+            product.save()
+            updated_count += 1
+        
+        return Response({
+            'status': 'success',
+            'message': f'Successfully updated {updated_count} products',
+            'updated_count': updated_count
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_seller_products(request):
+    """Export seller's products data"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        format_type = request.query_params.get('format', 'csv')
+        
+        # Get seller's products
+        products = Product.objects.filter(seller=request.user).select_related('category')
+        
+        # Prepare data
+        export_data = []
+        for product in products:
+            export_data.append({
+                'id': product.id,
+                'name': product.name,
+                'description': product.description,
+                'price': float(product.base_price),
+                'stock': product.stock_quantity,
+                'category': product.category.name,
+                'is_active': product.is_active,
+                'created_at': product.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            })
+        
+        if format_type == 'csv':
+            # For now, return JSON data (CSV generation can be implemented later)
+            return Response({
+                'status': 'success',
+                'message': 'Products exported successfully',
+                'format': format_type,
+                'data': export_data,
+                'count': len(export_data)
+            })
+        else:
+            return Response({'error': 'Unsupported format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def seller_product_analytics(request):
+    """Get product analytics for sellers"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Get seller's products
+        products = Product.objects.filter(seller=request.user)
+        
+        # Calculate analytics
+        total_products = products.count()
+        active_products = products.filter(is_active=True).count()
+        inactive_products = total_products - active_products
+        
+        # Get total sales and revenue
+        total_sales = OrderItem.objects.filter(seller=request.user).aggregate(
+            total_quantity=Sum('quantity'),
+            total_revenue=Sum(F('price') * F('quantity'))
+        )
+        
+        # Top selling products
+        top_products = OrderItem.objects.filter(seller=request.user)\
+            .values('product__name')\
+            .annotate(total_sold=Sum('quantity'))\
+            .order_by('-total_sold')[:5]
+        
+        # Monthly sales data (last 12 months)
+        from datetime import datetime, timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        monthly_data = []
+        current_date = datetime.now()
+        
+        for i in range(12):
+            month_start = current_date - relativedelta(months=i)
+            month_start = month_start.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            month_end = month_start + relativedelta(months=1) - timedelta(seconds=1)
+            
+            month_sales = OrderItem.objects.filter(
+                seller=request.user,
+                order__created_at__range=[month_start, month_end]
+            ).aggregate(
+                sales=Sum('quantity'),
+                revenue=Sum(F('price') * F('quantity'))
+            )
+            
+            monthly_data.append({
+                'month': month_start.strftime('%Y-%m'),
+                'sales': month_sales['sales'] or 0,
+                'revenue': float(month_sales['revenue'] or 0)
+            })
+        
+        monthly_data.reverse()
+        
+        return Response({
+            'status': 'success',
+            'data': {
+                'overview': {
+                    'total_products': total_products,
+                    'active_products': active_products,
+                    'inactive_products': inactive_products,
+                    'total_sales': total_sales['total_quantity'] or 0,
+                    'total_revenue': float(total_sales['total_revenue'] or 0)
+                },
+                'top_products': list(top_products),
+                'monthly_data': monthly_data
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

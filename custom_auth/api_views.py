@@ -7,7 +7,8 @@ from django.utils import timezone
 from django.db.models import Q
 from .models import User, Artist, Store
 from .serializers import UserSerializer
-from admin_panel.models import AdminActivity, SellerApplication, AdminNotification
+from admin_panel.models import AdminActivity, AdminNotification
+from .models import SellerApplication
 import logging
 
 logger = logging.getLogger(__name__)
@@ -124,47 +125,29 @@ def submit_seller_application(request):
         # Create application object
         application = SellerApplication(
             user=user,
-            user_type=user_type,
-            name=request.data.get('name') or f"{user.first_name} {user.last_name}",
-            email=request.data.get('email') or user.email,
+            seller_type=user_type,
+            business_name=request.data.get('business_name') or f"{user.first_name} {user.last_name}",
             phone_number=request.data.get('phone_number') or user.phone_number,
-            address=request.data.get('address') or user.address,
-            shipping_company=request.data.get('shipping_company', ''),
-            shipping_costs=request.data.get('shipping_costs', {}),
-            details=request.data.get('details', '')
+            description=request.data.get('description', '')
         )
         
-        # Handle photo if provided in base64 format
-        if 'photo' in request.data and request.data['photo']:
-            application.photo = request.data['photo']
-        
-        # Process categories
-        categories = request.data.get('categories', [])
-        application.categories = categories
+        # Store social media links
+        social_media = request.data.get('social_media', {})
+        if social_media and isinstance(social_media, dict):
+            application.social_media = social_media
         
         # Handle artist specific fields
         if user_type == 'artist':
             application.specialty = request.data.get('specialty', '')
-            application.bio = request.data.get('bio', '')
-            
-            # Store social media links
-            social_media = request.data.get('social_media', {})
-            if social_media and isinstance(social_media, dict):
-                application.social_media = social_media
+            application.portfolio_link = request.data.get('portfolio_link', '')
         
         # Handle store specific fields
         elif user_type == 'store':
-            application.store_name = request.data.get('store_name', '') or request.data.get('name', '')
             application.tax_id = request.data.get('tax_id', '')
             application.has_physical_store = request.data.get('has_physical_store', False)
             
             if application.has_physical_store:
                 application.physical_address = request.data.get('physical_address', '')
-            
-            # Store social media links
-            social_media = request.data.get('social_media', {})
-            if social_media and isinstance(social_media, dict):
-                application.social_media = social_media
         
         application.save()
         

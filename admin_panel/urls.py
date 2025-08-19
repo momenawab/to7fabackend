@@ -26,6 +26,10 @@ urlpatterns = [
     path('products/add-with-variants/', views.add_product_with_variants, name='add_product_with_variants'),
     path('products/<int:product_id>/edit-with-variants/', views.edit_product_with_variants, name='edit_product_with_variants'),
     
+    # Product Approval
+    path('product-approval/', views.product_approval, name='product_approval'),
+    path('product-approval/<int:product_id>/process/', views.process_product_approval, name='process_product_approval'),
+    
     # Order Management
     path('orders/', views.order_management, name='order_management'),
     path('orders/<int:order_id>/view/', views.view_order, name='view_order'),
@@ -48,6 +52,13 @@ urlpatterns = [
     # Attribute Management
     path('attributes/', views.attribute_management, name='attributes'),
     
+    # Variant Management
+    path('variants/', views.variant_management, name='variant_management'),
+    path('variants/create-type/', views.create_variant_type, name='create_variant_type'),
+    path('variants/create-option/', views.create_variant_option, name='create_variant_option'),
+    path('variants/delete-type/', views.delete_variant_type, name='delete_variant_type'),
+    path('variants/delete-option/', views.delete_variant_option, name='delete_variant_option'),
+    
     # Settings
     path('settings/', views.settings, name='settings'),
     
@@ -57,6 +68,7 @@ urlpatterns = [
     path('api/test/', lambda request: JsonResponse({'status': 'working', 'user': str(request.user)}), name='api_test'),
     path('api/categories/', views.get_categories_json, name='get_categories_json'),
     path('api/categories/<int:category_id>/attributes/', views.get_category_attributes_json, name='get_category_attributes_json'),
+    path('api/categories/<int:category_id>/variants/', views.get_category_variants_json, name='get_category_variants_json'),
     
     path('activity-log/', views.activity_log, name='activity_log'),
 ] 
