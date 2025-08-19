@@ -1,0 +1,596 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Variant Management - To7fa Admin{% endblock %}
+{% block page_title %}Variant Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .variant-card {
+        transition: all 0.3s ease;
+        border: 1px solid var(--border-light);
+    }
+    
+    .variant-card:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
+    }
+    
+    .category-header {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+        color: white;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .category-header:hover {
+        background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+    }
+    
+    .variant-type-badge {
+        background: var(--info);
+        color: white;
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: var(--radius);
+        margin-right: 0.5rem;
+    }
+    
+    .variant-option {
+        background: var(--gray-50);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-sm);
+        padding: 0.5rem 0.75rem;
+        margin: 0.25rem;
+        display: inline-block;
+        font-size: 0.875rem;
+        transition: all 0.2s ease;
+    }
+    
+    .variant-option:hover {
+        background: var(--primary-alpha);
+        border-color: var(--primary);
+    }
+    
+    .variant-option .price-tag {
+        color: var(--success);
+        font-weight: 600;
+        margin-left: 0.5rem;
+    }
+    
+    .add-variant-form {
+        background: var(--gray-50);
+        border: 2px dashed var(--border-light);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        margin-top: 1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .add-variant-form:hover {
+        border-color: var(--primary);
+        background: var(--white);
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: var(--white);
+        padding: 1.5rem;
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow);
+        text-align: center;
+        border-left: 4px solid var(--primary);
+    }
+    
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 0.5rem;
+    }
+    
+    .stat-label {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    .collapse-toggle {
+        background: none;
+        border: none;
+        color: white;
+        padding: 0;
+        margin-left: auto;
+        transition: transform 0.3s ease;
+    }
+    
+    .collapse-toggle[aria-expanded="true"] {
+        transform: rotate(180deg);
+    }
+    
+    .required-badge {
+        background: var(--danger);
+        color: white;
+        font-size: 0.625rem;
+        padding: 0.125rem 0.375rem;
+        border-radius: 9999px;
+        margin-left: 0.5rem;
+    }
+    
+    .no-variants-message {
+        text-align: center;
+        color: var(--text-secondary);
+        font-style: italic;
+        padding: 2rem;
+        background: var(--gray-50);
+        border-radius: var(--radius);
+        margin: 1rem 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Statistics -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total_categories }}</div>
+            <div class="stat-label">Total Categories</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.categories_with_variants }}</div>
+            <div class="stat-label">Categories with Variants</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total_variant_types }}</div>
+            <div class="stat-label">Total Variant Types</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ stats.total_variant_options }}</div>
+            <div class="stat-label">Total Variant Options</div>
+        </div>
+    </div>
+
+    <!-- Categories with Variants -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="mb-0">
+                <i class="fas fa-tags me-2"></i>Category Variants Management
+            </h3>
+            <p class="mb-0 text-muted mt-2">Manage product variants for each category. Click on a category to expand and edit its variants.</p>
+        </div>
+        <div class="card-body">
+            {% if categories %}
+                <div class="accordion" id="categoriesAccordion">
+                    {% for category in categories %}
+                    <div class="variant-card mb-3">
+                        <div class="category-header p-3" data-bs-toggle="collapse" data-bs-target="#category{{ category.id }}" aria-expanded="false">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-grow-1">
+                                    <h5 class="mb-1">
+                                        <i class="fas fa-folder me-2"></i>{{ category.name }}
+                                        {% if category.variant_types_count > 0 %}
+                                            <span class="variant-type-badge">{{ category.variant_types_count }} type{{ category.variant_types_count|pluralize }}</span>
+                                            <span class="variant-type-badge">{{ category.total_options_count }} option{{ category.total_options_count|pluralize }}</span>
+                                        {% endif %}
+                                    </h5>
+                                    {% if category.description %}
+                                        <p class="mb-0 opacity-75">{{ category.description|truncatechars:100 }}</p>
+                                    {% endif %}
+                                </div>
+                                <button class="collapse-toggle" data-bs-toggle="collapse" data-bs-target="#category{{ category.id }}">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="category{{ category.id }}" class="collapse" data-bs-parent="#categoriesAccordion">
+                            <div class="p-3 border-top">
+                                <!-- Existing Variants -->
+                                <div class="variants-container" id="variants-{{ category.id }}">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-cogs me-2 text-primary"></i>Current Variants
+                                        </h6>
+                                        <button class="btn btn-primary btn-sm" onclick="loadCategoryVariants({{ category.id }})">
+                                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                                        </button>
+                                    </div>
+                                    <div id="variant-types-{{ category.id }}">
+                                        <div class="text-center text-muted py-3">
+                                            <i class="fas fa-spinner fa-spin me-2"></i>Loading variants...
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Add New Variant Type -->
+                                <div class="add-variant-form">
+                                    <h6 class="mb-3">
+                                        <i class="fas fa-plus me-2 text-success"></i>Add New Variant Type
+                                    </h6>
+                                    <form class="add-variant-type-form" data-category-id="{{ category.id }}">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Variant Type Name</label>
+                                                <input type="text" class="form-control" name="name" placeholder="e.g., Size, Color, Material" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Required</label>
+                                                <select class="form-control" name="is_required">
+                                                    <option value="false">Optional</option>
+                                                    <option value="true">Required</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3 d-flex align-items-end">
+                                                <button type="submit" class="btn btn-success w-100">
+                                                    <i class="fas fa-plus me-1"></i>Add Type
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="no-variants-message">
+                    <i class="fas fa-folder-open fa-3x mb-3"></i>
+                    <h5>No Categories Found</h5>
+                    <p>Create categories first to manage their variants.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Variant Option Modal -->
+<div class="modal fade" id="addVariantOptionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus me-2"></i>Add Variant Option
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="addVariantOptionForm">
+                <div class="modal-body">
+                    <input type="hidden" id="variantTypeId" name="variant_type_id">
+                    <div class="mb-3">
+                        <label class="form-label">Option Value</label>
+                        <input type="text" class="form-control" name="value" placeholder="e.g., Small, Blue, Cotton" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Extra Price (EGP)</label>
+                        <input type="number" class="form-control" name="extra_price" step="0.01" value="0" min="0">
+                        <div class="form-text">Additional cost for this option (0 for no extra cost)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-control" name="is_active">
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i>Add Option
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// CSRF Token
+const csrfToken = getCSRFToken();
+
+// Load category variants when accordion opens
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-load variants for expanded categories
+    document.querySelectorAll('.collapse').forEach(collapse => {
+        collapse.addEventListener('shown.bs.collapse', function() {
+            const categoryId = this.id.replace('category', '');
+            loadCategoryVariants(categoryId);
+        });
+    });
+    
+    // Handle add variant type forms
+    document.querySelectorAll('.add-variant-type-form').forEach(form => {
+        form.addEventListener('submit', handleAddVariantType);
+    });
+    
+    // Handle add variant option form
+    document.getElementById('addVariantOptionForm').addEventListener('submit', handleAddVariantOption);
+});
+
+function loadCategoryVariants(categoryId) {
+    const container = document.getElementById(`variant-types-${categoryId}`);
+    
+    // Show loading
+    container.innerHTML = `
+        <div class="text-center text-muted py-3">
+            <i class="fas fa-spinner fa-spin me-2"></i>Loading variants...
+        </div>
+    `;
+    
+    fetch(`/dashboard/api/categories/${categoryId}/variants/`, {
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.variants && data.variants.length > 0) {
+            let html = '';
+            data.variants.forEach(variantType => {
+                html += `
+                    <div class="variant-type-section mb-4" data-variant-type-id="${variantType.id}">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">
+                                <i class="fas fa-tag me-2 text-info"></i>${variantType.name}
+                                ${variantType.is_required ? '<span class="required-badge">Required</span>' : ''}
+                            </h6>
+                            <div>
+                                <button class="btn btn-success btn-sm me-2" onclick="showAddOptionModal(${variantType.id}, '${variantType.name}')">
+                                    <i class="fas fa-plus me-1"></i>Add Option
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteVariantType(${variantType.id}, '${variantType.name}')">
+                                    <i class="fas fa-trash me-1"></i>Delete Type
+                                </button>
+                            </div>
+                        </div>
+                        <div class="variant-options">
+                `;
+                
+                if (variantType.options && variantType.options.length > 0) {
+                    variantType.options.forEach(option => {
+                        html += `
+                            <div class="variant-option" data-option-id="${option.id}">
+                                ${option.value}
+                                ${option.extra_price > 0 ? `<span class="price-tag">+${option.extra_price} EGP</span>` : ''}
+                                ${!option.is_active ? '<span class="badge bg-secondary ms-1">Inactive</span>' : ''}
+                                <button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteVariantOption(${option.id}, '${option.value}')" style="padding: 0.125rem 0.25rem; font-size: 0.625rem;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<div class="text-muted fst-italic">No options yet. Add some options for this variant type.</div>';
+                }
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        } else {
+            container.innerHTML = `
+                <div class="no-variants-message">
+                    <i class="fas fa-tags fa-2x mb-2 text-muted"></i>
+                    <p class="mb-0">No variants configured for this category yet.</p>
+                    <small class="text-muted">Use the form below to add variant types.</small>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error loading variants:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Error loading variants. Please try again.
+            </div>
+        `;
+    });
+}
+
+function handleAddVariantType(event) {
+    event.preventDefault();
+    const form = event.target;
+    const categoryId = form.dataset.categoryId;
+    const formData = new FormData(form);
+    formData.append('category_id', categoryId);
+    
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Adding...';
+    submitBtn.disabled = true;
+    
+    fetch('/dashboard/variants/create-type/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reset form
+            form.reset();
+            
+            // Reload variants
+            loadCategoryVariants(categoryId);
+            
+            // Show success message
+            showAlert('success', `Variant type "${data.variant_type.name}" added successfully!`);
+        } else {
+            showAlert('danger', data.error || 'Failed to add variant type');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    })
+    .finally(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+}
+
+function showAddOptionModal(variantTypeId, variantTypeName) {
+    document.getElementById('variantTypeId').value = variantTypeId;
+    document.querySelector('#addVariantOptionModal .modal-title').innerHTML = 
+        `<i class="fas fa-plus me-2"></i>Add Option to "${variantTypeName}"`;
+    
+    const modal = new bootstrap.Modal(document.getElementById('addVariantOptionModal'));
+    modal.show();
+}
+
+function handleAddVariantOption(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Adding...';
+    submitBtn.disabled = true;
+    
+    fetch('/dashboard/variants/create-option/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reset form and close modal
+            form.reset();
+            bootstrap.Modal.getInstance(document.getElementById('addVariantOptionModal')).hide();
+            
+            // Find the category ID from the currently open accordion
+            const openAccordion = document.querySelector('.collapse.show');
+            if (openAccordion) {
+                const categoryId = openAccordion.id.replace('category', '');
+                loadCategoryVariants(categoryId);
+            }
+            
+            // Show success message
+            showAlert('success', `Variant option "${data.variant_option.value}" added successfully!`);
+        } else {
+            showAlert('danger', data.error || 'Failed to add variant option');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    })
+    .finally(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    });
+}
+
+function deleteVariantType(variantTypeId, variantTypeName) {
+    if (!confirm(`Are you sure you want to delete the variant type "${variantTypeName}"? This will also delete all its options.`)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('variant_type_id', variantTypeId);
+    
+    fetch('/dashboard/variants/delete-type/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Find the category ID from the currently open accordion
+            const openAccordion = document.querySelector('.collapse.show');
+            if (openAccordion) {
+                const categoryId = openAccordion.id.replace('category', '');
+                loadCategoryVariants(categoryId);
+            }
+            
+            showAlert('success', data.message);
+        } else {
+            showAlert('danger', data.error || 'Failed to delete variant type');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    });
+}
+
+function deleteVariantOption(optionId, optionValue) {
+    if (!confirm(`Are you sure you want to delete the variant option "${optionValue}"?`)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('option_id', optionId);
+    
+    fetch('/dashboard/variants/delete-option/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Find the category ID from the currently open accordion
+            const openAccordion = document.querySelector('.collapse.show');
+            if (openAccordion) {
+                const categoryId = openAccordion.id.replace('category', '');
+                loadCategoryVariants(categoryId);
+            }
+            
+            showAlert('success', data.message);
+        } else {
+            showAlert('danger', data.error || 'Failed to delete variant option');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    });
+}
+
+function showAlert(type, message) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show animate-fade-in-up" role="alert">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    
+    // Insert at the top of main content
+    const mainContent = document.querySelector('.main-content');
+    mainContent.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        const alert = mainContent.querySelector('.alert');
+        if (alert) {
+            alert.remove();
+        }
+    }, 5000);
+}
+</script>
+{% endblock %}
