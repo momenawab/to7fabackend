@@ -76,25 +76,32 @@
                 <div class="d-flex gap-2">
                     <span class="badge bg-warning">{{ stats.pending }} Pending</span>
                     <span class="badge bg-success">{{ stats.approved }} Approved</span>
+                    <span class="badge bg-danger">{{ stats.rejected }} Rejected</span>
                     <span class="badge bg-secondary">{{ stats.total }} Total</span>
                 </div>
             </div>
 
             <!-- Statistics Cards -->
             <div class="row mb-4">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="stats-card">
                         <h3 class="mb-0">{{ stats.pending }}</h3>
                         <p class="mb-0">Pending Approval</p>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="stats-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
                         <h3 class="mb-0">{{ stats.approved }}</h3>
                         <p class="mb-0">Approved Products</p>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
+                    <div class="stats-card" style="background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);">
+                        <h3 class="mb-0">{{ stats.rejected }}</h3>
+                        <p class="mb-0">Rejected Products</p>
+                    </div>
+                </div>
+                <div class="col-md-3">
                     <div class="stats-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                         <h3 class="mb-0">{{ stats.total }}</h3>
                         <p class="mb-0">Total Products</p>
@@ -111,6 +118,7 @@
                             <select name="status" class="form-select">
                                 <option value="pending" {% if status_filter == 'pending' %}selected{% endif %}>Pending</option>
                                 <option value="approved" {% if status_filter == 'approved' %}selected{% endif %}>Approved</option>
+                                <option value="rejected" {% if status_filter == 'rejected' %}selected{% endif %}>Rejected</option>
                                 <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
                             </select>
                         </div>
@@ -157,18 +165,25 @@
                                     <small class="text-muted">Created: {{ product.created_at|date:"M d, Y H:i" }}</small>
                                 </div>
                                 <div class="col-md-3">
-                                    {% if product.is_active %}
+                                    {% if product.approval_status == 'approved' %}
                                         <span class="status-badge status-approved">Approved</span>
+                                    {% elif product.approval_status == 'rejected' %}
+                                        <span class="status-badge status-rejected">Rejected</span>
+                                        {% if product.rejection_reason %}
+                                            <br><small class="text-muted">{{ product.rejection_reason|truncatechars:50 }}</small>
+                                        {% endif %}
                                     {% else %}
                                         <span class="status-badge status-pending">Pending</span>
                                     {% endif %}
                                 </div>
                                 <div class="col-md-3">
                                     <div class="action-buttons">
-                                        {% if not product.is_active %}
+                                        {% if product.approval_status == 'pending' or product.approval_status == 'rejected' %}
                                             <button class="btn btn-success btn-sm" onclick="approveProduct({{ product.id }}, '{{ product.name }}')">
                                                 <i class="fas fa-check"></i> Approve
                                             </button>
+                                        {% endif %}
+                                        {% if product.approval_status == 'pending' or product.approval_status == 'approved' %}
                                             <button class="btn btn-danger btn-sm" onclick="rejectProduct({{ product.id }}, '{{ product.name }}')">
                                                 <i class="fas fa-times"></i> Reject
                                             </button>
