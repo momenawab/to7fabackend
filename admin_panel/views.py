@@ -20,6 +20,7 @@ from products.models import Product, Category, ProductImage
 from orders.models import Order
 from .models import AdminActivity, AdminNotification
 from notifications.models import Notification
+from support.models import SupportTicket, SupportCategory, SupportMessage
 
 # Helper function to check if user is admin
 def is_admin(user):
@@ -171,24 +172,24 @@ def seller_applications(request):
 def seller_application_detail(request, application_id):
     """View detailed information about a seller application"""
     application = get_object_or_404(SellerApplication, id=application_id)
-    
+
     # Process categories data
     category_names = []
     if application.categories:
         from products.models import Category
         category_ids = application.categories if isinstance(application.categories, list) else []
         category_names = Category.objects.filter(id__in=category_ids).values('id', 'name')
-    
+
     # Process subcategories data - check if there's a subcategory model
     subcategories = []
     if application.subcategories:
         # For now, just display the subcategory data as is since we don't have a Subcategory model
         subcategories = application.subcategories if isinstance(application.subcategories, list) else []
-    
+
     # Process shipping costs data - using Egyptian governorates
     shipping_costs_with_names = []
     shipping_stats = {'available': 0, 'total': 0}
-    
+
     # List of Egyptian governorates (same as in custom_auth/views.py)
     governorates = [
         'Cairo', 'Alexandria', 'Giza', 'Qalyubia', 'Sharqia',
@@ -198,12 +199,12 @@ def seller_application_detail(request, application_id):
         'Sohag', 'Qena', 'Luxor', 'Aswan', 'Red Sea',
         'New Valley', 'Matruh'
     ]
-    
+
     if application.shipping_costs:
         for index, governorate in enumerate(governorates, 1):
             # Shipping costs are stored with string indices (1, 2, 3, etc.)
             cost_data = application.shipping_costs.get(str(index), 0)
-            
+
             if isinstance(cost_data, dict):
                 is_available = cost_data.get('available', False)
                 cost = cost_data.get('cost', 0) if is_available else 0
@@ -211,17 +212,17 @@ def seller_application_detail(request, application_id):
                 # Handle case where cost_data is just a number
                 is_available = cost_data > 0 if isinstance(cost_data, (int, float)) else False
                 cost = cost_data if is_available else 0
-            
+
             shipping_costs_with_names.append({
                 'name': governorate,
                 'cost': cost,
                 'available': is_available
             })
-            
+
             shipping_stats['total'] += 1
             if is_available:
                 shipping_stats['available'] += 1
-    
+
     context = {
         'application': application,
         'category_names': category_names,
@@ -230,7 +231,7 @@ def seller_application_detail(request, application_id):
         'shipping_stats': shipping_stats,
         'active_tab': 'applications'
     }
-    
+
     return render(request, 'admin_panel/seller_application_detail.html', context)
 
 # Process Seller Application
@@ -240,12 +241,12 @@ def seller_application_detail(request, application_id):
 def process_application(request, application_id):
     """Process a seller application (approve or reject)"""
     application = get_object_or_404(SellerApplication, pk=application_id)
-    
+
     if request.method == 'POST':
         action = request.POST.get('action')
         admin_notes = request.POST.get('admin_notes', '')
         rejection_reason = request.POST.get('rejection_reason', '')
-        
+
         if action == 'approve':
             # Use atomic transaction to ensure data consistency
             with transaction.atomic():
@@ -255,12 +256,12 @@ def process_application(request, application_id):
                 application.reviewed_at = timezone.now()
                 application.reviewed_by = request.user
                 application.save()
-                
+
                 # Update user type and create profile
                 user = application.user
                 user.user_type = application.seller_type
                 user.save()
-                
+
                 if application.seller_type == 'artist':
                     # Use select_for_update to prevent race conditions
                     try:
@@ -280,7 +281,7 @@ def process_application(request, application_id):
                             social_media=application.social_media,
                             is_verified=True
                         )
-                        
+
                 elif application.seller_type == 'store':
                     # Use select_for_update to prevent race conditions
                     try:
@@ -304,7 +305,7 @@ def process_application(request, application_id):
                             social_media=application.social_media,
                             is_verified=True
                         )
-            
+
             # Log activity
             AdminActivity.objects.create(
                 admin=request.user,
@@ -312,7 +313,7 @@ def process_application(request, application_id):
                 description=f"Approved seller application #{application.id} for {application.business_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-            
+
             # Send notification to user
             notes_message = f"\n\nAdmin notes: {admin_notes}" if admin_notes else ""
             Notification.create_notification(
@@ -322,9 +323,9 @@ def process_application(request, application_id):
                 notification_type="system",
                 related_object=application
             )
-            
+
             messages.success(request, f"Application #{application.id} has been approved.")
-        
+
         elif action == 'reject':
             # Update application status
             application.status = 'rejected'
@@ -333,7 +334,7 @@ def process_application(request, application_id):
             application.reviewed_at = timezone.now()
             application.reviewed_by = request.user
             application.save()
-            
+
             # Log activity
             AdminActivity.objects.create(
                 admin=request.user,
@@ -341,7 +342,7 @@ def process_application(request, application_id):
                 description=f"Rejected seller application #{application.id} for {application.business_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-            
+
             # Send notification to user
             rejection_message = f"Reason: {rejection_reason}" if rejection_reason else ""
             notes_message = f"\n\nAdmin notes: {admin_notes}" if admin_notes else ""
@@ -352,9 +353,9 @@ def process_application(request, application_id):
                 notification_type="system",
                 related_object=application
             )
-            
+
             messages.success(request, f"Application #{application.id} has been rejected.")
-        
+
         elif action == 'reject_permanently':
             # Update application status
             application.status = 'rejected_permanently'
@@ -362,7 +363,7 @@ def process_application(request, application_id):
             application.reviewed_at = timezone.now()
             application.reviewed_by = request.user
             application.save()
-            
+
             # Log activity
             AdminActivity.objects.create(
                 admin=request.user,
@@ -370,9 +371,9 @@ def process_application(request, application_id):
                 description=f"Permanently rejected seller application #{application.id} for {application.business_name}",
                 ip_address=request.META.get('REMOTE_ADDR')
             )
-            
+
             messages.warning(request, f"Application #{application.id} has been permanently rejected.")
-            
+
             # Send notification to user
             notes_message = f"\n\nReason for rejection: {admin_notes}" if admin_notes else ""
             Notification.create_notification(
@@ -382,16 +383,16 @@ def process_application(request, application_id):
                 notification_type="system",
                 related_object=application
             )
-            
+
             messages.success(request, f"Application #{application.id} has been rejected.")
-        
+
         return redirect('admin_panel:seller_applications')
-    
+
     context = {
         'application': application,
         'active_tab': 'applications'
     }
-    
+
     return render(request, 'admin_panel/process_application.html', context)
 
 # User Management
@@ -401,30 +402,30 @@ def user_management(request):
     user_type = request.GET.get('type', 'all')
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
-    
+
     users = User.objects.all().order_by('-date_joined')
-    
+
     # Apply filters
     if user_type != 'all':
         users = users.filter(user_type=user_type)
-    
+
     if status == 'active':
         users = users.filter(is_active=True)
     elif status == 'blocked':
         users = users.filter(is_active=False)
-    
+
     if search_query:
         users = users.filter(
-            Q(email__icontains=search_query) | 
-            Q(first_name__icontains=search_query) | 
+            Q(email__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
             Q(last_name__icontains=search_query)
         )
-    
+
     # Pagination
     paginator = Paginator(users, 20)
     page_number = request.GET.get('page', 1)
     users_page = paginator.get_page(page_number)
-    
+
     context = {
         'users': users_page,
         'user_type': user_type,
@@ -432,7 +433,7 @@ def user_management(request):
         'search_query': search_query,
         'active_tab': 'users'
     }
-    
+
     return render(request, 'admin_panel/user_management.html', context)
 
 # Product Management
@@ -442,32 +443,32 @@ def product_management(request):
     category_id = request.GET.get('category', 'all')
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
-    
+
     products = Product.objects.select_related('category', 'seller').all().order_by('-created_at')
-    
+
     # Apply filters
     if category_id != 'all':
         products = products.filter(category_id=category_id)
-    
+
     if status == 'active':
         products = products.filter(is_active=True)
     elif status == 'inactive':
         products = products.filter(is_active=False)
-    
+
     if search_query:
         products = products.filter(
-            Q(name__icontains=search_query) | 
+            Q(name__icontains=search_query) |
             Q(description__icontains=search_query)
         )
-    
+
     # Get categories for filter dropdown
     categories = Category.objects.all()
-    
+
     # Pagination
     paginator = Paginator(products, 20)
     page_number = request.GET.get('page', 1)
     products_page = paginator.get_page(page_number)
-    
+
     context = {
         'products': products_page,
         'categories': categories,
@@ -476,7 +477,7 @@ def product_management(request):
         'search_query': search_query,
         'active_tab': 'products'
     }
-    
+
     return render(request, 'admin_panel/product_management.html', context)
 
 # Product Approval Management
@@ -487,41 +488,44 @@ def product_approval(request):
     status_filter = request.GET.get('status', 'pending')
     search_query = request.GET.get('q', '')
     category_id = request.GET.get('category', 'all')
-    
+
     # Get products based on approval status
     if status_filter == 'pending':
-        products = Product.objects.filter(is_active=False).select_related('category', 'seller').order_by('-created_at')
+        products = Product.objects.filter(approval_status='pending').select_related('category', 'seller').order_by('-created_at')
     elif status_filter == 'approved':
-        products = Product.objects.filter(is_active=True).select_related('category', 'seller').order_by('-created_at')
+        products = Product.objects.filter(approval_status='approved').select_related('category', 'seller').order_by('-created_at')
+    elif status_filter == 'rejected':
+        products = Product.objects.filter(approval_status='rejected').select_related('category', 'seller').order_by('-created_at')
     else:  # all
         products = Product.objects.all().select_related('category', 'seller').order_by('-created_at')
-    
+
     # Apply filters
     if category_id != 'all':
         products = products.filter(category_id=category_id)
-    
+
     if search_query:
         products = products.filter(
-            Q(name__icontains=search_query) | 
+            Q(name__icontains=search_query) |
             Q(description__icontains=search_query) |
             Q(seller__email__icontains=search_query)
         )
-    
+
     # Get categories for filter dropdown
     categories = Category.objects.all()
-    
+
     # Get statistics
     stats = {
-        'pending': Product.objects.filter(is_active=False).count(),
-        'approved': Product.objects.filter(is_active=True).count(),
+        'pending': Product.objects.filter(approval_status='pending').count(),
+        'approved': Product.objects.filter(approval_status='approved').count(),
+        'rejected': Product.objects.filter(approval_status='rejected').count(),
         'total': Product.objects.count(),
     }
-    
+
     # Pagination
     paginator = Paginator(products, 15)
     page_number = request.GET.get('page', 1)
     products_page = paginator.get_page(page_number)
-    
+
     context = {
         'products': products_page,
         'categories': categories,
@@ -531,7 +535,7 @@ def product_approval(request):
         'stats': stats,
         'active_tab': 'product_approval'
     }
-    
+
     return render(request, 'admin_panel/product_approval.html', context)
 
 @login_required
@@ -542,11 +546,13 @@ def process_product_approval(request, product_id):
     product = get_object_or_404(Product, id=product_id)
     action = request.POST.get('action')
     admin_notes = request.POST.get('admin_notes', '')
-    
+
     if action == 'approve':
+        product.approval_status = 'approved'
         product.is_active = True
+        product.rejection_reason = None  # Clear any previous rejection reason
         product.save()
-        
+
         # Create notification for seller
         Notification.objects.create(
             user=product.seller,
@@ -554,7 +560,7 @@ def process_product_approval(request, product_id):
             message=f'تم قبول منتجك "{product.name}" ونشره في المتجر.',
             notification_type='product_approved'
         )
-        
+
         # Log admin activity
         AdminActivity.objects.create(
             admin=request.user,
@@ -562,17 +568,18 @@ def process_product_approval(request, product_id):
             description=f'Approved product "{product.name}" (ID: {product.id}) by {product.seller.email}',
             ip_address=request.META.get('REMOTE_ADDR')
         )
-        
+
         messages.success(request, f'تم قبول المنتج "{product.name}" بنجاح')
-        
+
     elif action == 'reject':
         rejection_reason = request.POST.get('rejection_reason', 'لم يتم تحديد السبب')
-        
-        # For now, we'll keep the product but mark it as inactive
-        # In the future, you might want to add a rejection reason field to the Product model
+
+        # Mark product as rejected with reason
+        product.approval_status = 'rejected'
         product.is_active = False
+        product.rejection_reason = rejection_reason
         product.save()
-        
+
         # Create notification for seller
         Notification.objects.create(
             user=product.seller,
@@ -580,7 +587,7 @@ def process_product_approval(request, product_id):
             message=f'تم رفض منتجك "{product.name}". السبب: {rejection_reason}',
             notification_type='product_rejected'
         )
-        
+
         # Log admin activity
         AdminActivity.objects.create(
             admin=request.user,
@@ -588,13 +595,13 @@ def process_product_approval(request, product_id):
             description=f'Rejected product "{product.name}" (ID: {product.id}) by {product.seller.email}. Reason: {rejection_reason}',
             ip_address=request.META.get('REMOTE_ADDR')
         )
-        
+
         messages.success(request, f'تم رفض المنتج "{product.name}" بنجاح')
-        
+
     elif action == 'edit':
         # Redirect to edit page
         return redirect('admin_panel:edit_product_with_variants', product_id=product.id)
-    
+
     return redirect('admin_panel:product_approval')
 
 # Order Management
@@ -603,31 +610,31 @@ def process_product_approval(request, product_id):
 def order_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
-    
+
     orders = Order.objects.select_related('user').all().order_by('-created_at')
-    
+
     # Apply filters
     if status != 'all':
         orders = orders.filter(status=status)
-    
+
     if search_query:
         orders = orders.filter(
-            Q(id__icontains=search_query) | 
+            Q(id__icontains=search_query) |
             Q(user__email__icontains=search_query)
         )
-    
+
     # Pagination
     paginator = Paginator(orders, 20)
     page_number = request.GET.get('page', 1)
     orders_page = paginator.get_page(page_number)
-    
+
     context = {
         'orders': orders_page,
         'status': status,
         'search_query': search_query,
         'active_tab': 'orders'
     }
-    
+
     return render(request, 'admin_panel/order_management.html', context)
 
 # API Views for Admin Panel
@@ -640,15 +647,15 @@ def admin_stats_api(request):
     customer_count = User.objects.filter(user_type='customer').count()
     artist_count = User.objects.filter(user_type='artist').count()
     store_count = User.objects.filter(user_type='store').count()
-    
+
     # Order stats
     total_orders = Order.objects.count()
     pending_orders = Order.objects.filter(status='pending').count()
     completed_orders = Order.objects.filter(status='completed').count()
-    
+
     # Application stats
     pending_applications = SellerApplication.objects.filter(status='pending').count()
-    
+
     data = {
         'users': {
             'total': total_users,
@@ -665,7 +672,7 @@ def admin_stats_api(request):
             'pending': pending_applications
         }
     }
-    
+
     return Response(data)
 
 @api_view(['POST'])
@@ -679,7 +686,7 @@ def mark_notification_read(request, notification_id):
         return Response({'status': 'success'})
     except AdminNotification.DoesNotExist:
         return Response(
-            {'error': 'Notification not found'}, 
+            {'error': 'Notification not found'},
             status=status.HTTP_404_NOT_FOUND
         )
 
@@ -691,7 +698,7 @@ def reports(request):
     context = {
         'active_tab': 'reports'
     }
-    
+
     return render(request, 'admin_panel/reports.html', context)
 
 # Settings
@@ -702,7 +709,7 @@ def settings(request):
     context = {
         'active_tab': 'settings'
     }
-    
+
     return render(request, 'admin_panel/settings.html', context)
 
 @login_required
@@ -714,50 +721,50 @@ def activity_log(request):
     action_type = request.GET.get('action')
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
-    
+
     # Filter activities
     activities = AdminActivity.objects.all().order_by('-timestamp')
-    
+
     if admin_id:
         activities = activities.filter(admin_id=admin_id)
-    
+
     if action_type:
         activities = activities.filter(action=action_type)
-    
+
     if date_from:
         try:
             date_from = datetime.strptime(date_from, '%Y-%m-%d').date()
             activities = activities.filter(timestamp__date__gte=date_from)
         except ValueError:
             messages.error(request, 'Invalid date format for date_from. Use YYYY-MM-DD.')
-    
+
     if date_to:
         try:
             date_to = datetime.strptime(date_to, '%Y-%m-%d').date()
             activities = activities.filter(timestamp__date__lte=date_to)
         except ValueError:
             messages.error(request, 'Invalid date format for date_to. Use YYYY-MM-DD.')
-    
+
     # Pagination
     paginator = Paginator(activities, 25)  # Show 25 activities per page
     page = request.GET.get('page')
-    
+
     try:
         activities = paginator.page(page)
     except PageNotAnInteger:
         activities = paginator.page(1)
     except EmptyPage:
         activities = paginator.page(paginator.num_pages)
-    
+
     # Get all admin users for the filter dropdown
     admins = User.objects.filter(is_staff=True)
-    
+
     context = {
         'activities': activities,
         'admins': admins,
         'active_tab': 'activity_log'
     }
-    
+
     return render(request, 'admin_panel/activity_log.html', context)
 
 @login_required
@@ -765,7 +772,7 @@ def activity_log(request):
 def view_user_profile(request, user_id):
     """View for redirecting to the Django admin interface for user profiles"""
     user = get_object_or_404(User, id=user_id)
-    
+
     # Log admin activity
     AdminActivity.objects.create(
         admin=request.user,
@@ -773,7 +780,7 @@ def view_user_profile(request, user_id):
         description=f"Viewed profile of user: {user.email}",
         ip_address=request.META.get('REMOTE_ADDR')
     )
-    
+
     # Determine which admin page to redirect to based on user type
     if user.user_type == 'customer':
         try:
@@ -799,7 +806,7 @@ def view_user_profile(request, user_id):
             messages.warning(request, f"Store profile not found for user {user.email}")
         except Exception as e:
             messages.error(request, f"Error accessing store profile: {str(e)}")
-    
+
     # Default to user admin page
     return redirect(f'/admin/custom_auth/user/{user.id}/change/')
 
@@ -808,7 +815,7 @@ def view_user_profile(request, user_id):
 def view_order(request, order_id):
     """View for redirecting to the Django admin interface for order details"""
     order = get_object_or_404(Order, id=order_id)
-    
+
     # Log admin activity
     AdminActivity.objects.create(
         admin=request.user,
@@ -816,7 +823,7 @@ def view_order(request, order_id):
         description=f"Viewed order #{order.id}",
         ip_address=request.META.get('REMOTE_ADDR')
     )
-    
+
     # Redirect to the order admin page
     return redirect(f'/admin/orders/order/{order.id}/change/')
 
@@ -828,7 +835,7 @@ def ads_control(request):
     context = {
         'active_tab': 'ads_control'
     }
-    
+
     return render(request, 'admin_panel/ads_control.html', context)
 
 # Artists and Stores Management
@@ -839,7 +846,7 @@ def artists_stores(request):
     context = {
         'active_tab': 'artists_stores'
     }
-    
+
     return render(request, 'admin_panel/artists_stores.html', context)
 
 # Featured Products Management
@@ -850,7 +857,7 @@ def featured_products(request):
     context = {
         'active_tab': 'featured_products'
     }
-    
+
     return render(request, 'admin_panel/featured_products.html', context)
 
 # Category Management
@@ -861,7 +868,7 @@ def category_management(request):
     context = {
         'active_tab': 'categories'
     }
-    
+
     return render(request, 'admin_panel/category_management.html', context)
 
 
@@ -872,7 +879,7 @@ def attribute_management(request):
     context = {
         'active_tab': 'attributes'
     }
-    
+
     return render(request, 'admin_panel/attribute_management.html', context)
 
 @login_required
@@ -882,7 +889,7 @@ def add_product_with_variants(request):
     context = {
         'active_tab': 'products'
     }
-    
+
     # Log admin activity
     AdminActivity.objects.create(
         admin=request.user,
@@ -890,7 +897,7 @@ def add_product_with_variants(request):
         description="Accessed add product with variants page",
         ip_address=request.META.get('REMOTE_ADDR')
     )
-    
+
     return render(request, 'admin_panel/add_product_with_variants.html', context)
 
 @login_required
@@ -898,13 +905,13 @@ def add_product_with_variants(request):
 def edit_product_with_variants(request, product_id):
     """View for editing products with variants using the enhanced interface"""
     product = get_object_or_404(Product, id=product_id)
-    
+
     context = {
         'active_tab': 'products',
         'product': product,
         'is_edit': True
     }
-    
+
     # Log admin activity
     AdminActivity.objects.create(
         admin=request.user,
@@ -912,7 +919,7 @@ def edit_product_with_variants(request, product_id):
         description=f"Accessed edit product with variants page for product: {product.name}",
         ip_address=request.META.get('REMOTE_ADDR')
     )
-    
+
     return render(request, 'admin_panel/edit_product_with_variants.html', context)
 
 @login_required
@@ -921,16 +928,16 @@ def get_categories_json(request):
     """JSON endpoint to get categories for the admin panel"""
     try:
         from products.models import Category
-        
+
         # Add logging for debugging
         print(f"Categories API called by user: {request.user}")
         print(f"Is user authenticated: {request.user.is_authenticated}")
         print(f"Is user staff: {request.user.is_staff}")
         print(f"Is user superuser: {request.user.is_superuser}")
-        
+
         categories = Category.objects.filter(is_active=True).order_by('name')
         print(f"Found {categories.count()} categories")
-        
+
         categories_data = [
             {
                 'id': category.id,
@@ -939,10 +946,10 @@ def get_categories_json(request):
             }
             for category in categories
         ]
-        
+
         print(f"Returning categories data: {categories_data}")
         return JsonResponse(categories_data, safe=False)
-        
+
     except Exception as e:
         print(f"Error in get_categories_json: {str(e)}")
         return JsonResponse({'error': str(e)}, status=500)
@@ -952,19 +959,19 @@ def get_categories_json(request):
 def get_category_attributes_json(request, category_id):
     """JSON endpoint to get category attributes for the admin panel"""
     from products.models import Category, CategoryAttribute
-    
+
     try:
         category = Category.objects.get(id=category_id, is_active=True)
-        
+
         category_attributes = CategoryAttribute.objects.filter(
             category=category,
             attribute__is_active=True
         ).select_related('attribute').order_by('sort_order')
-        
+
         attributes_data = []
         for cat_attr in category_attributes:
             attribute = cat_attr.attribute
-            
+
             # Get active options
             options_data = []
             for option in attribute.options.filter(is_active=True).order_by('sort_order'):
@@ -976,7 +983,7 @@ def get_category_attributes_json(request, category_id):
                     'is_active': option.is_active,
                     'sort_order': option.sort_order
                 })
-            
+
             attributes_data.append({
                 'id': cat_attr.id,
                 'is_required': cat_attr.is_required,
@@ -990,9 +997,9 @@ def get_category_attributes_json(request, category_id):
                     'options': options_data
                 }
             })
-        
+
         return JsonResponse(attributes_data, safe=False)
-        
+
     except Category.DoesNotExist:
         return JsonResponse({'error': 'Category not found'}, status=404)
 
@@ -1002,25 +1009,25 @@ def get_category_attributes_json(request, category_id):
 def variant_management(request):
     """Variant management page for categories"""
     from products.models import Category, CategoryVariantType, CategoryVariantOption
-    
+
     # Get all categories with their variant counts
     categories = Category.objects.annotate(
         variant_types_count=Count('variant_types'),
         total_options_count=Count('variant_types__options')
     ).order_by('name')
-    
+
     # Get categories with variants for summary
     categories_with_variants = categories.filter(variant_types_count__gt=0)
     total_variant_types = CategoryVariantType.objects.count()
     total_variant_options = CategoryVariantOption.objects.count()
-    
+
     # Log admin activity
     AdminActivity.objects.create(
         admin=request.user,
         action='other',
         description=f'Viewed variant management page'
     )
-    
+
     context = {
         'active_tab': 'variants',
         'categories': categories,
@@ -1032,7 +1039,7 @@ def variant_management(request):
             'total_variant_options': total_variant_options,
         }
     }
-    
+
     return render(request, 'admin_panel/variant_management.html', context)
 
 
@@ -1042,35 +1049,35 @@ def variant_management(request):
 def create_variant_type(request):
     """Create a new variant type for a category"""
     from products.models import Category, CategoryVariantType
-    
+
     try:
         category_id = request.POST.get('category_id')
         name = request.POST.get('name', '').strip()
         is_required = request.POST.get('is_required') == 'true'
-        
+
         if not category_id or not name:
             return JsonResponse({'success': False, 'error': 'Category ID and name are required'})
-        
+
         category = get_object_or_404(Category, id=category_id)
-        
+
         # Check if variant type already exists for this category
         if CategoryVariantType.objects.filter(category=category, name=name).exists():
             return JsonResponse({'success': False, 'error': f'Variant type "{name}" already exists for this category'})
-        
+
         # Create the variant type
         variant_type = CategoryVariantType.objects.create(
             category=category,
             name=name,
             is_required=is_required
         )
-        
+
         # Log admin activity
         AdminActivity.objects.create(
             admin=request.user,
             action='create',
             description=f'Created variant type "{name}" for category "{category.name}"'
         )
-        
+
         return JsonResponse({
             'success': True,
             'variant_type': {
@@ -1080,7 +1087,7 @@ def create_variant_type(request):
                 'category_name': category.name
             }
         })
-        
+
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
@@ -1091,28 +1098,28 @@ def create_variant_type(request):
 def create_variant_option(request):
     """Create a new variant option for a variant type"""
     from products.models import CategoryVariantType, CategoryVariantOption
-    
+
     try:
         variant_type_id = request.POST.get('variant_type_id')
         value = request.POST.get('value', '').strip()
         extra_price = request.POST.get('extra_price', '0')
         is_active = request.POST.get('is_active', 'true') == 'true'
-        
+
         if not variant_type_id or not value:
             return JsonResponse({'success': False, 'error': 'Variant type ID and value are required'})
-        
+
         variant_type = get_object_or_404(CategoryVariantType, id=variant_type_id)
-        
+
         # Check if option already exists for this variant type
         if CategoryVariantOption.objects.filter(variant_type=variant_type, value=value).exists():
             return JsonResponse({'success': False, 'error': f'Option "{value}" already exists for this variant type'})
-        
+
         # Convert extra_price to float
         try:
             extra_price = float(extra_price)
         except (ValueError, TypeError):
             extra_price = 0.0
-        
+
         # Create the variant option
         variant_option = CategoryVariantOption.objects.create(
             variant_type=variant_type,
@@ -1120,14 +1127,14 @@ def create_variant_option(request):
             extra_price=extra_price,
             is_active=is_active
         )
-        
+
         # Log admin activity
         AdminActivity.objects.create(
             admin=request.user,
             action='create',
             description=f'Created variant option "{value}" for variant type "{variant_type.name}" in category "{variant_type.category.name}"'
         )
-        
+
         return JsonResponse({
             'success': True,
             'variant_option': {
@@ -1138,7 +1145,7 @@ def create_variant_option(request):
                 'variant_type_name': variant_type.name
             }
         })
-        
+
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
@@ -1148,12 +1155,12 @@ def create_variant_option(request):
 def get_category_variants_json(request, category_id):
     """JSON endpoint to get category variants for the admin panel"""
     from products.models import Category, CategoryVariantType
-    
+
     try:
         category = get_object_or_404(Category, id=category_id)
-        
+
         variant_types = CategoryVariantType.objects.filter(category=category).prefetch_related('options')
-        
+
         variants_data = []
         for variant_type in variant_types:
             options_data = []
@@ -1164,16 +1171,16 @@ def get_category_variants_json(request, category_id):
                     'extra_price': float(option.extra_price),
                     'is_active': option.is_active
                 })
-            
+
             variants_data.append({
                 'id': variant_type.id,
                 'name': variant_type.name,
                 'is_required': variant_type.is_required,
                 'options': options_data
             })
-        
+
         return JsonResponse({'variants': variants_data})
-        
+
     except Category.DoesNotExist:
         return JsonResponse({'error': 'Category not found'}, status=404)
 
@@ -1184,20 +1191,20 @@ def get_category_variants_json(request, category_id):
 def delete_variant_type(request):
     """Delete a variant type and all its options"""
     from products.models import CategoryVariantType
-    
+
     try:
         variant_type_id = request.POST.get('variant_type_id')
-        
+
         if not variant_type_id:
             return JsonResponse({'success': False, 'error': 'Variant type ID is required'})
-        
+
         variant_type = get_object_or_404(CategoryVariantType, id=variant_type_id)
         category_name = variant_type.category.name
         variant_name = variant_type.name
-        
+
         # Delete the variant type (this will cascade delete all options)
         variant_type.delete()
-        
+
         # Log admin activity
         AdminActivity.objects.create(
             admin=request.user,
@@ -1209,6 +1216,437 @@ def delete_variant_type(request):
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+# Support Tickets Management
+@login_required
+@user_passes_test(is_admin)
+def support_tickets(request):
+    """View for managing support tickets"""
+    status_filter = request.GET.get('status', 'all')
+    priority_filter = request.GET.get('priority', 'all')
+    category_filter = request.GET.get('category', 'all')
+    assigned_filter = request.GET.get('assigned', 'all')
+    search_query = request.GET.get('q', '')
+    
+    # Base queryset
+    tickets = SupportTicket.objects.select_related('user', 'category', 'assigned_to').prefetch_related('messages')
+    
+    # Apply filters
+    if status_filter != 'all':
+        tickets = tickets.filter(status=status_filter)
+    
+    if priority_filter != 'all':
+        tickets = tickets.filter(priority=priority_filter)
+    
+    if category_filter != 'all':
+        tickets = tickets.filter(category_id=category_filter)
+    
+    if assigned_filter != 'all':
+        if assigned_filter == 'unassigned':
+            tickets = tickets.filter(assigned_to__isnull=True)
+        else:
+            tickets = tickets.filter(assigned_to_id=assigned_filter)
+    
+    if search_query:
+        tickets = tickets.filter(
+            Q(ticket_id__icontains=search_query) |
+            Q(subject__icontains=search_query) |
+            Q(user__email__icontains=search_query) |
+            Q(user__first_name__icontains=search_query) |
+            Q(user__last_name__icontains=search_query)
+        )
+    
+    tickets = tickets.order_by('-created_at')
+    
+    # Pagination
+    paginator = Paginator(tickets, 15)
+    page_number = request.GET.get('page', 1)
+    tickets_page = paginator.get_page(page_number)
+    
+    # Get categories and staff users for filters
+    categories = SupportCategory.objects.filter(is_active=True).order_by('name')
+    staff_users = User.objects.filter(is_staff=True).order_by('first_name', 'last_name')
+    
+    # Statistics
+    stats = {
+        'total': SupportTicket.objects.count(),
+        'open': SupportTicket.objects.filter(status='open').count(),
+        'in_progress': SupportTicket.objects.filter(status='in_progress').count(),
+        'waiting_customer': SupportTicket.objects.filter(status='waiting_customer').count(),
+        'resolved': SupportTicket.objects.filter(status='resolved').count(),
+        'closed': SupportTicket.objects.filter(status='closed').count(),
+        'unassigned': SupportTicket.objects.filter(assigned_to__isnull=True).count(),
+        'overdue': len([t for t in SupportTicket.objects.filter(status__in=['open', 'in_progress']) if t.is_overdue]),
+    }
+    
+    context = {
+        'tickets': tickets_page,
+        'categories': categories,
+        'staff_users': staff_users,
+        'status_filter': status_filter,
+        'priority_filter': priority_filter,
+        'category_filter': category_filter,
+        'assigned_filter': assigned_filter,
+        'search_query': search_query,
+        'stats': stats,
+        'active_tab': 'support'
+    }
+    
+    return render(request, 'admin_panel/support_tickets.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+def support_ticket_detail(request, ticket_id):
+    """View detailed information about a support ticket"""
+    ticket = get_object_or_404(
+        SupportTicket.objects.select_related('user', 'category', 'assigned_to').prefetch_related(
+            'messages__sender', 'attachments'
+        ),
+        ticket_id=ticket_id
+    )
+    
+    # Get all staff users for assignment dropdown
+    staff_users = User.objects.filter(is_staff=True).order_by('first_name', 'last_name')
+    
+    context = {
+        'ticket': ticket,
+        'staff_users': staff_users,
+        'active_tab': 'support'
+    }
+    
+    return render(request, 'admin_panel/support_ticket_detail.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_support_ticket(request, ticket_id):
+    """Update support ticket status, priority, assignment etc."""
+    ticket = get_object_or_404(SupportTicket, ticket_id=ticket_id)
+    
+    action = request.POST.get('action')
+    
+    if action == 'update_status':
+        new_status = request.POST.get('status')
+        if new_status in ['open', 'in_progress', 'waiting_customer', 'resolved', 'closed']:
+            old_status = ticket.status
+            ticket.status = new_status
+            
+            # Update timestamps based on status
+            if new_status == 'resolved' and old_status != 'resolved':
+                ticket.resolved_at = timezone.now()
+            elif new_status == 'closed' and old_status != 'closed':
+                ticket.closed_at = timezone.now()
+            
+            ticket.save()
+            messages.success(request, f'Ticket status updated to {ticket.get_status_display()}')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f'Updated ticket #{ticket.ticket_id} status from {old_status} to {new_status}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+    
+    elif action == 'update_priority':
+        new_priority = request.POST.get('priority')
+        if new_priority in ['low', 'normal', 'high', 'urgent']:
+            old_priority = ticket.priority
+            ticket.priority = new_priority
+            ticket.save()
+            messages.success(request, f'Ticket priority updated to {ticket.get_priority_display()}')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f'Updated ticket #{ticket.ticket_id} priority from {old_priority} to {new_priority}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+    
+    elif action == 'assign':
+        assigned_to_id = request.POST.get('assigned_to')
+        if assigned_to_id:
+            try:
+                assigned_user = User.objects.get(id=assigned_to_id, is_staff=True)
+                old_assigned = ticket.assigned_to
+                ticket.assigned_to = assigned_user
+                ticket.save()
+                messages.success(request, f'Ticket assigned to {assigned_user.get_full_name() or assigned_user.email}')
+                
+                # Log activity
+                AdminActivity.objects.create(
+                    admin=request.user,
+                    action='assign',
+                    description=f'Assigned ticket #{ticket.ticket_id} to {assigned_user.email}',
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+            except User.DoesNotExist:
+                messages.error(request, 'Invalid user selected for assignment')
+        else:
+            # Unassign ticket
+            old_assigned = ticket.assigned_to
+            ticket.assigned_to = None
+            ticket.save()
+            messages.success(request, 'Ticket unassigned')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='unassign',
+                description=f'Unassigned ticket #{ticket.ticket_id}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+    
+    elif action == 'reply':
+        message_text = request.POST.get('message')
+        is_internal = request.POST.get('is_internal') == 'on'
+        
+        if message_text:
+            message = SupportMessage.objects.create(
+                ticket=ticket,
+                sender=request.user,
+                message=message_text,
+                message_type='admin',
+                is_internal=is_internal
+            )
+            
+            # Update ticket status if it was open
+            if ticket.status == 'open':
+                ticket.status = 'in_progress'
+                ticket.save()
+            
+            messages.success(request, 'Reply sent successfully')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='reply',
+                description=f'Replied to ticket #{ticket.ticket_id}' + (' (internal note)' if is_internal else ''),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+        else:
+            messages.error(request, 'Message content is required')
+    
+    return redirect('admin_panel:support_ticket_detail', ticket_id=ticket_id)
+def support_tickets(request):
+    """View for managing support tickets"""
+    status_filter = request.GET.get('status', 'all')
+    priority_filter = request.GET.get('priority', 'all')
+    category_filter = request.GET.get('category', 'all')
+    assigned_filter = request.GET.get('assigned', 'all')
+    search_query = request.GET.get('q', '')
+    
+    # Base queryset
+    tickets = SupportTicket.objects.select_related('user', 'category', 'assigned_to').prefetch_related('messages')
+    
+    # Apply filters
+    if status_filter != 'all':
+        tickets = tickets.filter(status=status_filter)
+    
+    if priority_filter != 'all':
+        tickets = tickets.filter(priority=priority_filter)
+    
+    if category_filter != 'all':
+        tickets = tickets.filter(category_id=category_filter)
+    
+    if assigned_filter != 'all':
+        if assigned_filter == 'unassigned':
+            tickets = tickets.filter(assigned_to__isnull=True)
+        else:
+            tickets = tickets.filter(assigned_to_id=assigned_filter)
+    
+    if search_query:
+        tickets = tickets.filter(
+            Q(ticket_id__icontains=search_query) |
+            Q(subject__icontains=search_query) |
+            Q(user__email__icontains=search_query) |
+            Q(user__first_name__icontains=search_query) |
+            Q(user__last_name__icontains=search_query)
+        )
+    
+    tickets = tickets.order_by('-created_at')
+    
+    # Pagination
+    paginator = Paginator(tickets, 15)
+    page_number = request.GET.get('page', 1)
+    tickets_page = paginator.get_page(page_number)
+    
+    # Get categories and staff users for filters
+    categories = SupportCategory.objects.filter(is_active=True).order_by('name')
+    staff_users = User.objects.filter(is_staff=True).order_by('first_name', 'last_name')
+    
+    # Statistics
+    stats = {
+        'total': SupportTicket.objects.count(),
+        'open': SupportTicket.objects.filter(status='open').count(),
+        'in_progress': SupportTicket.objects.filter(status='in_progress').count(),
+        'waiting_customer': SupportTicket.objects.filter(status='waiting_customer').count(),
+        'resolved': SupportTicket.objects.filter(status='resolved').count(),
+        'closed': SupportTicket.objects.filter(status='closed').count(),
+        'unassigned': SupportTicket.objects.filter(assigned_to__isnull=True).count(),
+        'overdue': len([t for t in SupportTicket.objects.filter(status__in=['open', 'in_progress']) if t.is_overdue]),
+    }
+    
+    context = {
+        'tickets': tickets_page,
+        'categories': categories,
+        'staff_users': staff_users,
+        'status_filter': status_filter,
+        'priority_filter': priority_filter,
+        'category_filter': category_filter,
+        'assigned_filter': assigned_filter,
+        'search_query': search_query,
+        'stats': stats,
+        'active_tab': 'support'
+    }
+    
+    return render(request, 'admin_panel/support_tickets.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+def support_ticket_detail(request, ticket_id):
+    """View detailed information about a support ticket"""
+    ticket = get_object_or_404(
+        SupportTicket.objects.select_related('user', 'category', 'assigned_to').prefetch_related(
+            'messages__sender', 'attachments'
+        ),
+        ticket_id=ticket_id
+    )
+    
+    # Get all staff users for assignment dropdown
+    staff_users = User.objects.filter(is_staff=True).order_by('first_name', 'last_name')
+    
+    context = {
+        'ticket': ticket,
+        'staff_users': staff_users,
+        'active_tab': 'support'
+    }
+    
+    return render(request, 'admin_panel/support_ticket_detail.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_support_ticket(request, ticket_id):
+    """Update support ticket status, priority, assignment etc."""
+    ticket = get_object_or_404(SupportTicket, ticket_id=ticket_id)
+    
+    action = request.POST.get('action')
+    
+    if action == 'update_status':
+        new_status = request.POST.get('status')
+        if new_status in ['open', 'in_progress', 'waiting_customer', 'resolved', 'closed']:
+            old_status = ticket.status
+            ticket.status = new_status
+            
+            # Update timestamps based on status
+            if new_status == 'resolved' and old_status != 'resolved':
+                ticket.resolved_at = timezone.now()
+            elif new_status == 'closed' and old_status != 'closed':
+                ticket.closed_at = timezone.now()
+            
+            ticket.save()
+            messages.success(request, f'Ticket status updated to {ticket.get_status_display()}')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f'Updated ticket #{ticket.ticket_id} status from {old_status} to {new_status}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+    
+    elif action == 'update_priority':
+        new_priority = request.POST.get('priority')
+        if new_priority in ['low', 'normal', 'high', 'urgent']:
+            old_priority = ticket.priority
+            ticket.priority = new_priority
+            ticket.save()
+            messages.success(request, f'Ticket priority updated to {ticket.get_priority_display()}')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f'Updated ticket #{ticket.ticket_id} priority from {old_priority} to {new_priority}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+    
+    elif action == 'assign':
+        assigned_to_id = request.POST.get('assigned_to')
+        if assigned_to_id:
+            try:
+                assigned_user = User.objects.get(id=assigned_to_id, is_staff=True)
+                old_assigned = ticket.assigned_to
+                ticket.assigned_to = assigned_user
+                ticket.save()
+                messages.success(request, f'Ticket assigned to {assigned_user.get_full_name() or assigned_user.email}')
+                
+                # Log activity
+                AdminActivity.objects.create(
+                    admin=request.user,
+                    action='assign',
+                    description=f'Assigned ticket #{ticket.ticket_id} to {assigned_user.email}',
+                    ip_address=request.META.get('REMOTE_ADDR')
+                )
+            except User.DoesNotExist:
+                messages.error(request, 'Invalid user selected for assignment')
+        else:
+            # Unassign ticket
+            old_assigned = ticket.assigned_to
+            ticket.assigned_to = None
+            ticket.save()
+            messages.success(request, 'Ticket unassigned')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='unassign',
+                description=f'Unassigned ticket #{ticket.ticket_id}',
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+    
+    elif action == 'reply':
+        message_text = request.POST.get('message')
+        is_internal = request.POST.get('is_internal') == 'on'
+        
+        if message_text:
+            message = SupportMessage.objects.create(
+                ticket=ticket,
+                sender=request.user,
+                message=message_text,
+                message_type='admin',
+                is_internal=is_internal
+            )
+            
+            # Update ticket status if it's open
+            if ticket.status == 'open':
+                ticket.status = 'in_progress'
+                ticket.save()
+            
+            messages.success(request, 'Reply sent successfully')
+            
+            # Log activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='reply',
+                description=f'Replied to ticket #{ticket.ticket_id}' + (' (internal note)' if is_internal else ''),
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+        else:
+            messages.error(request, 'Message content is required')
+    
+    return redirect('admin_panel:support_ticket_detail', ticket_id=ticket_id)
+
+
+@login_required
+@user_passes_test(is_admin)
 
 
 @login_required

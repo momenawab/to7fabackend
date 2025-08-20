@@ -138,11 +138,23 @@ class Product(models.Model):
     is_featured = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
+    # Product approval status
+    APPROVAL_STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_STATUS_CHOICES, default='pending')
+    rejection_reason = models.TextField(blank=True, null=True, help_text="Reason for rejection if status is rejected")
+    
     # Admin request tracking
     featured_request_pending = models.BooleanField(default=False, help_text="Seller has requested featured status")
     offers_request_pending = models.BooleanField(default=False, help_text="Seller has requested to be in latest offers")
     featured_requested_at = models.DateTimeField(null=True, blank=True)
     offers_requested_at = models.DateTimeField(null=True, blank=True)
+    
+    # Combination variant stock storage (for frontend UX combinations like "29_27")
+    combination_stocks = models.JSONField(default=dict, blank=True, help_text="Stock quantities for variant combinations like {'29_27': 10}")
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -179,10 +191,16 @@ class Product(models.Model):
     
     @property
     def stock(self):
-        """Returns stock - either from selected variants or direct product stock"""
+        """Returns stock - either from combination stocks, selected variants, or direct product stock"""
         if self.has_variants:
-            # For products with variants, sum selected variant stock
-            return sum(variant.stock_count for variant in self.selected_variants.filter(is_active=True))
+            # Check if we have combination stock overrides
+            if self.combination_stocks and len(self.combination_stocks) > 0:
+                # Sum all combination stocks
+                total_combination_stock = sum(int(stock) for stock in self.combination_stocks.values())
+                return total_combination_stock
+            else:
+                # Fallback to individual variant stock
+                return sum(variant.stock_count for variant in self.selected_variants.filter(is_active=True))
         else:
             # For products without variants, use direct stock
             return self.stock_quantity

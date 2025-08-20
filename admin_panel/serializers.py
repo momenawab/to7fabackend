@@ -51,7 +51,7 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = ('id', 'name', 'description', 'price', 'stock', 'is_active',
                   'is_featured', 'seller', 'seller_name', 'category', 
-                  'category_name', 'created_at', 'updated_at')
+                  'category_name', 'approval_status', 'rejection_reason', 'created_at', 'updated_at')
     
     def get_seller_name(self, obj):
         user = obj.seller

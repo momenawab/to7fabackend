@@ -12,7 +12,7 @@ from django.conf import settings
 import csv
 
 from custom_auth.models import User, Artist, Store
-from products.models import Product, Category, Advertisement, ContentSettings, Tag, CategoryVariantOption, ProductVariant, ProductVariantOption, DiscountRequest
+from products.models import Product, Category, Advertisement, ContentSettings, Tag, CategoryVariantOption, ProductVariant, ProductVariantOption, DiscountRequest, ProductImage
 from orders.models import Order, OrderItem
 from .models import AdminActivity, AdminNotification
 from custom_auth.models import SellerApplication
@@ -20,6 +20,15 @@ from .serializers import (
     SellerApplicationSerializer, UserSerializer, ProductSerializer,
     OrderSerializer, AdminNotificationSerializer, SellerApplicationCreateSerializer
 )
+
+def get_client_ip(request):
+    """Get client IP address from request"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
 
 class AdminPagination(PageNumberPagination):
     """Custom pagination for admin API endpoints"""
@@ -804,13 +813,16 @@ def create_product_with_variants(request):
             print(f"DEBUG: Extracted data - name: {name}, description: {description}, base_price: {base_price}, category_id: {category_id}")
             
             # Validation
+            print(f"Starting validation...")
             if not name:
+                print(f"VALIDATION FAILED: Product name is empty")
                 return Response({
                     'status': 'error',
                     'error': 'Product name is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if not description:
+                print(f"VALIDATION FAILED: Product description is empty")
                 return Response({
                     'status': 'error',
                     'error': 'Product description is required'
@@ -820,7 +832,9 @@ def create_product_with_variants(request):
                 base_price = float(base_price)
                 if base_price < 0:
                     raise ValueError("Price cannot be negative")
-            except (TypeError, ValueError):
+                print(f"VALIDATION PASSED: base_price = {base_price}")
+            except (TypeError, ValueError) as e:
+                print(f"VALIDATION FAILED: base_price error - {e}")
                 return Response({
                     'status': 'error',
                     'error': 'Valid base price is required'
@@ -828,7 +842,9 @@ def create_product_with_variants(request):
             
             try:
                 category_id = int(category_id)
-            except (TypeError, ValueError):
+                print(f"VALIDATION PASSED: category_id = {category_id}")
+            except (TypeError, ValueError) as e:
+                print(f"VALIDATION FAILED: category_id error - {e}")
                 return Response({
                     'status': 'error',
                     'error': 'Valid category is required'
@@ -1842,13 +1858,25 @@ def seller_products(request):
         category_filter = request.query_params.get('category')
         search = request.query_params.get('search')
         
-        if status_filter == 'active':
-            products = products.filter(is_active=True)
+        if status_filter == 'approved':
+            products = products.filter(approval_status='approved')
+        elif status_filter == 'pending':
+            products = products.filter(approval_status='pending')
+        elif status_filter == 'rejected':
+            products = products.filter(approval_status='rejected')
+        elif status_filter == 'active':
+            products = products.filter(is_active=True, approval_status='approved')
         elif status_filter == 'inactive':
-            products = products.filter(is_active=False)
+            products = products.filter(is_active=False, approval_status='approved')
         
-        if category_filter:
-            products = products.filter(category_id=category_filter)
+        if category_filter and category_filter not in ['الكل', 'all']:
+            # Try to filter by category ID if it's a number, otherwise filter by name
+            try:
+                category_id = int(category_filter)
+                products = products.filter(category_id=category_id)
+            except ValueError:
+                # If it's not a number, filter by category name
+                products = products.filter(category__name=category_filter)
         
         if search:
             products = products.filter(
@@ -1887,6 +1915,7 @@ def seller_products(request):
                 'stock': product.stock,
                 'category': product.category.name,
                 'is_active': product.is_active,
+                'approval_status': product.approval_status,
                 'image': image_url,
                 'total_sold': total_sold,
                 'revenue': float(revenue),
@@ -1945,10 +1974,12 @@ def seller_product_detail(request, product_id):
         return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
     
     if request.method == 'GET':
-        # Get product details
-        primary_image = product.images.filter(is_primary=True).first()
-        all_images = product.images.all()
+        # Use ProductSerializer to get full product data including variants
+        from products.serializers import ProductSerializer
+        serializer = ProductSerializer(product)
+        product_data = serializer.data
         
+        # Add seller-specific analytics data
         total_sold = OrderItem.objects.filter(product=product).count()
         revenue = OrderItem.objects.filter(
             product=product,
@@ -1957,24 +1988,13 @@ def seller_product_detail(request, product_id):
             revenue=Sum(F('price') * F('quantity'))
         )['revenue'] or 0
         
-        return Response({
-            'id': product.id,
-            'name': product.name,
-            'description': product.description,
-            'price': float(product.base_price),
-            'stock': product.stock,
-            'category': {
-                'id': product.category.id,
-                'name': product.category.name
-            },
-            'is_active': product.is_active,
-            'primary_image': primary_image.image.url if primary_image else None,
-            'images': [img.image.url for img in all_images],
+        # Add analytics to the product data
+        product_data.update({
             'total_sold': total_sold,
             'revenue': float(revenue),
-            'created_at': product.created_at.isoformat(),
-            'updated_at': product.updated_at.isoformat()
         })
+        
+        return Response(product_data)
     
     elif request.method == 'PUT':
         # Update product
@@ -2227,7 +2247,13 @@ def create_product_wizard(request):
                 return Response({'error': 'Valid base price is required'}, 
                                status=status.HTTP_400_BAD_REQUEST)
             
-            if not stock_quantity or int(stock_quantity) < 0:
+            try:
+                stock_quantity = int(stock_quantity) if stock_quantity is not None else 0
+                if stock_quantity < 0:
+                    raise ValueError("Stock cannot be negative")
+                print(f"VALIDATION PASSED: stock_quantity = {stock_quantity}")
+            except (TypeError, ValueError) as e:
+                print(f"VALIDATION FAILED: stock_quantity error - {e}")
                 return Response({'error': 'Valid stock quantity is required'}, 
                                status=status.HTTP_400_BAD_REQUEST)
             
@@ -2276,7 +2302,8 @@ def create_product_wizard(request):
                         seller=request.user,
                         featured_request_pending=featured_request_pending,
                         offers_request_pending=offers_request_pending,
-                        is_active=False  # Admin needs to approve first
+                        is_active=False,  # Admin needs to approve first
+                        approval_status='pending'
                     )
                 else:
                     print(f"DEBUG: Creating simple product without variants...")
@@ -2290,7 +2317,8 @@ def create_product_wizard(request):
                         seller=request.user,
                         featured_request_pending=featured_request_pending,
                         offers_request_pending=offers_request_pending,
-                        is_active=False  # Admin needs to approve first
+                        is_active=False,  # Admin needs to approve first
+                        approval_status='pending'
                     )
                 print(f"DEBUG: Product created with ID: {product.id}")
             except Exception as product_creation_error:
@@ -2373,10 +2401,13 @@ def create_product_wizard(request):
             # Handle images
             images = request.FILES.getlist('images')
             if images:
-                # Process and save images (implement as needed)
-                # For now, we'll just note that images were uploaded
-                product.description += f"\n\n[{len(images)} images uploaded]"
-                product.save()
+                # Process and save images as ProductImage objects
+                for i, image_file in enumerate(images):
+                    ProductImage.objects.create(
+                        product=product,
+                        image=image_file,
+                        is_primary=(i == 0)  # First image is primary
+                    )
             
             # Handle discount request
             discount_request_data = request.data.get('discount_request')
@@ -2437,7 +2468,7 @@ def create_product_wizard(request):
 
 # New Seller Product Management Endpoints
 
-@api_view(['PUT'])
+@api_view(['PUT', 'POST'])
 @permission_classes([IsAuthenticated])
 def toggle_seller_product_status(request, product_id):
     """Toggle product active/inactive status for sellers"""
@@ -2450,6 +2481,13 @@ def toggle_seller_product_status(request, product_id):
     try:
         product = Product.objects.get(id=product_id, seller=request.user)
         
+        # Only allow toggling for approved products
+        if product.approval_status != 'approved':
+            return Response({
+                'error': 'Can only toggle status for approved products',
+                'approval_status': product.approval_status
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # Store the old status for logging
         old_status = product.is_active
         
@@ -2458,12 +2496,16 @@ def toggle_seller_product_status(request, product_id):
         product.save()
         
         # Log the activity
-        AdminActivity.objects.create(
-            admin=request.user,
-            action='product_status_toggle',
-            description=f'Seller {request.user.email} {"activated" if product.is_active else "deactivated"} product "{product.name}"',
-            ip_address=get_client_ip(request)
-        )
+        try:
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='toggle_status',
+                description=f'Seller {"activated" if product.is_active else "deactivated"} product "{product.name}"',
+                ip_address=get_client_ip(request)
+            )
+        except Exception as e:
+            # Don't fail the toggle if logging fails
+            print(f"Failed to log activity: {e}")
         
         return Response({
             'status': 'success',
@@ -2472,7 +2514,8 @@ def toggle_seller_product_status(request, product_id):
             'product': {
                 'id': product.id,
                 'name': product.name,
-                'is_active': product.is_active
+                'is_active': product.is_active,
+                'approval_status': product.approval_status
             }
         })
         
@@ -2480,7 +2523,8 @@ def toggle_seller_product_status(request, product_id):
         return Response({'error': 'Product not found or you do not have permission to modify it'}, 
                        status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': f'Failed to toggle product status: {str(e)}'}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -2570,6 +2614,108 @@ def update_seller_product_stock(request, product_id):
         return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_seller_variant_stock(request, product_id, variant_id):
+    """Update variant stock quantity for sellers"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        from products.models import ProductCategoryVariantOption
+        
+        # Verify product belongs to seller
+        product = Product.objects.get(id=product_id, seller=request.user)
+        
+        # Get the variant
+        variant = ProductCategoryVariantOption.objects.get(id=variant_id, product=product)
+        
+        new_stock = request.data.get('stock_count')
+        
+        if new_stock is None:
+            return Response({'error': 'stock_count is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            new_stock = int(new_stock)
+            if new_stock < 0:
+                raise ValueError("Stock cannot be negative")
+        except ValueError as e:
+            return Response({'error': 'Valid stock quantity is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        variant.stock_count = new_stock
+        variant.save()
+        
+        return Response({
+            'status': 'success',
+            'message': 'Variant stock updated successfully',
+            'new_stock': new_stock
+        })
+        
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ProductCategoryVariantOption.DoesNotExist:
+        return Response({'error': 'Variant not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_combination_variant_stock(request, product_id):
+    """Update combination variant stock for sellers (e.g., '29_27' for white+20x30cm)"""
+    
+    # Check if user is an approved seller
+    if request.user.user_type not in ['artist', 'store']:
+        return Response({'error': 'Only approved sellers can access this endpoint'}, 
+                       status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        # Verify product belongs to seller
+        product = Product.objects.get(id=product_id, seller=request.user)
+        
+        combination_id = request.data.get('combination_id')
+        new_stock = request.data.get('stock_count')
+        
+        if not combination_id:
+            return Response({'error': 'combination_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if new_stock is None:
+            return Response({'error': 'stock_count is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            new_stock = int(new_stock)
+            if new_stock < 0:
+                raise ValueError("Stock cannot be negative")
+        except ValueError as e:
+            return Response({'error': 'Valid stock quantity is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate combination_id format (should be like "29_27")
+        if '_' not in combination_id:
+            return Response({'error': 'Invalid combination_id format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update combination stocks
+        if product.combination_stocks is None:
+            product.combination_stocks = {}
+        
+        product.combination_stocks[combination_id] = new_stock
+        product.save(update_fields=['combination_stocks', 'updated_at'])
+        
+        return Response({
+            'status': 'success',
+            'message': 'Combination variant stock updated successfully',
+            'combination_id': combination_id,
+            'new_stock': new_stock
+        })
+        
+    except Product.DoesNotExist:
+        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])

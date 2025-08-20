@@ -39,6 +39,7 @@ urlpatterns = [
     path('api/payments/', include('payment.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/cart/', include('cart.urls')),
+    path('api/support/', include('support.urls')),  # Customer Support
     path('api/', include('custom_auth.address_urls')),  # Address management
     
     # Admin API endpoints

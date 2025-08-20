@@ -117,9 +117,9 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ('id', 'name', 'description', 'base_price', 'price', 'stock', 'stock_quantity', 'category', 'category_name', 
-                 'seller', 'seller_name', 'is_featured', 'is_active', 'created_at', 
+                 'seller', 'seller_name', 'is_featured', 'is_active', 'approval_status', 'rejection_reason', 'created_at', 
                  'updated_at', 'images', 'average_rating', 'selected_variants', 'available_variant_types',
-                 'price_range', 'stock_status', 'has_variants', 'colors', 'sizes')
+                 'price_range', 'stock_status', 'has_variants', 'colors', 'sizes', 'combination_stocks')
         read_only_fields = ('seller',)
     
     def get_stock_status(self, obj):
