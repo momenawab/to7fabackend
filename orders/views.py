@@ -121,3 +121,31 @@ def update_order_status(request, pk):
     order.save()
     
     return Response(OrderDetailSerializer(order, context={'request': request}).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_orders_for_support(request):
+    """Get simplified user orders list for support ticket creation"""
+    try:
+        orders = Order.objects.filter(user=request.user).order_by('-created_at')[:20]  # Latest 20 orders
+        
+        orders_data = []
+        for order in orders:
+            orders_data.append({
+                'id': str(order.id),
+                'total_amount': str(order.total_amount),
+                'status': order.get_status_display(),
+                'created_at': order.created_at.strftime('%Y-%m-%d'),
+                'item_count': order.items.count(),
+            })
+        
+        return Response({
+            'success': True,
+            'orders': orders_data
+        })
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

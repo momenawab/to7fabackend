@@ -59,6 +59,11 @@ urlpatterns = [
     path('variants/delete-type/', views.delete_variant_type, name='delete_variant_type'),
     path('variants/delete-option/', views.delete_variant_option, name='delete_variant_option'),
     
+    # Support Tickets
+    path('support-tickets/', views.support_tickets, name='support_tickets'),
+    path('support-tickets/<str:ticket_id>/', views.support_ticket_detail, name='support_ticket_detail'),
+    path('support-tickets/<str:ticket_id>/update/', views.update_support_ticket, name='update_support_ticket'),
+    
     # Settings
     path('settings/', views.settings, name='settings'),
     

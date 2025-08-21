@@ -1224,7 +1224,7 @@ def delete_variant_type(request):
 def support_tickets(request):
     """View for managing support tickets"""
     status_filter = request.GET.get('status', 'all')
-    priority_filter = request.GET.get('priority', 'all')
+    order_filter = request.GET.get('order', 'all')
     category_filter = request.GET.get('category', 'all')
     assigned_filter = request.GET.get('assigned', 'all')
     search_query = request.GET.get('q', '')
@@ -1236,8 +1236,11 @@ def support_tickets(request):
     if status_filter != 'all':
         tickets = tickets.filter(status=status_filter)
     
-    if priority_filter != 'all':
-        tickets = tickets.filter(priority=priority_filter)
+    if order_filter != 'all':
+        if order_filter == 'with_order':
+            tickets = tickets.exclude(order_id__isnull=True).exclude(order_id='')
+        elif order_filter == 'no_order':
+            tickets = tickets.filter(Q(order_id__isnull=True) | Q(order_id=''))
     
     if category_filter != 'all':
         tickets = tickets.filter(category_id=category_filter)
@@ -1254,7 +1257,8 @@ def support_tickets(request):
             Q(subject__icontains=search_query) |
             Q(user__email__icontains=search_query) |
             Q(user__first_name__icontains=search_query) |
-            Q(user__last_name__icontains=search_query)
+            Q(user__last_name__icontains=search_query) |
+            Q(order_id__icontains=search_query)
         )
     
     tickets = tickets.order_by('-created_at')
@@ -1285,7 +1289,7 @@ def support_tickets(request):
         'categories': categories,
         'staff_users': staff_users,
         'status_filter': status_filter,
-        'priority_filter': priority_filter,
+        'order_filter': order_filter,
         'category_filter': category_filter,
         'assigned_filter': assigned_filter,
         'search_query': search_query,
@@ -1435,7 +1439,7 @@ def update_support_ticket(request, ticket_id):
 def support_tickets(request):
     """View for managing support tickets"""
     status_filter = request.GET.get('status', 'all')
-    priority_filter = request.GET.get('priority', 'all')
+    order_filter = request.GET.get('order', 'all')
     category_filter = request.GET.get('category', 'all')
     assigned_filter = request.GET.get('assigned', 'all')
     search_query = request.GET.get('q', '')
@@ -1447,8 +1451,11 @@ def support_tickets(request):
     if status_filter != 'all':
         tickets = tickets.filter(status=status_filter)
     
-    if priority_filter != 'all':
-        tickets = tickets.filter(priority=priority_filter)
+    if order_filter != 'all':
+        if order_filter == 'with_order':
+            tickets = tickets.exclude(order_id__isnull=True).exclude(order_id='')
+        elif order_filter == 'no_order':
+            tickets = tickets.filter(Q(order_id__isnull=True) | Q(order_id=''))
     
     if category_filter != 'all':
         tickets = tickets.filter(category_id=category_filter)
@@ -1465,7 +1472,8 @@ def support_tickets(request):
             Q(subject__icontains=search_query) |
             Q(user__email__icontains=search_query) |
             Q(user__first_name__icontains=search_query) |
-            Q(user__last_name__icontains=search_query)
+            Q(user__last_name__icontains=search_query) |
+            Q(order_id__icontains=search_query)
         )
     
     tickets = tickets.order_by('-created_at')
@@ -1496,7 +1504,7 @@ def support_tickets(request):
         'categories': categories,
         'staff_users': staff_users,
         'status_filter': status_filter,
-        'priority_filter': priority_filter,
+        'order_filter': order_filter,
         'category_filter': category_filter,
         'assigned_filter': assigned_filter,
         'search_query': search_query,
@@ -1681,3 +1689,112 @@ def delete_variant_option(request):
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_support_ticket(request, ticket_id):
+    """Handle support ticket updates (replies, status changes, etc.)"""
+    ticket = get_object_or_404(SupportTicket, ticket_id=ticket_id)
+    action = request.POST.get('action')
+    
+    if action == 'reply':
+        message = request.POST.get('message', '').strip()
+        is_internal = request.POST.get('is_internal') == 'on'
+        
+        if message:
+            # Create new message
+            new_message = SupportMessage.objects.create(
+                ticket=ticket,
+                sender=request.user,
+                message=message,
+                message_type='admin',
+                is_internal=is_internal,
+            )
+            
+            # Update ticket status if needed
+            if ticket.status == 'open':
+                ticket.status = 'in_progress'
+                ticket.save()
+            
+            # Send real-time update via WebSocket
+            from support.consumers import send_ticket_update
+            if not is_internal:  # Only send external messages to users
+                message_data = {
+                    'id': new_message.id,
+                    'message': new_message.message,
+                    'sender': {
+                        'name': new_message.sender.get_full_name() or new_message.sender.email,
+                        'type': 'admin'
+                    },
+                    'timestamp': new_message.timestamp.isoformat(),
+                    'message_type': new_message.message_type,
+                }
+                send_ticket_update(ticket.ticket_id, message_data, 'message')
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='other',
+                description=f'Replied to support ticket #{ticket.ticket_id}: {message[:50]}...' if len(message) > 50 else f'Replied to support ticket #{ticket.ticket_id}: {message}',
+            )
+            
+            messages.success(request, 'Reply sent successfully!')
+        else:
+            messages.error(request, 'Message cannot be empty.')
+            
+    elif action == 'status_change':
+        new_status = request.POST.get('status')
+        if new_status and new_status in dict(SupportTicket.STATUS_CHOICES):
+            old_status = ticket.status
+            ticket.status = new_status
+            
+            # Set timestamps for status changes
+            if new_status == 'resolved':
+                ticket.resolved_at = timezone.now()
+            elif new_status == 'closed':
+                ticket.closed_at = timezone.now()
+                
+            ticket.save()
+            
+            # Send real-time status update via WebSocket
+            from support.consumers import send_ticket_update
+            send_ticket_update(ticket.ticket_id, None, 'status_change')
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='update',
+                description=f'Changed status of support ticket #{ticket.ticket_id} from "{old_status}" to "{new_status}"',
+            )
+            
+            messages.success(request, f'Ticket status updated to {new_status}.')
+        else:
+            messages.error(request, 'Invalid status.')
+            
+    elif action == 'assign':
+        assignee_id = request.POST.get('assigned_to')
+        if assignee_id:
+            try:
+                assignee = User.objects.get(id=assignee_id, is_staff=True)
+                old_assignee = ticket.assigned_to
+                ticket.assigned_to = assignee
+                ticket.save()
+                
+                # Log admin activity
+                AdminActivity.objects.create(
+                    admin=request.user,
+                    action='update',
+                    description=f'Assigned support ticket #{ticket.ticket_id} from "{old_assignee or "Unassigned"}" to "{assignee.get_full_name() or assignee.email}"',
+                )
+                
+                messages.success(request, f'Ticket assigned to {assignee.get_full_name() or assignee.email}.')
+            except User.DoesNotExist:
+                messages.error(request, 'Invalid assignee.')
+        else:
+            ticket.assigned_to = None
+            ticket.save()
+            messages.success(request, 'Ticket unassigned.')
+    
+    return redirect('admin_panel:support_ticket_detail', ticket_id=ticket_id)
