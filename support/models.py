@@ -43,12 +43,6 @@ class SupportTicket(models.Model):
         ('closed', _('Closed')),
     ]
     
-    PRIORITY_CHOICES = [
-        ('low', _('Low')),
-        ('normal', _('Normal')),
-        ('high', _('High')),
-        ('urgent', _('Urgent')),
-    ]
     
     # Ticket identification
     ticket_id = models.CharField(max_length=10, unique=True, editable=False)
@@ -74,18 +68,21 @@ class SupportTicket(models.Model):
     subject = models.CharField(max_length=200, verbose_name=_('Subject'))
     description = models.TextField(verbose_name=_('Description'))
     
-    # Status and priority
+    # Related order (for order-specific issues)
+    order_id = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True, 
+        verbose_name=_('Related Order ID'),
+        help_text=_('Order ID if this ticket is related to a specific order')
+    )
+    
+    # Status
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default='open',
         verbose_name=_('Status')
-    )
-    priority = models.CharField(
-        max_length=10,
-        choices=PRIORITY_CHOICES,
-        default='normal',
-        verbose_name=_('Priority')
     )
     
     # Assignment
@@ -123,10 +120,11 @@ class SupportTicket(models.Model):
         verbose_name_plural = _('Support Tickets')
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['status', 'priority']),
+            models.Index(fields=['status', 'created_at']),
             models.Index(fields=['user', 'status']),
             models.Index(fields=['assigned_to', 'status']),
             models.Index(fields=['category', 'status']),
+            models.Index(fields=['order_id']),
         ]
     
     def __str__(self):
@@ -156,16 +154,6 @@ class SupportTicket(models.Model):
         }
         return colors.get(self.status, '#9E9E9E')
     
-    @property
-    def priority_color(self):
-        """Get priority color for UI"""
-        colors = {
-            'low': '#4CAF50',  # Green
-            'normal': '#2196F3',  # Blue
-            'high': '#FF9800',  # Orange
-            'urgent': '#F44336',  # Red
-        }
-        return colors.get(self.priority, '#2196F3')
     
     @property
     def is_overdue(self):

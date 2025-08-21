@@ -1097,6 +1097,15 @@
                         <span class="nav-text">Artists & Stores</span>
                     </a>
                 </div>
+                <div class="nav-item">
+                    <a class="nav-link {% if active_tab == 'support' %}active{% endif %}" href="{% url 'admin_panel:support_tickets' %}">
+                        <i class="nav-icon fas fa-headset"></i>
+                        <span class="nav-text">Support Tickets</span>
+                        {% if pending_tickets > 0 %}
+                        <span class="nav-badge">{{ pending_tickets }}</span>
+                        {% endif %}
+                    </a>
+                </div>
             </li>
             
             <li class="nav-section">

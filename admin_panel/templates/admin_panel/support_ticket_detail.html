@@ -1,0 +1,337 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Ticket Details #{{ ticket.ticket_id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ticket-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 25px;
+    }
+    .message-item {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        padding: 15px;
+    }
+    .admin-message {
+        background-color: #f8f9fa;
+        border-left: 4px solid #007bff;
+    }
+    .user-message {
+        background-color: #fff;
+        border-left: 4px solid #28a745;
+    }
+    .internal-note {
+        background-color: #fff3cd;
+        border-left: 4px solid #ffc107;
+    }
+    .status-badge {
+        padding: 6px 15px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: bold;
+    }
+    .priority-badge {
+        padding: 4px 12px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .action-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row">
+        <div class="col-12">
+            <div class="page-title-box">
+                <h4 class="page-title">Ticket Details #{{ ticket.ticket_id }}</h4>
+                <div class="page-title-right">
+                    <ol class="breadcrumb m-0">
+                        <li class="breadcrumb-item"><a href="{% url 'admin_panel:dashboard' %}">Dashboard</a></li>
+                        <li class="breadcrumb-item"><a href="{% url 'admin_panel:support_tickets' %}">Support Tickets</a></li>
+                        <li class="breadcrumb-item active">#{{ ticket.ticket_id }}</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ticket Header -->
+    <div class="row">
+        <div class="col-12">
+            <div class="ticket-header">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h3 class="mb-2">{{ ticket.subject }}</h3>
+                        <p class="mb-2">{{ ticket.description }}</p>
+                        <div class="d-flex align-items-center">
+                            <span class="me-3">
+                                <i class="fas fa-user"></i>
+                                {{ ticket.user.get_full_name|default:ticket.user.email }}
+                            </span>
+                            <span class="me-3">
+                                <i class="fas fa-calendar"></i>
+                                {{ ticket.created_at|date:'Y/m/d H:i' }}
+                            </span>
+                            {% if ticket.category %}
+                            <span class="me-3">
+                                <i class="fas fa-tag"></i>
+                                {{ ticket.category.name }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <div class="mb-2">
+                            {% if ticket.status == 'open' %}
+                                <span class="status-badge" style="background-color: #198754; color: white;">Open</span>
+                            {% elif ticket.status == 'in_progress' %}
+                                <span class="status-badge" style="background-color: #ffc107; color: black;">In Progress</span>
+                            {% elif ticket.status == 'waiting_customer' %}
+                                <span class="status-badge" style="background-color: #0dcaf0; color: black;">Waiting Customer</span>
+                            {% elif ticket.status == 'resolved' %}
+                                <span class="status-badge" style="background-color: #6f42c1; color: white;">Resolved</span>
+                            {% else %}
+                                <span class="status-badge" style="background-color: #6c757d; color: white;">Closed</span>
+                            {% endif %}
+                        </div>
+                        <div>
+                            {% if ticket.order_id %}
+                                <span class="priority-badge" style="background-color: #0d6efd; color: white;">
+                                    <i class="fas fa-shopping-bag"></i> Order #{{ ticket.order_id }}
+                                </span>
+                            {% else %}
+                                <span class="priority-badge" style="background-color: #6c757d; color: white;">General Inquiry</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Messages Section -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Messages and Replies</h5>
+                </div>
+                <div class="card-body">
+                    {% for message in ticket.messages.all %}
+                    <div class="message-item {% if message.message_type == 'admin' %}admin-message{% elif message.is_internal %}internal-note{% else %}user-message{% endif %}">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div class="d-flex align-items-center">
+                                {% if message.message_type == 'admin' %}
+                                    <i class="fas fa-user-shield text-primary me-2"></i>
+                                    <strong>{{ message.sender.get_full_name|default:message.sender.email }}</strong>
+                                    {% if message.is_internal %}
+                                        <span class="badge bg-warning ms-2">Internal Note</span>
+                                    {% endif %}
+                                {% else %}
+                                    <i class="fas fa-user text-success me-2"></i>
+                                    <strong>{{ message.sender.get_full_name|default:message.sender.email }}</strong>
+                                {% endif %}
+                            </div>
+                            <small class="text-muted">{{ message.created_at|date:'Y/m/d H:i' }}</small>
+                        </div>
+                        <div class="message-content">
+                            {{ message.message|linebreaks }}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments fa-2x text-muted mb-2"></i>
+                        <p class="text-muted">No messages yet</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Reply Form -->
+            {% if ticket.status != 'closed' %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Add Reply</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{% url 'admin_panel:update_support_ticket' ticket.ticket_id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="reply">
+                        <div class="mb-3">
+                            <label for="message" class="form-label">Message</label>
+                            <textarea class="form-control" id="message" name="message" rows="4" required placeholder="Write your reply here..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_internal" name="is_internal">
+                                <label class="form-check-label" for="is_internal">
+                                    Internal note (customer won't see this)
+                                </label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Send Reply
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Actions Sidebar -->
+        <div class="col-md-4">
+            <!-- Ticket Actions -->
+            <div class="action-card">
+                <h6 class="mb-3">Ticket Actions</h6>
+                
+                <!-- Status Update -->
+                <form method="post" action="{% url 'admin_panel:update_support_ticket' ticket.ticket_id %}" class="mb-3">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="status_change">
+                    <div class="mb-2">
+                        <label class="form-label">Change Status</label>
+                        <select name="status" class="form-select" onchange="this.form.submit()">
+                            <option value="open" {% if ticket.status == 'open' %}selected{% endif %}>Open</option>
+                            <option value="in_progress" {% if ticket.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                            <option value="waiting_customer" {% if ticket.status == 'waiting_customer' %}selected{% endif %}>Waiting Customer</option>
+                            <option value="resolved" {% if ticket.status == 'resolved' %}selected{% endif %}>Resolved</option>
+                            <option value="closed" {% if ticket.status == 'closed' %}selected{% endif %}>Closed</option>
+                        </select>
+                    </div>
+                </form>
+
+
+                <!-- Assignment -->
+                <form method="post" action="{% url 'admin_panel:update_support_ticket' ticket.ticket_id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="assign">
+                    <div class="mb-2">
+                        <label class="form-label">Assign To</label>
+                        <select name="assigned_to" class="form-select" onchange="this.form.submit()">
+                            <option value="">Unassigned</option>
+                            {% for staff in staff_users %}
+                            <option value="{{ staff.id }}" {% if ticket.assigned_to and ticket.assigned_to.id == staff.id %}selected{% endif %}>
+                                {{ staff.get_full_name|default:staff.email }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Ticket Information -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Ticket Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <strong>Ticket ID:</strong><br>
+                        <span class="text-muted">#{{ ticket.ticket_id }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Created Date:</strong><br>
+                        <span class="text-muted">{{ ticket.created_at|date:'Y/m/d H:i' }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Last Updated:</strong><br>
+                        <span class="text-muted">{{ ticket.updated_at|date:'Y/m/d H:i' }}</span>
+                    </div>
+                    {% if ticket.resolved_at %}
+                    <div class="mb-2">
+                        <strong>Resolved Date:</strong><br>
+                        <span class="text-muted">{{ ticket.resolved_at|date:'Y/m/d H:i' }}</span>
+                    </div>
+                    {% endif %}
+                    {% if ticket.closed_at %}
+                    <div class="mb-2">
+                        <strong>Closed Date:</strong><br>
+                        <span class="text-muted">{{ ticket.closed_at|date:'Y/m/d H:i' }}</span>
+                    </div>
+                    {% endif %}
+                    {% if ticket.assigned_to %}
+                    <div class="mb-2">
+                        <strong>Assigned To:</strong><br>
+                        <span class="text-muted">{{ ticket.assigned_to.get_full_name|default:ticket.assigned_to.email }}</span>
+                    </div>
+                    {% endif %}
+                    {% if ticket.rating %}
+                    <div class="mb-2">
+                        <strong>Customer Rating:</strong><br>
+                        <div class="text-warning">
+                            {% for i in "12345"|make_list %}
+                                {% if forloop.counter <= ticket.rating %}
+                                    <i class="fas fa-star"></i>
+                                {% else %}
+                                    <i class="far fa-star"></i>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% if ticket.feedback %}
+                        <small class="text-muted">{{ ticket.feedback }}</small>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- User Information -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Customer Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <strong>Name:</strong><br>
+                        <span class="text-muted">{{ ticket.user.get_full_name|default:'Not specified' }}</span>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Email:</strong><br>
+                        <span class="text-muted">{{ ticket.user.email }}</span>
+                    </div>
+                    {% if ticket.user.phone_number %}
+                    <div class="mb-2">
+                        <strong>Phone Number:</strong><br>
+                        <span class="text-muted">{{ ticket.user.phone_number }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="mb-2">
+                        <strong>Registration Date:</strong><br>
+                        <span class="text-muted">{{ ticket.user.date_joined|date:'Y/m/d' }}</span>
+                    </div>
+                    <div class="mt-3">
+                        <a href="{% url 'admin_panel:view_user_profile' ticket.user.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-user"></i> View Profile
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-refresh page every 30 seconds if ticket is not closed
+if ('{{ ticket.status }}' !== 'closed') {
+    setTimeout(function() {
+        location.reload();
+    }, 30000);
+}
+</script>
+{% endblock %}

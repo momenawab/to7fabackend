@@ -8,4 +8,5 @@ urlpatterns = [
     path('<int:pk>/cancel/', views.cancel_order, name='cancel_order'),
     path('seller/', views.seller_orders, name='seller_orders'),
     path('seller/<int:pk>/status/', views.update_order_status, name='update_order_status'),
+    path('user-orders/', views.user_orders_for_support, name='user_orders_for_support'),
 ] 

@@ -45,13 +45,13 @@ class SupportAttachmentInline(admin.TabularInline):
     file_size_formatted.short_description = 'File Size'
 
 
-@admin.register(SupportTicket)
+# @admin.register(SupportTicket)  # Disabled - use custom admin panel instead
 class SupportTicketAdmin(admin.ModelAdmin):
     list_display = (
         'ticket_id', 'subject', 'user', 'category', 'status_badge', 
-        'priority_badge', 'assigned_to', 'created_at', 'is_overdue_badge'
+        'order_id', 'assigned_to', 'created_at', 'is_overdue_badge'
     )
-    list_filter = ('status', 'priority', 'category', 'assigned_to', 'created_at')
+    list_filter = ('status', 'category', 'assigned_to', 'created_at')
     search_fields = ('ticket_id', 'subject', 'user__email', 'user__first_name', 'user__last_name')
     readonly_fields = ('ticket_id', 'uuid', 'created_at', 'updated_at', 'ip_address', 'user_agent')
     ordering = ('-created_at',)
@@ -63,8 +63,8 @@ class SupportTicketAdmin(admin.ModelAdmin):
         ('User & Assignment', {
             'fields': ('user', 'category', 'assigned_to')
         }),
-        ('Status & Priority', {
-            'fields': ('status', 'priority', 'resolved_at', 'closed_at')
+        ('Status & Order', {
+            'fields': ('status', 'order_id', 'resolved_at', 'closed_at')
         }),
         ('Customer Feedback', {
             'fields': ('rating', 'feedback'),
@@ -86,13 +86,6 @@ class SupportTicketAdmin(admin.ModelAdmin):
         )
     status_badge.short_description = 'Status'
     
-    def priority_badge(self, obj):
-        color = obj.priority_color
-        return format_html(
-            '<span style="background: {}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">{}</span>',
-            color, obj.get_priority_display()
-        )
-    priority_badge.short_description = 'Priority'
     
     def is_overdue_badge(self, obj):
         if obj.is_overdue:
@@ -104,7 +97,7 @@ class SupportTicketAdmin(admin.ModelAdmin):
         return super().get_queryset(request).select_related('user', 'category', 'assigned_to')
 
 
-@admin.register(SupportMessage)
+# @admin.register(SupportMessage)  # Disabled - use custom admin panel instead
 class SupportMessageAdmin(admin.ModelAdmin):
     list_display = ('ticket', 'sender', 'message_preview', 'message_type', 'is_internal', 'created_at')
     list_filter = ('message_type', 'is_internal', 'created_at')
@@ -119,7 +112,7 @@ class SupportMessageAdmin(admin.ModelAdmin):
         return super().get_queryset(request).select_related('ticket', 'sender')
 
 
-@admin.register(SupportAttachment)
+# @admin.register(SupportAttachment)  # Disabled - use custom admin panel instead
 class SupportAttachmentAdmin(admin.ModelAdmin):
     list_display = ('ticket', 'original_filename', 'file_size_formatted', 'content_type', 'uploaded_by', 'uploaded_at')
     list_filter = ('content_type', 'uploaded_at')

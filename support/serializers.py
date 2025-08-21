@@ -60,9 +60,7 @@ class SupportTicketSerializer(serializers.ModelSerializer):
     category = SupportCategorySerializer(read_only=True)
     assigned_to = UserBasicSerializer(read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     status_color = serializers.CharField(read_only=True)
-    priority_color = serializers.CharField(read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
     message_count = serializers.SerializerMethodField()
     last_message_at = serializers.SerializerMethodField()
@@ -71,9 +69,9 @@ class SupportTicketSerializer(serializers.ModelSerializer):
         model = SupportTicket
         fields = [
             'ticket_id', 'uuid', 'subject', 'user', 'category', 'status', 
-            'status_display', 'status_color', 'priority', 'priority_display', 
-            'priority_color', 'assigned_to', 'is_overdue', 'message_count',
-            'last_message_at', 'created_at', 'updated_at', 'rating'
+            'status_display', 'status_color', 'order_id', 'assigned_to', 
+            'is_overdue', 'message_count', 'last_message_at', 'created_at', 
+            'updated_at', 'rating'
         ]
     
     def get_message_count(self, obj):
@@ -92,19 +90,16 @@ class SupportTicketDetailSerializer(serializers.ModelSerializer):
     messages = SupportMessageSerializer(many=True, read_only=True)
     attachments = SupportAttachmentSerializer(many=True, read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     status_color = serializers.CharField(read_only=True)
-    priority_color = serializers.CharField(read_only=True)
     is_overdue = serializers.BooleanField(read_only=True)
     
     class Meta:
         model = SupportTicket
         fields = [
             'ticket_id', 'uuid', 'subject', 'description', 'user', 'category',
-            'status', 'status_display', 'status_color', 'priority', 
-            'priority_display', 'priority_color', 'assigned_to', 'messages',
-            'attachments', 'is_overdue', 'rating', 'feedback', 'created_at',
-            'updated_at', 'resolved_at', 'closed_at'
+            'status', 'status_display', 'status_color', 'order_id', 'assigned_to', 
+            'messages', 'attachments', 'is_overdue', 'rating', 'feedback', 
+            'created_at', 'updated_at', 'resolved_at', 'closed_at'
         ]
 
 
@@ -113,10 +108,7 @@ class CreateTicketSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = SupportTicket
-        fields = ['category', 'subject', 'description', 'priority']
-        extra_kwargs = {
-            'priority': {'default': 'normal'}
-        }
+        fields = ['category', 'subject', 'description', 'order_id']
     
     def validate_subject(self, value):
         if len(value.strip()) < 5:
@@ -143,20 +135,14 @@ class CreateMessageSerializer(serializers.ModelSerializer):
 
 
 class TicketUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating ticket status/priority/assignment"""
+    """Serializer for updating ticket status/assignment"""
     
     class Meta:
         model = SupportTicket
-        fields = ['status', 'priority', 'assigned_to']
+        fields = ['status', 'assigned_to', 'order_id']
     
     def validate_status(self, value):
         allowed_statuses = ['open', 'in_progress', 'waiting_customer', 'resolved', 'closed']
         if value not in allowed_statuses:
             raise serializers.ValidationError(f"Status must be one of: {', '.join(allowed_statuses)}")
-        return value
-    
-    def validate_priority(self, value):
-        allowed_priorities = ['low', 'normal', 'high', 'urgent']
-        if value not in allowed_priorities:
-            raise serializers.ValidationError(f"Priority must be one of: {', '.join(allowed_priorities)}")
         return value

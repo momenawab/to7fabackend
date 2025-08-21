@@ -6,3 +6,5 @@ mysqlclient==2.2.7
 pillow==11.2.1
 python-dotenv==1.0.1
 cryptography
+channels==4.0.0
+channels-redis==4.2.0
