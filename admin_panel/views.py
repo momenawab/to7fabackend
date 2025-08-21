@@ -1728,7 +1728,7 @@ def update_support_ticket(request, ticket_id):
                         'name': new_message.sender.get_full_name() or new_message.sender.email,
                         'type': 'admin'
                     },
-                    'timestamp': new_message.timestamp.isoformat(),
+                    'timestamp': new_message.created_at.isoformat(),
                     'message_type': new_message.message_type,
                 }
                 send_ticket_update(ticket.ticket_id, message_data, 'message')
@@ -1798,3 +1798,29 @@ def update_support_ticket(request, ticket_id):
             messages.success(request, 'Ticket unassigned.')
     
     return redirect('admin_panel:support_ticket_detail', ticket_id=ticket_id)
+
+
+@user_passes_test(is_admin)
+@require_POST
+def send_typing_indicator(request, ticket_id):
+    """Send typing indicator for support ticket"""
+    import json
+    
+    try:
+        ticket = get_object_or_404(SupportTicket, ticket_id=ticket_id)
+        data = json.loads(request.body)
+        is_typing = data.get('is_typing', False)
+        
+        # Send typing indicator via WebSocket
+        from support.consumers import send_typing_indicator
+        send_typing_indicator(
+            ticket_id=ticket.ticket_id,
+            user_name=request.user.get_full_name() or request.user.email,
+            is_typing=is_typing
+        )
+        
+        return JsonResponse({'success': True})
+        
+    except Exception as e:
+        print(f'Error sending typing indicator: {e}')
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

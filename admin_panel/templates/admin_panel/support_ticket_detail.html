@@ -327,11 +327,51 @@
 
 {% block extra_js %}
 <script>
-// Auto-refresh page every 30 seconds if ticket is not closed
-if ('{{ ticket.status }}' !== 'closed') {
-    setTimeout(function() {
-        location.reload();
-    }, 30000);
+// Typing indicator functionality
+let typingTimer;
+const messageTextarea = document.getElementById('message');
+
+if (messageTextarea) {
+    messageTextarea.addEventListener('input', function() {
+        // Send typing indicator start
+        sendTypingIndicator(true);
+        
+        // Clear previous timer
+        clearTimeout(typingTimer);
+        
+        // Set timer to stop typing indicator after 2 seconds of no typing
+        typingTimer = setTimeout(function() {
+            sendTypingIndicator(false);
+        }, 2000);
+    });
+    
+    messageTextarea.addEventListener('blur', function() {
+        // Stop typing indicator when user leaves the textarea
+        clearTimeout(typingTimer);
+        sendTypingIndicator(false);
+    });
 }
+
+function sendTypingIndicator(isTyping) {
+    fetch('{% url "admin_panel:send_typing_indicator" ticket.ticket_id %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}',
+        },
+        body: JSON.stringify({
+            is_typing: isTyping
+        })
+    }).catch(function(error) {
+        console.log('Error sending typing indicator:', error);
+    });
+}
+
+// Auto-refresh page every 30 seconds if ticket is not closed (disabled for real-time)
+// if ('{{ ticket.status }}' !== 'closed') {
+//     setTimeout(function() {
+//         location.reload();
+//     }, 30000);
+// }
 </script>
 {% endblock %}
