@@ -63,6 +63,7 @@ urlpatterns = [
     path('support-tickets/', views.support_tickets, name='support_tickets'),
     path('support-tickets/<str:ticket_id>/', views.support_ticket_detail, name='support_ticket_detail'),
     path('support-tickets/<str:ticket_id>/update/', views.update_support_ticket, name='update_support_ticket'),
+    path('support-tickets/<str:ticket_id>/typing/', views.send_typing_indicator, name='send_typing_indicator'),
     
     # Settings
     path('settings/', views.settings, name='settings'),

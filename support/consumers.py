@@ -181,3 +181,19 @@ def send_ticket_update(ticket_id, message_data=None, update_type='message'):
             'ticket_id': ticket_id,
             'update_type': update_type
         })
+
+def send_typing_indicator(ticket_id, user_name, is_typing):
+    """Send typing indicator for a ticket"""
+    from channels.layers import get_channel_layer
+    from asgiref.sync import async_to_sync
+    
+    channel_layer = get_channel_layer()
+    group_name = f'support_ticket_{ticket_id}'
+    
+    async_to_sync(channel_layer.group_send)(group_name, {
+        'type': 'typing_indicator',
+        'ticket_id': ticket_id,
+        'user_name': user_name,
+        'is_typing': is_typing,
+        'user_id': 0  # Admin user ID
+    })
