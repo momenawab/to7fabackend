@@ -23,10 +23,30 @@ class ProductForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Ensure category field is properly configured
+        # Ensure category field is properly configured with hierarchy
         if 'category' in self.fields:
+            # Create hierarchical choices for better UX
+            choices = [('', 'Select a category')]
+            
+            # Get main categories first
+            main_categories = Category.objects.filter(is_active=True, parent__isnull=True).order_by('name')
+            for main_cat in main_categories:
+                choices.append((main_cat.id, f"📁 {main_cat.name} (Main Category)"))
+                
+                # Add subcategories under main category
+                subcategories = Category.objects.filter(is_active=True, parent=main_cat).order_by('name')
+                for sub_cat in subcategories:
+                    choices.append((sub_cat.id, f"  └─ {sub_cat.name} (Subcategory)"))
+            
+            # Use regular queryset but with custom widget for better display
             self.fields['category'].queryset = Category.objects.filter(is_active=True)
             self.fields['category'].empty_label = "Select a category"
+            
+            # Add help text to explain the difference
+            self.fields['category'].help_text = (
+                "📁 Main Categories: Can have products directly assigned and can have subcategories<br>"
+                "└─ Subcategories: Products assigned here will inherit variant types from parent category"
+            )
         
         # Ensure seller field shows appropriate users
         if 'seller' in self.fields:

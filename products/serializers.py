@@ -165,9 +165,9 @@ class ProductDetailSerializer(ProductSerializer):
 
 # Serializer for Subcategory Section Control
 class SubcategorySectionControlSerializer(serializers.ModelSerializer):
-    subcategory = CategorySerializer(read_only=True)
-    products_to_display = ProductSerializer(many=True, read_only=True, source='get_products_to_display')
-    products_count = serializers.ReadOnlyField()
+    subcategory = serializers.SerializerMethodField()
+    products_to_display = serializers.SerializerMethodField()
+    products_count = serializers.SerializerMethodField()
     parent_category_id = serializers.SerializerMethodField()
     parent_category_name = serializers.SerializerMethodField()
     
@@ -179,8 +179,41 @@ class SubcategorySectionControlSerializer(serializers.ModelSerializer):
             'products_to_display', 'products_count', 'created_at', 'updated_at'
         )
     
+    def get_subcategory(self, obj):
+        try:
+            if obj.subcategory:
+                return CategorySerializer(obj.subcategory, context=self.context).data
+        except Exception as e:
+            print(f"Error getting subcategory for section {obj.id}: {e}")
+        return None
+    
+    def get_products_to_display(self, obj):
+        try:
+            products = obj.get_products_to_display()
+            return ProductSerializer(products, many=True, context=self.context).data
+        except Exception as e:
+            print(f"Error getting products for section {obj.id}: {e}")
+            return []
+    
+    def get_products_count(self, obj):
+        try:
+            return obj.products_count
+        except Exception as e:
+            print(f"Error getting products count for section {obj.id}: {e}")
+            return 0
+    
     def get_parent_category_id(self, obj):
-        return obj.subcategory.parent.id if obj.subcategory.parent else None
+        try:
+            if obj.subcategory and obj.subcategory.parent:
+                return obj.subcategory.parent.id
+        except Exception as e:
+            print(f"Error getting parent category id for section {obj.id}: {e}")
+        return None
     
     def get_parent_category_name(self, obj):
-        return obj.subcategory.parent.name if obj.subcategory.parent else None 
+        try:
+            if obj.subcategory and obj.subcategory.parent:
+                return obj.subcategory.parent.name
+        except Exception as e:
+            print(f"Error getting parent category name for section {obj.id}: {e}")
+        return None 
