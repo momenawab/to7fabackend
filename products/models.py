@@ -742,8 +742,16 @@ class SubcategorySectionControl(models.Model):
     def clean(self):
         from django.core.exceptions import ValidationError
         # Ensure the category is actually a subcategory
-        if not self.subcategory.parent:
-            raise ValidationError('Only subcategories (categories with a parent) can have section controls.')
+        if self.subcategory_id:
+            try:
+                subcategory = Category.objects.get(id=self.subcategory_id)
+                if not subcategory.parent:
+                    raise ValidationError('Only subcategories (categories with a parent) can have section controls.')
+            except Category.DoesNotExist:
+                raise ValidationError('Invalid subcategory selected.')
+        elif hasattr(self, 'subcategory') and self.subcategory:
+            if not self.subcategory.parent:
+                raise ValidationError('Only subcategories (categories with a parent) can have section controls.')
     
     def save(self, *args, **kwargs):
         self.clean()

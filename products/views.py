@@ -177,13 +177,50 @@ def category_detail(request, pk):
     
     if request.method == 'GET':
         serializer = CategorySerializer(category)
-        # Get products in this category
-        products = Product.objects.filter(category=category, is_active=True)
+        
+        # Get products in this category AND all its subcategories
+        # This is crucial for ReactiveSubcategorySections to work properly
+        if category.parent is None:
+            # For main categories: get direct products + all subcategory products
+            subcategories = Category.objects.filter(parent=category, is_active=True)
+            subcategory_ids = [sub.id for sub in subcategories]
+            
+            # Get products from main category and all its subcategories
+            products = Product.objects.filter(
+                category_id__in=[category.id] + subcategory_ids,
+                is_active=True
+            ).order_by('-created_at')
+        else:
+            # For subcategories: only get products directly assigned to this subcategory
+            products = Product.objects.filter(category=category, is_active=True)
+        
         product_serializer = ProductSerializer(products, many=True)
-        return Response({
-            "category": serializer.data,
-            "products": product_serializer.data
-        })
+        
+        # Include subcategories in response for ReactiveSubcategorySections
+        if category.parent is None:
+            # For main categories, include subcategories list
+            subcategories_data = []
+            for sub in subcategories:
+                subcategories_data.append({
+                    'id': sub.id,
+                    'name': sub.name,
+                    'description': sub.description,
+                    'parent': sub.parent.id if sub.parent else None,
+                    'image': sub.image.url if sub.image else None,
+                    'is_active': sub.is_active,
+                })
+            
+            return Response({
+                "category": serializer.data,
+                "products": product_serializer.data,
+                "subcategories": subcategories_data
+            })
+        else:
+            # For subcategories, no need to include subcategories list
+            return Response({
+                "category": serializer.data,
+                "products": product_serializer.data
+            })
     
     # Only staff can update or delete categories
     if not request.user.is_authenticated:

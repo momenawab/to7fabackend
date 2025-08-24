@@ -888,10 +888,15 @@ def subcategory_sections_management(request):
     """View for managing subcategory sections display control"""
     from products.models import SubcategorySectionControl, Category
     
-    # Get all subcategories with their section controls
+    # Get all subcategories 
     subcategories = Category.objects.filter(
         parent__isnull=False, is_active=True
-    ).select_related('parent').prefetch_related('section_control')
+    ).select_related('parent')
+    
+    # Get all existing section controls
+    existing_controls = {}
+    for control in SubcategorySectionControl.objects.select_related('subcategory'):
+        existing_controls[control.subcategory.id] = control
     
     # Group by parent category
     categories_data = {}
@@ -903,11 +908,8 @@ def subcategory_sections_management(request):
                 'subcategories': []
             }
         
-        # Get or create section control for this subcategory
-        try:
-            section_control = subcategory.section_control
-        except SubcategorySectionControl.DoesNotExist:
-            section_control = None
+        # Get section control if it exists
+        section_control = existing_controls.get(subcategory.id, None)
             
         categories_data[parent.id]['subcategories'].append({
             'subcategory': subcategory,
