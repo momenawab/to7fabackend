@@ -677,4 +677,74 @@ class DiscountRequest(models.Model):
     class Meta:
         verbose_name = 'Discount Request'
         verbose_name_plural = 'Discount Requests'
-        ordering = ['-created_at']
+
+
+class SubcategorySectionControl(models.Model):
+    """Model for controlling subcategory sections in category details pages"""
+    subcategory = models.OneToOneField(
+        Category, 
+        on_delete=models.CASCADE, 
+        related_name='section_control',
+        limit_choices_to={'parent__isnull': False}  # Only subcategories
+    )
+    is_section_enabled = models.BooleanField(
+        default=True, 
+        verbose_name='Enable Section',
+        help_text='Whether to show this subcategory as a section in the parent category page'
+    )
+    max_products_to_show = models.PositiveIntegerField(
+        default=4,
+        verbose_name='Max Products to Show',
+        help_text='Maximum number of products to display in this subcategory section'
+    )
+    section_priority = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Section Priority',
+        help_text='Lower numbers appear first. 0 = highest priority'
+    )
+    featured_products = models.ManyToManyField(
+        Product,
+        blank=True,
+        verbose_name='Featured Products',
+        help_text='Specific products to feature in this section (leave empty to show latest products)',
+        limit_choices_to={'is_active': True}
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Subcategory Section Control'
+        verbose_name_plural = 'Subcategory Section Controls'
+        ordering = ['section_priority', 'subcategory__name']
+    
+    def __str__(self):
+        status = "Enabled" if self.is_section_enabled else "Disabled"
+        return f"{self.subcategory.name} Section - {status}"
+    
+    def get_products_to_display(self):
+        """Get products to display in this subcategory section"""
+        if self.featured_products.exists():
+            # Show manually selected featured products
+            return self.featured_products.filter(is_active=True)[:self.max_products_to_show]
+        else:
+            # Show latest products from this subcategory
+            return Product.objects.filter(
+                category=self.subcategory,
+                is_active=True,
+                approval_status='approved'
+            ).order_by('-created_at')[:self.max_products_to_show]
+    
+    @property
+    def products_count(self):
+        """Get count of products that will be displayed"""
+        return self.get_products_to_display().count()
+    
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        # Ensure the category is actually a subcategory
+        if not self.subcategory.parent:
+            raise ValidationError('Only subcategories (categories with a parent) can have section controls.')
+    
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)

@@ -884,6 +884,52 @@ def attribute_management(request):
 
 @login_required
 @user_passes_test(is_admin)
+def subcategory_sections_management(request):
+    """View for managing subcategory sections display control"""
+    from products.models import SubcategorySectionControl, Category
+    
+    # Get all subcategories with their section controls
+    subcategories = Category.objects.filter(
+        parent__isnull=False, is_active=True
+    ).select_related('parent').prefetch_related('section_control')
+    
+    # Group by parent category
+    categories_data = {}
+    for subcategory in subcategories:
+        parent = subcategory.parent
+        if parent.id not in categories_data:
+            categories_data[parent.id] = {
+                'parent': parent,
+                'subcategories': []
+            }
+        
+        # Get or create section control for this subcategory
+        try:
+            section_control = subcategory.section_control
+        except SubcategorySectionControl.DoesNotExist:
+            section_control = None
+            
+        categories_data[parent.id]['subcategories'].append({
+            'subcategory': subcategory,
+            'section_control': section_control
+        })
+    
+    # Log admin activity
+    AdminActivity.objects.create(
+        admin=request.user,
+        action='VIEW',
+        description='Viewed subcategory sections management'
+    )
+    
+    context = {
+        'active_tab': 'subcategory_sections',
+        'categories_data': list(categories_data.values())
+    }
+
+    return render(request, 'admin_panel/subcategory_sections_management.html', context)
+
+@login_required
+@user_passes_test(is_admin)
 def add_product_with_variants(request):
     """View for adding products with variants using the enhanced interface"""
     context = {
@@ -935,17 +981,35 @@ def get_categories_json(request):
         print(f"Is user staff: {request.user.is_staff}")
         print(f"Is user superuser: {request.user.is_superuser}")
 
-        categories = Category.objects.filter(is_active=True).order_by('name')
-        print(f"Found {categories.count()} categories")
+        # Get categories sorted by hierarchy: parent categories first, then subcategories
+        parent_categories = Category.objects.filter(is_active=True, parent__isnull=True).order_by('name')
+        subcategories = Category.objects.filter(is_active=True, parent__isnull=False).select_related('parent').order_by('parent__name', 'name')
+        
+        print(f"Found {parent_categories.count()} parent categories and {subcategories.count()} subcategories")
 
-        categories_data = [
-            {
+        # Build hierarchical category data
+        categories_data = []
+        
+        # Add parent categories first
+        for category in parent_categories:
+            categories_data.append({
                 'id': category.id,
                 'name': category.name,
                 'description': category.description,
-            }
-            for category in categories
-        ]
+                'parent_id': None,
+                'is_parent': True
+            })
+        
+        # Add subcategories grouped under their parents
+        for category in subcategories:
+            categories_data.append({
+                'id': category.id,
+                'name': f"  └─ {category.name}",  # Indent subcategories visually
+                'description': category.description,
+                'parent_id': category.parent.id,
+                'is_parent': False,
+                'parent_name': category.parent.name
+            })
 
         print(f"Returning categories data: {categories_data}")
         return JsonResponse(categories_data, safe=False)

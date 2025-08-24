@@ -989,20 +989,38 @@ def create_product_with_variants(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def get_categories_for_admin(request):
-    """API endpoint to get all active categories for admin use"""
+    """API endpoint to get all active categories for admin use - sorted hierarchically"""
     from products.models import Category
     
-    categories = Category.objects.filter(is_active=True).order_by('name')
+    # Get categories sorted by hierarchy: parent categories first, then subcategories
+    parent_categories = Category.objects.filter(is_active=True, parent__isnull=True).order_by('name')
+    subcategories = Category.objects.filter(is_active=True, parent__isnull=False).select_related('parent').order_by('parent__name', 'name')
     
     categories_data = []
-    for category in categories:
+    
+    # Add parent categories first
+    for category in parent_categories:
         categories_data.append({
             'id': category.id,
             'name': category.name,
             'description': category.description,
+            'parent_id': None,
+            'image': category.image.url if category.image else None,
+            'is_active': category.is_active,
+            'is_parent': True
+        })
+    
+    # Add subcategories grouped under their parents
+    for category in subcategories:
+        categories_data.append({
+            'id': category.id,
+            'name': f"  └─ {category.name}",  # Indent subcategories visually
+            'description': category.description,
             'parent_id': category.parent_id,
             'image': category.image.url if category.image else None,
-            'is_active': category.is_active
+            'is_active': category.is_active,
+            'is_parent': False,
+            'parent_name': category.parent.name
         })
     
     return Response(categories_data)

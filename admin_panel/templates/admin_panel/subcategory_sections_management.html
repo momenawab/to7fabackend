@@ -1,0 +1,221 @@
+{% extends 'admin_panel/base.html' %}
+
+{% block title %}Subcategory Sections Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Manage Subcategory Sections</h3>
+                    <p class="card-text">Control which subcategory sections appear in category details pages and customize their display settings.</p>
+                </div>
+                <div class="card-body">
+                    {% if categories_data %}
+                        {% for category_data in categories_data %}
+                        <div class="category-section mb-4">
+                            <h4 class="mb-3">
+                                <i class="fas fa-folder-open text-primary"></i>
+                                {{ category_data.parent.name }}
+                            </h4>
+                            
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Subcategory</th>
+                                            <th>Section Enabled</th>
+                                            <th>Max Products</th>
+                                            <th>Priority</th>
+                                            <th>Products Count</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for sub_data in category_data.subcategories %}
+                                        <tr>
+                                            <td>
+                                                <i class="fas fa-folder text-secondary me-2"></i>
+                                                {{ sub_data.subcategory.name }}
+                                            </td>
+                                            <td>
+                                                {% if sub_data.section_control %}
+                                                    <span class="badge bg-{% if sub_data.section_control.is_section_enabled %}success{% else %}danger{% endif %}">
+                                                        {% if sub_data.section_control.is_section_enabled %}Enabled{% else %}Disabled{% endif %}
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-warning">Not Configured</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if sub_data.section_control %}
+                                                    {{ sub_data.section_control.max_products_to_show }}
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if sub_data.section_control %}
+                                                    {{ sub_data.section_control.section_priority }}
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if sub_data.section_control %}
+                                                    <span class="badge bg-info">{{ sub_data.section_control.products_count }}</span>
+                                                {% else %}
+                                                    <span class="text-muted">-</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if sub_data.section_control %}
+                                                    <a href="/admin/products/subcategorysectioncontrol/{{ sub_data.section_control.id }}/change/" 
+                                                       class="btn btn-sm btn-outline-primary" target="_blank">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </a>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-success" 
+                                                            onclick="createSectionControl({{ sub_data.subcategory.id }}, '{{ sub_data.subcategory.name }}')">
+                                                        <i class="fas fa-plus"></i> Create
+                                                    </button>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <hr class="my-4">
+                        {% endfor %}
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">No subcategories found</h5>
+                            <p class="text-muted">Create some subcategories first to manage their sections.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Section Control Modal -->
+<div class="modal fade" id="createSectionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create Section Control</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createSectionForm">
+                    {% csrf_token %}
+                    <input type="hidden" id="subcategoryId" name="subcategory_id">
+                    <div class="mb-3">
+                        <label class="form-label">Subcategory</label>
+                        <input type="text" class="form-control" id="subcategoryName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="isSectionEnabled" checked>
+                            <label class="form-check-label" for="isSectionEnabled">
+                                Enable Section
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="maxProducts" class="form-label">Max Products to Show</label>
+                        <input type="number" class="form-control" id="maxProducts" value="4" min="1" max="20">
+                    </div>
+                    <div class="mb-3">
+                        <label for="sectionPriority" class="form-label">Section Priority</label>
+                        <input type="number" class="form-control" id="sectionPriority" value="0" min="0">
+                        <div class="form-text">Lower numbers appear first. 0 = highest priority</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitCreateSection()">Create Section</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function createSectionControl(subcategoryId, subcategoryName) {
+    document.getElementById('subcategoryId').value = subcategoryId;
+    document.getElementById('subcategoryName').value = subcategoryName;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('createSectionModal'));
+    modal.show();
+}
+
+function submitCreateSection() {
+    const formData = new FormData();
+    formData.append('subcategory_id', document.getElementById('subcategoryId').value);
+    formData.append('is_section_enabled', document.getElementById('isSectionEnabled').checked);
+    formData.append('max_products_to_show', document.getElementById('maxProducts').value);
+    formData.append('section_priority', document.getElementById('sectionPriority').value);
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+    
+    fetch('/admin/products/subcategorysectioncontrol/add/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            // Close modal and reload page
+            bootstrap.Modal.getInstance(document.getElementById('createSectionModal')).hide();
+            location.reload();
+        } else {
+            throw new Error('Failed to create section control');
+        }
+    })
+    .catch(error => {
+        alert('Error creating section control: ' + error.message);
+        console.error('Error:', error);
+    });
+}
+
+// Auto-refresh page every 30 seconds to show latest data
+setInterval(() => {
+    // Only refresh if no modal is open
+    if (!document.querySelector('.modal.show')) {
+        location.reload();
+    }
+}, 30000);
+</script>
+
+<style>
+.category-section {
+    border-left: 4px solid var(--primary);
+    padding-left: 1rem;
+    background: var(--gray-50);
+    border-radius: 0 8px 8px 0;
+}
+
+.table th {
+    background-color: var(--primary-alpha) !important;
+    border: none;
+    font-weight: 600;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.btn-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.775em;
+}
+</style>
+{% endblock %}

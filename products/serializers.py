@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Category, Product, ProductImage, Review, ProductAttribute, 
     ProductAttributeOption, CategoryAttribute, CategoryVariantType, 
-    CategoryVariantOption, ProductCategoryVariantOption
+    CategoryVariantOption, ProductCategoryVariantOption, SubcategorySectionControl
 )
 from django.contrib.auth import get_user_model
 
@@ -160,4 +160,27 @@ class ProductDetailSerializer(ProductSerializer):
     reviews = ReviewSerializer(many=True, read_only=True)
     
     class Meta(ProductSerializer.Meta):
-        fields = ProductSerializer.Meta.fields + ('reviews',) 
+        fields = ProductSerializer.Meta.fields + ('reviews',)
+
+
+# Serializer for Subcategory Section Control
+class SubcategorySectionControlSerializer(serializers.ModelSerializer):
+    subcategory = CategorySerializer(read_only=True)
+    products_to_display = ProductSerializer(many=True, read_only=True, source='get_products_to_display')
+    products_count = serializers.ReadOnlyField()
+    parent_category_id = serializers.SerializerMethodField()
+    parent_category_name = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = SubcategorySectionControl
+        fields = (
+            'id', 'subcategory', 'parent_category_id', 'parent_category_name',
+            'is_section_enabled', 'max_products_to_show', 'section_priority',
+            'products_to_display', 'products_count', 'created_at', 'updated_at'
+        )
+    
+    def get_parent_category_id(self, obj):
+        return obj.subcategory.parent.id if obj.subcategory.parent else None
+    
+    def get_parent_category_name(self, obj):
+        return obj.subcategory.parent.name if obj.subcategory.parent else None 
