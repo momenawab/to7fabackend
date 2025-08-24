@@ -52,6 +52,9 @@ urlpatterns = [
     # Attribute Management
     path('attributes/', views.attribute_management, name='attributes'),
     
+    # Subcategory Sections Management
+    path('subcategory-sections/', views.subcategory_sections_management, name='subcategory_sections'),
+    
     # Variant Management
     path('variants/', views.variant_management, name='variant_management'),
     path('variants/create-type/', views.create_variant_type, name='create_variant_type'),

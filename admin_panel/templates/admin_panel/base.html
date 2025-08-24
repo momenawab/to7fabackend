@@ -1138,6 +1138,12 @@
                     </a>
                 </div>
                 <div class="nav-item">
+                    <a class="nav-link {% if active_tab == 'subcategory_sections' %}active{% endif %}" href="{% url 'admin_panel:subcategory_sections' %}">
+                        <i class="nav-icon fas fa-layer-group"></i>
+                        <span class="nav-text">Subcategory Sections</span>
+                    </a>
+                </div>
+                <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'variants' %}active{% endif %}" href="{% url 'admin_panel:variant_management' %}">
                         <i class="nav-icon fas fa-palette"></i>
                         <span class="nav-text">Variants</span>

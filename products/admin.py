@@ -5,7 +5,8 @@ from .models import (
     Category, Product, ProductImage, Review, Advertisement, ContentSettings, 
     ProductOffer, FeaturedProduct, ProductAttribute, ProductAttributeOption, 
     CategoryAttribute, ProductVariant, ProductVariantAttribute, Tag, 
-    CategoryVariantType, CategoryVariantOption, DiscountRequest, ProductVariantOption
+    CategoryVariantType, CategoryVariantOption, DiscountRequest, ProductVariantOption,
+    SubcategorySectionControl
 )
 
 # Custom forms for better product management
@@ -653,3 +654,68 @@ admin.site.register(DiscountRequest, DiscountRequestAdmin)
 # Re-register ProductVariant with enhanced admin
 admin.site.unregister(ProductVariant)
 admin.site.register(ProductVariant, EnhancedProductVariantAdmin)
+
+# Subcategory Section Control Admin
+class SubcategorySectionControlAdmin(admin.ModelAdmin):
+    list_display = ('subcategory', 'parent_category', 'is_section_enabled', 'max_products_to_show', 'section_priority', 'products_count')
+    list_filter = ('is_section_enabled', 'subcategory__parent', 'section_priority')
+    search_fields = ('subcategory__name', 'subcategory__parent__name')
+    list_editable = ('is_section_enabled', 'max_products_to_show', 'section_priority')
+    filter_horizontal = ('featured_products',)
+    ordering = ('subcategory__parent__name', 'section_priority', 'subcategory__name')
+    
+    fieldsets = (
+        ('Subcategory Section', {
+            'fields': ('subcategory', 'is_section_enabled', 'section_priority')
+        }),
+        ('Display Settings', {
+            'fields': ('max_products_to_show',),
+            'description': 'Control how many products to show in this subcategory section'
+        }),
+        ('Featured Products (Optional)', {
+            'fields': ('featured_products',),
+            'description': 'Select specific products to feature in this section. Leave empty to automatically show latest products from this subcategory.',
+            'classes': ('collapse',)
+        }),
+        ('Information', {
+            'fields': ('products_count', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('products_count', 'created_at', 'updated_at')
+    
+    def parent_category(self, obj):
+        return obj.subcategory.parent.name if obj.subcategory.parent else 'No Parent'
+    parent_category.short_description = 'Parent Category'
+    
+    def products_count(self, obj):
+        return obj.products_count
+    products_count.short_description = 'Products to Display'
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        
+        # Filter subcategories to only show subcategories (those with parents)
+        if 'subcategory' in form.base_fields:
+            form.base_fields['subcategory'].queryset = Category.objects.filter(
+                parent__isnull=False, is_active=True
+            ).select_related('parent')
+            form.base_fields['subcategory'].empty_label = "Select a subcategory"
+        
+        # Filter featured products to only show active products
+        if 'featured_products' in form.base_fields:
+            form.base_fields['featured_products'].queryset = Product.objects.filter(
+                is_active=True, approval_status='approved'
+            ).select_related('category')
+        
+        return form
+    
+    def get_queryset(self, request):
+        """Override to show only subcategory section controls"""
+        return super().get_queryset(request).select_related(
+            'subcategory', 'subcategory__parent'
+        ).prefetch_related('featured_products')
+
+# Register the new admin
+admin.site.register(SubcategorySectionControl, SubcategorySectionControlAdmin)

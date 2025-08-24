@@ -46,4 +46,8 @@ urlpatterns = [
     path('categories/', views.categories_for_product_wizard, name='categories_for_wizard'),
     path('categories/<int:category_id>/variants/', views.category_variants, name='category_variants'),
     path('categories/<int:category_id>/tags/', views.category_tags, name='category_tags'),
+    
+    # Subcategory section control endpoints
+    path('categories/<int:category_id>/subcategory-sections/', views.subcategory_sections, name='subcategory_sections'),
+    path('subcategory-sections/', views.all_subcategory_sections, name='all_subcategory_sections'),
 ] 

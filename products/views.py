@@ -7,11 +7,12 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
     Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct,
     ProductAttribute, ProductAttributeOption, CategoryAttribute, Tag, CategoryVariantType,
-    CategoryVariantOption, DiscountRequest, ProductVariant, ProductVariantOption
+    CategoryVariantOption, DiscountRequest, ProductVariant, ProductVariantOption, SubcategorySectionControl
 )
 from .serializers import (
     ProductSerializer, ProductDetailSerializer, CategorySerializer, ReviewSerializer,
-    ProductAttributeSerializer, ProductAttributeOptionSerializer, CategoryAttributeSerializer
+    ProductAttributeSerializer, ProductAttributeOptionSerializer, CategoryAttributeSerializer,
+    SubcategorySectionControlSerializer
 )
 from django.db.models import Q, Count
 from django.utils import timezone
@@ -1555,5 +1556,94 @@ def category_tags(request, category_id):
     except Exception as e:
         return Response({
             'tags': [],
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def subcategory_sections(request, category_id):
+    """Get enabled subcategory sections for a specific parent category"""
+    try:
+        # Get the parent category
+        parent_category = Category.objects.get(id=category_id, is_active=True)
+        
+        # Get enabled subcategory sections for this parent category
+        sections = SubcategorySectionControl.objects.filter(
+            subcategory__parent=parent_category,
+            subcategory__is_active=True,
+            is_section_enabled=True
+        ).select_related(
+            'subcategory', 'subcategory__parent'
+        ).prefetch_related(
+            'featured_products'
+        ).order_by('section_priority', 'subcategory__name')
+        
+        serializer = SubcategorySectionControlSerializer(sections, many=True, context={'request': request})
+        
+        return Response({
+            'parent_category': {
+                'id': parent_category.id,
+                'name': parent_category.name
+            },
+            'sections': serializer.data
+        })
+        
+    except Category.DoesNotExist:
+        return Response({
+            'parent_category': None,
+            'sections': [],
+            'error': 'Parent category not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'parent_category': None,
+            'sections': [],
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def all_subcategory_sections(request):
+    """Get all enabled subcategory sections grouped by parent category"""
+    try:
+        # Get all enabled sections
+        sections = SubcategorySectionControl.objects.filter(
+            subcategory__is_active=True,
+            is_section_enabled=True
+        ).select_related(
+            'subcategory', 'subcategory__parent'
+        ).prefetch_related(
+            'featured_products'
+        ).order_by(
+            'subcategory__parent__name', 'section_priority', 'subcategory__name'
+        )
+        
+        # Group by parent category
+        sections_by_category = {}
+        for section in sections:
+            parent_id = section.subcategory.parent.id
+            parent_name = section.subcategory.parent.name
+            
+            if parent_id not in sections_by_category:
+                sections_by_category[parent_id] = {
+                    'parent_category': {
+                        'id': parent_id,
+                        'name': parent_name
+                    },
+                    'sections': []
+                }
+            
+            section_serializer = SubcategorySectionControlSerializer(section, context={'request': request})
+            sections_by_category[parent_id]['sections'].append(section_serializer.data)
+        
+        return Response({
+            'sections_by_category': list(sections_by_category.values())
+        })
+        
+    except Exception as e:
+        return Response({
+            'sections_by_category': [],
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
