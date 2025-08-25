@@ -800,8 +800,6 @@ def create_product_with_variants(request):
             }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        print(f"DEBUG: Request data: {dict(request.data)}")
-        print(f"DEBUG: Request FILES: {dict(request.FILES)}")
         
         with transaction.atomic():
             # Validate and extract basic product data
@@ -810,12 +808,11 @@ def create_product_with_variants(request):
             base_price = request.data.get('base_price')
             category_id = request.data.get('category')
             
-            print(f"DEBUG: Extracted data - name: {name}, description: {description}, base_price: {base_price}, category_id: {category_id}")
             
             # Validation
-            print(f"Starting validation...")
+            # print(f"Starting validation...")
             if not name:
-                print(f"VALIDATION FAILED: Product name is empty")
+                # print(f"VALIDATION FAILED: Product name is empty")
                 return Response({
                     'status': 'error',
                     'error': 'Product name is required'
@@ -885,60 +882,66 @@ def create_product_with_variants(request):
                     is_primary=(i == 0)  # First image is primary
                 )
             
-            # Get selected attribute options
-            selected_attributes = {}
-            for key in request.data.keys():
-                if key.startswith('selected_') and key.endswith('_options'):
-                    attribute_type = key.replace('selected_', '').replace('_options', '')
-                    option_ids = request.data.getlist(key)
-                    if option_ids:
-                        options = ProductAttributeOption.objects.filter(
-                            id__in=option_ids,
-                            is_active=True
-                        )
-                        selected_attributes[attribute_type] = list(options)
+            # Parse variants data from frontend
+            variants_data_str = request.data.get('variants_data', '[]')
+            # print(f"DEBUG: Raw variants_data_str: {variants_data_str}")
             
-            # Generate variants
-            variants_created = 0
-            if selected_attributes:
-                # Get all combinations
-                attribute_types = list(selected_attributes.keys())
-                option_lists = [selected_attributes[attr_type] for attr_type in attribute_types]
-                
-                # Generate all combinations using itertools.product
-                import itertools
-                all_combinations = list(itertools.product(*option_lists))
-                
-                # Parse variants data from frontend
-                variants_data_str = request.data.get('variants_data', '[]')
+            try:
                 variants_data = json.loads(variants_data_str) if variants_data_str else []
+                # print(f"DEBUG: Parsed variants_data length: {len(variants_data)}")
+                # print(f"DEBUG: First few variants_data items: {variants_data[:3] if variants_data else 'None'}")
+            except json.JSONDecodeError as e:
+                # print(f"DEBUG: JSON decode error: {e}")
+                variants_data = []
+            
+            # Create variants using the new ProductCategoryVariantOption model
+            variants_created = 0
+            
+            if variants_data:
+                # print(f"DEBUG: Processing {len(variants_data)} variant options...")
                 
-                for i, combination in enumerate(all_combinations):
-                    # Get variant data for this combination (if provided)
-                    variant_data = variants_data[i] if i < len(variants_data) else {}
+                for variant_data in variants_data:
+                    # print(f"DEBUG: Processing variant data: {variant_data}")
                     
-                    # Handle boolean conversion for variant
-                    is_active = variant_data.get('is_active', True)
-                    if isinstance(is_active, str):
-                        is_active = is_active.lower() in ('true', '1', 'yes', 'on')
-                    
-                    # Create variant
-                    variant = ProductVariant.objects.create(
-                        product=product,
-                        stock_count=int(variant_data.get('stock_count', 0)),
-                        price_adjustment=float(variant_data.get('price_adjustment', 0)),
-                        is_active=bool(is_active)
-                    )
-                    
-                    # Create variant attributes
-                    for option in combination:
-                        ProductVariantAttribute.objects.create(
-                            variant=variant,
-                            attribute=option.attribute,
-                            option=option
+                    try:
+                        option_id = variant_data.get('option_id')
+                        stock_count = int(variant_data.get('stock_count', 0))
+                        price_adjustment = float(variant_data.get('price_adjustment', 0))
+                        
+                        # print(f"DEBUG: Creating variant for option_id: {option_id}, stock: {stock_count}, price_adj: {price_adjustment}")
+                        
+                        # Get the category variant option
+                        category_variant_option = CategoryVariantOption.objects.get(id=option_id)
+                        # print(f"DEBUG: Found category variant option: {category_variant_option}")
+                        
+                        # Create the product variant option
+                        product_variant, created = ProductCategoryVariantOption.objects.get_or_create(
+                            product=product,
+                            category_variant_option=category_variant_option,
+                            defaults={
+                                'stock_count': stock_count,
+                                'price_adjustment': price_adjustment,
+                                'is_active': True
+                            }
                         )
-                    
-                    variants_created += 1
+                        
+                        if created:
+                            variants_created += 1
+                            # print(f"DEBUG: Created variant {variants_created}")
+                        else:
+                            # print(f"DEBUG: Variant already existed, updated it")
+                            product_variant.stock_count = stock_count
+                            product_variant.price_adjustment = price_adjustment
+                            product_variant.save()
+                            
+                    except CategoryVariantOption.DoesNotExist:
+                        # print(f"DEBUG: CategoryVariantOption with id {option_id} not found")
+                        continue
+                    except Exception as e:
+                        # print(f"DEBUG: Error creating variant: {e}")
+                        continue
+            
+            # print(f"DEBUG: Total variants created: {variants_created}")
             
             # Log admin activity
             AdminActivity.objects.create(
@@ -2249,8 +2252,8 @@ def create_product_wizard(request):
             featured_request_pending = parse_bool(request.data.get('featured_request_pending', False))
             offers_request_pending = parse_bool(request.data.get('offers_request_pending', False))
             
-            print(f"DEBUG: Featured request pending: {featured_request_pending} (type: {type(featured_request_pending)})")
-            print(f"DEBUG: Offers request pending: {offers_request_pending} (type: {type(offers_request_pending)})")
+            # print(f"DEBUG: Featured request pending: {featured_request_pending} (type: {type(featured_request_pending)})")
+            # print(f"DEBUG: Offers request pending: {offers_request_pending} (type: {type(offers_request_pending)})")
             
             # Validation
             if not name:
@@ -2293,23 +2296,23 @@ def create_product_wizard(request):
                 selected_variants = json.loads(selected_variants)
             
             # Debug logging
-            print(f"DEBUG: Product creation request received")
-            print(f"DEBUG: All request data keys: {list(request.data.keys())}")
-            print(f"DEBUG: Name: {name}")
-            print(f"DEBUG: Description length: {len(description)}")
-            print(f"DEBUG: Base price: {base_price}")
-            print(f"DEBUG: Stock quantity: {stock_quantity}")
-            print(f"DEBUG: Category ID: {category_id}")
-            print(f"DEBUG: Category: {category}")
-            print(f"DEBUG: Selected variants data: {selected_variants}")
-            print(f"DEBUG: Has variants: {bool(selected_variants)}")
+            # print(f"DEBUG: Product creation request received")
+            # print(f"DEBUG: All request data keys: {list(request.data.keys())}")
+            # print(f"DEBUG: Name: {name}")
+            # print(f"DEBUG: Description length: {len(description)}")
+            # print(f"DEBUG: Base price: {base_price}")
+            # print(f"DEBUG: Stock quantity: {stock_quantity}")
+            # print(f"DEBUG: Category ID: {category_id}")
+            # print(f"DEBUG: Category: {category}")
+            # print(f"DEBUG: Selected variants data: {selected_variants}")
+            # print(f"DEBUG: Has variants: {bool(selected_variants)}")
             
-            print(f"DEBUG: About to create product...")
+            # print(f"DEBUG: About to create product...")
             
             # Create the product (stock handling depends on variants)
             try:
                 if selected_variants:
-                    print(f"DEBUG: Creating product with category variants...")
+                    # print(f"DEBUG: Creating product with category variants...")
                     # Product with variants - set stock_quantity to 0, manage at variant level
                     product = Product.objects.create(
                         name=name,
@@ -2324,7 +2327,7 @@ def create_product_wizard(request):
                         approval_status='pending'
                     )
                 else:
-                    print(f"DEBUG: Creating simple product without variants...")
+                    # print(f"DEBUG: Creating simple product without variants...")
                     # Simple product without variants - manage stock at product level
                     product = Product.objects.create(
                         name=name,
@@ -2338,9 +2341,9 @@ def create_product_wizard(request):
                         is_active=False,  # Admin needs to approve first
                         approval_status='pending'
                     )
-                print(f"DEBUG: Product created with ID: {product.id}")
+                # print(f"DEBUG: Product created with ID: {product.id}")
             except Exception as product_creation_error:
-                print(f"DEBUG: Failed to create product: {str(product_creation_error)}")
+                # print(f"DEBUG: Failed to create product: {str(product_creation_error)}")
                 raise
             
             # Set request timestamps if requested
@@ -2370,7 +2373,7 @@ def create_product_wizard(request):
             
             # Handle category variants if they exist
             if selected_variants:
-                print(f"DEBUG: Processing {len(selected_variants)} category variants...")
+                # print(f"DEBUG: Processing {len(selected_variants)} category variants...")
                 from products.models import CategoryVariantOption, ProductCategoryVariantOption
                 
                 variants_created = 0
@@ -2398,18 +2401,18 @@ def create_product_wizard(request):
                             
                             if created:
                                 variants_created += 1
-                                print(f"DEBUG: Created variant: {product_variant}")
+                                # print(f"DEBUG: Created variant: {product_variant}")
                             else:
-                                print(f"DEBUG: Variant already exists: {product_variant}")
+                                # print(f"DEBUG: Variant already exists: {product_variant}")
                                 
                     except CategoryVariantOption.DoesNotExist:
-                        print(f"DEBUG: CategoryVariantOption with id {option_id} not found")
+                        # print(f"DEBUG: CategoryVariantOption with id {option_id} not found")
                         continue
                     except Exception as e:
-                        print(f"DEBUG: Error creating variant: {e}")
+                        # print(f"DEBUG: Error creating variant: {e}")
                         continue
                 
-                print(f"DEBUG: Created {variants_created} category variants for product {product.name}")
+                # print(f"DEBUG: Created {variants_created} category variants for product {product.name}")
                 
                 # Update product total stock based on selected variants
                 total_stock = sum(v.stock_count for v in product.selected_variants.filter(is_active=True))
@@ -2454,9 +2457,9 @@ def create_product_wizard(request):
                 )
             except Exception as activity_error:
                 # Don't fail the product creation if activity logging fails
-                print(f"DEBUG: Failed to log admin activity: {str(activity_error)}")
+                # print(f"DEBUG: Failed to log admin activity: {str(activity_error)}")
             
-            print(f"DEBUG: Product created successfully - ID: {product.id}")
+            # print(f"DEBUG: Product created successfully - ID: {product.id}")
             
             return Response({
                 'success': True,
@@ -2473,9 +2476,9 @@ def create_product_wizard(request):
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
-        print(f"DEBUG: Exception occurred during product creation:")
-        print(f"DEBUG: Error: {str(e)}")
-        print(f"DEBUG: Traceback: {error_traceback}")
+        # print(f"DEBUG: Exception occurred during product creation:")
+        # print(f"DEBUG: Error: {str(e)}")
+        # print(f"DEBUG: Traceback: {error_traceback}")
         
         return Response({
             'success': False,
