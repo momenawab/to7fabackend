@@ -54,6 +54,10 @@ urlpatterns = [
     
     # Subcategory Sections Management
     path('subcategory-sections/', views.subcategory_sections_management, name='subcategory_sections'),
+    path('api/subcategory-sections/create/', views.create_subcategory_section_api, name='create_subcategory_section_api'),
+    path('api/subcategory-sections/<int:section_id>/toggle/', views.toggle_subcategory_section_api, name='toggle_subcategory_section_api'),
+    path('api/subcategory-sections/<int:section_id>/update/', views.update_subcategory_section_api, name='update_subcategory_section_api'),
+    path('api/subcategory-sections/<int:section_id>/delete/', views.delete_subcategory_section_api, name='delete_subcategory_section_api'),
     
     # Variant Management
     path('variants/', views.variant_management, name='variant_management'),

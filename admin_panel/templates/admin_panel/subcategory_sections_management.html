@@ -71,10 +71,21 @@
                                             </td>
                                             <td>
                                                 {% if sub_data.section_control %}
-                                                    <a href="/admin/products/subcategorysectioncontrol/{{ sub_data.section_control.id }}/change/" 
-                                                       class="btn btn-sm btn-outline-primary" target="_blank">
-                                                        <i class="fas fa-edit"></i> Edit
-                                                    </a>
+                                                    <div class="btn-group" role="group">
+                                                        <button class="btn btn-sm {% if sub_data.section_control.is_section_enabled %}btn-warning{% else %}btn-success{% endif %}" 
+                                                                onclick="toggleSectionControl({{ sub_data.section_control.id }}, {{ sub_data.section_control.is_section_enabled|yesno:'true,false' }})">
+                                                            <i class="fas {% if sub_data.section_control.is_section_enabled %}fa-pause{% else %}fa-play{% endif %}"></i>
+                                                            {% if sub_data.section_control.is_section_enabled %}Pause{% else %}Resume{% endif %}
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-primary" 
+                                                                onclick="editSectionControl({{ sub_data.section_control.id }}, '{{ sub_data.subcategory.name }}', {{ sub_data.section_control.max_products_to_show }}, {{ sub_data.section_control.section_priority }}, {{ sub_data.section_control.is_section_enabled|yesno:'true,false' }})">
+                                                            <i class="fas fa-edit"></i> Edit
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" 
+                                                                onclick="deleteSectionControl({{ sub_data.section_control.id }}, '{{ sub_data.subcategory.name }}')">
+                                                            <i class="fas fa-trash"></i> Delete
+                                                        </button>
+                                                    </div>
                                                 {% else %}
                                                     <button class="btn btn-sm btn-success" 
                                                             onclick="createSectionControl({{ sub_data.subcategory.id }}, '{{ sub_data.subcategory.name }}')">
@@ -146,6 +157,49 @@
     </div>
 </div>
 
+<!-- Edit Section Control Modal -->
+<div class="modal fade" id="editSectionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Section Control</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSectionForm">
+                    {% csrf_token %}
+                    <input type="hidden" id="editSectionId" name="section_id">
+                    <div class="mb-3">
+                        <label class="form-label">Subcategory</label>
+                        <input type="text" class="form-control" id="editSubcategoryName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="editIsSectionEnabled">
+                            <label class="form-check-label" for="editIsSectionEnabled">
+                                Enable Section
+                            </label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editMaxProducts" class="form-label">Max Products to Show</label>
+                        <input type="number" class="form-control" id="editMaxProducts" value="4" min="1" max="20">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editSectionPriority" class="form-label">Section Priority</label>
+                        <input type="number" class="form-control" id="editSectionPriority" value="0" min="0">
+                        <div class="form-text">Lower numbers appear first. 0 = highest priority</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="submitEditSection()">Update Section</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 function createSectionControl(subcategoryId, subcategoryName) {
     document.getElementById('subcategoryId').value = subcategoryId;
@@ -164,26 +218,170 @@ function submitCreateSection() {
     formData.append('section_priority', document.getElementById('sectionPriority').value);
     formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
     
-    fetch('/admin/products/subcategorysectioncontrol/add/', {
+    fetch('/dashboard/api/subcategory-sections/create/', {
         method: 'POST',
         body: formData,
         headers: {
             'X-Requested-With': 'XMLHttpRequest'
         }
     })
-    .then(response => {
-        if (response.ok) {
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
             // Close modal and reload page
             bootstrap.Modal.getInstance(document.getElementById('createSectionModal')).hide();
+            showAlert('success', data.message || 'Section control created successfully');
             location.reload();
         } else {
-            throw new Error('Failed to create section control');
+            throw new Error(data.error || 'Failed to create section control');
         }
     })
     .catch(error => {
-        alert('Error creating section control: ' + error.message);
+        showAlert('danger', 'Error creating section control: ' + error.message);
         console.error('Error:', error);
     });
+}
+
+function toggleSectionControl(sectionId, currentState) {
+    const action = currentState ? 'pause' : 'resume';
+    
+    if (!confirm(`Are you sure you want to ${action} this section?`)) {
+        return;
+    }
+    
+    // Get CSRF token
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    if (!csrfToken) {
+        showAlert('danger', 'CSRF token not found');
+        return;
+    }
+    
+    console.log('DEBUG: Toggling section', sectionId, 'current state:', currentState);
+    
+    fetch(`/dashboard/api/subcategory-sections/${sectionId}/toggle/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        console.log('DEBUG: Response status:', response.status);
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP ${response.status}: ${text}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('DEBUG: Response data:', data);
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            throw new Error(data.error || 'Failed to toggle section');
+        }
+    })
+    .catch(error => {
+        console.error('DEBUG: Toggle error:', error);
+        showAlert('danger', 'Error toggling section: ' + error.message);
+    });
+}
+
+function editSectionControl(sectionId, subcategoryName, maxProducts, sectionPriority, isEnabled) {
+    document.getElementById('editSectionId').value = sectionId;
+    document.getElementById('editSubcategoryName').value = subcategoryName;
+    document.getElementById('editMaxProducts').value = maxProducts;
+    document.getElementById('editSectionPriority').value = sectionPriority;
+    document.getElementById('editIsSectionEnabled').checked = isEnabled;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('editSectionModal'));
+    modal.show();
+}
+
+function submitEditSection() {
+    const sectionId = document.getElementById('editSectionId').value;
+    const data = {
+        max_products_to_show: parseInt(document.getElementById('editMaxProducts').value),
+        section_priority: parseInt(document.getElementById('editSectionPriority').value),
+        is_section_enabled: document.getElementById('editIsSectionEnabled').checked
+    };
+    
+    fetch(`/dashboard/api/subcategory-sections/${sectionId}/update/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editSectionModal')).hide();
+            showAlert('success', data.message || 'Section updated successfully');
+            location.reload();
+        } else {
+            throw new Error(data.error || 'Failed to update section');
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Error updating section: ' + error.message);
+        console.error('Error:', error);
+    });
+}
+
+function deleteSectionControl(sectionId, subcategoryName) {
+    if (!confirm(`Are you sure you want to delete the section control for "${subcategoryName}"? This action cannot be undone.`)) {
+        return;
+    }
+    
+    fetch(`/dashboard/api/subcategory-sections/${sectionId}/delete/`, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('success', data.message);
+            location.reload();
+        } else {
+            throw new Error(data.error || 'Failed to delete section');
+        }
+    })
+    .catch(error => {
+        showAlert('danger', 'Error deleting section: ' + error.message);
+        console.error('Error:', error);
+    });
+}
+
+function showAlert(type, message) {
+    // Create alert element
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.top = '20px';
+    alertDiv.style.right = '20px';
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
 }
 
 // Auto-refresh page every 30 seconds to show latest data
