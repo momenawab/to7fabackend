@@ -198,9 +198,23 @@ def category_detail(request, pk):
         
         # Include subcategories in response for ReactiveSubcategorySections
         if category.parent is None:
-            # For main categories, include subcategories list
+            # For main categories, include subcategories list with section control info
             subcategories_data = []
             for sub in subcategories:
+                # Get section control info if it exists
+                section_enabled = True  # Default to enabled
+                max_products = 4  # Default max products
+                section_priority = 0  # Default priority
+                
+                try:
+                    from .models import SubcategorySectionControl
+                    section_control = SubcategorySectionControl.objects.get(subcategory=sub)
+                    section_enabled = section_control.is_section_enabled
+                    max_products = section_control.max_products_to_show
+                    section_priority = section_control.section_priority
+                except SubcategorySectionControl.DoesNotExist:
+                    pass  # Use defaults
+                
                 subcategories_data.append({
                     'id': sub.id,
                     'name': sub.name,
@@ -208,6 +222,9 @@ def category_detail(request, pk):
                     'parent': sub.parent.id if sub.parent else None,
                     'image': sub.image.url if sub.image else None,
                     'is_active': sub.is_active,
+                    'section_enabled': section_enabled,
+                    'max_products': max_products,
+                    'section_priority': section_priority,
                 })
             
             return Response({

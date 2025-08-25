@@ -3,7 +3,8 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
 from django.db.models import Count, Sum, Q
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
@@ -929,6 +930,168 @@ def subcategory_sections_management(request):
     }
 
     return render(request, 'admin_panel/subcategory_sections_management.html', context)
+
+# API endpoints for subcategory sections management
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(["POST"])
+def create_subcategory_section_api(request):
+    """API endpoint to create a new subcategory section control"""
+    try:
+        from products.models import SubcategorySectionControl, Category
+        
+        subcategory_id = request.POST.get('subcategory_id')
+        is_section_enabled = request.POST.get('is_section_enabled') == 'true'
+        max_products_to_show = int(request.POST.get('max_products_to_show', 4))
+        section_priority = int(request.POST.get('section_priority', 0))
+        
+        # Validate subcategory exists and is actually a subcategory
+        try:
+            subcategory = Category.objects.get(id=subcategory_id, parent__isnull=False)
+        except Category.DoesNotExist:
+            return JsonResponse({'error': 'Invalid subcategory'}, status=400)
+        
+        # Check if section control already exists
+        if SubcategorySectionControl.objects.filter(subcategory=subcategory).exists():
+            return JsonResponse({'error': 'Section control already exists for this subcategory'}, status=400)
+        
+        # Create the section control
+        section_control = SubcategorySectionControl.objects.create(
+            subcategory=subcategory,
+            is_section_enabled=is_section_enabled,
+            max_products_to_show=max_products_to_show,
+            section_priority=section_priority
+        )
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='create',
+            description=f"Created section control for subcategory '{subcategory.name}'",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Section control created for {subcategory.name}',
+            'section_id': section_control.id
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(["POST"])
+def toggle_subcategory_section_api(request, section_id):
+    """API endpoint to toggle (pause/resume) a subcategory section"""
+    try:
+        from products.models import SubcategorySectionControl
+        
+        print(f"DEBUG: Toggle API called with section_id: {section_id}")
+        print(f"DEBUG: Request method: {request.method}")
+        print(f"DEBUG: Request user: {request.user}")
+        
+        section_control = SubcategorySectionControl.objects.get(id=section_id)
+        print(f"DEBUG: Found section control: {section_control}")
+        
+        # Toggle the enabled state
+        section_control.is_section_enabled = not section_control.is_section_enabled
+        section_control.save()
+        
+        # Log admin activity
+        action = "enabled" if section_control.is_section_enabled else "disabled"
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"{action.capitalize()} section for subcategory '{section_control.subcategory.name}'",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'is_enabled': section_control.is_section_enabled,
+            'message': f'Section {action} successfully'
+        })
+        
+    except SubcategorySectionControl.DoesNotExist:
+        return JsonResponse({'error': 'Section control not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(["POST"])
+def update_subcategory_section_api(request, section_id):
+    """API endpoint to update subcategory section settings"""
+    try:
+        from products.models import SubcategorySectionControl
+        import json
+        
+        section_control = SubcategorySectionControl.objects.get(id=section_id)
+        
+        # Parse JSON data
+        data = json.loads(request.body)
+        
+        # Update fields if provided
+        if 'max_products_to_show' in data:
+            section_control.max_products_to_show = int(data['max_products_to_show'])
+        if 'section_priority' in data:
+            section_control.section_priority = int(data['section_priority'])
+        if 'is_section_enabled' in data:
+            section_control.is_section_enabled = bool(data['is_section_enabled'])
+            
+        section_control.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"Updated section settings for subcategory '{section_control.subcategory.name}'",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Section updated successfully'
+        })
+        
+    except SubcategorySectionControl.DoesNotExist:
+        return JsonResponse({'error': 'Section control not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@login_required
+@user_passes_test(is_admin)
+@require_http_methods(["DELETE"])
+def delete_subcategory_section_api(request, section_id):
+    """API endpoint to delete subcategory section control"""
+    try:
+        from products.models import SubcategorySectionControl
+        
+        section_control = SubcategorySectionControl.objects.get(id=section_id)
+        subcategory_name = section_control.subcategory.name
+        
+        section_control.delete()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='delete',
+            description=f"Deleted section control for subcategory '{subcategory_name}'",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Section control for {subcategory_name} deleted successfully'
+        })
+        
+    except SubcategorySectionControl.DoesNotExist:
+        return JsonResponse({'error': 'Section control not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 @login_required
 @user_passes_test(is_admin)

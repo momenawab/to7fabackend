@@ -884,14 +884,14 @@ def create_product_with_variants(request):
             
             # Parse variants data from frontend
             variants_data_str = request.data.get('variants_data', '[]')
-            # print(f"DEBUG: Raw variants_data_str: {variants_data_str}")
+            print(f"DEBUG: Raw variants_data_str: {variants_data_str}")
             
             try:
                 variants_data = json.loads(variants_data_str) if variants_data_str else []
-                # print(f"DEBUG: Parsed variants_data length: {len(variants_data)}")
-                # print(f"DEBUG: First few variants_data items: {variants_data[:3] if variants_data else 'None'}")
+                print(f"DEBUG: Parsed variants_data length: {len(variants_data)}")
+                print(f"DEBUG: First few variants_data items: {variants_data[:3] if variants_data else 'None'}")
             except json.JSONDecodeError as e:
-                # print(f"DEBUG: JSON decode error: {e}")
+                print(f"DEBUG: JSON decode error: {e}")
                 variants_data = []
             
             # Create variants using the new ProductCategoryVariantOption model
@@ -2401,9 +2401,8 @@ def create_product_wizard(request):
                             
                             if created:
                                 variants_created += 1
-                                # print(f"DEBUG: Created variant: {product_variant}")
                             else:
-                                # print(f"DEBUG: Variant already exists: {product_variant}")
+                                 print(f"DEBUG: Variant already exists: {product_variant}")
                                 
                     except CategoryVariantOption.DoesNotExist:
                         # print(f"DEBUG: CategoryVariantOption with id {option_id} not found")
@@ -2457,9 +2456,9 @@ def create_product_wizard(request):
                 )
             except Exception as activity_error:
                 # Don't fail the product creation if activity logging fails
-                # print(f"DEBUG: Failed to log admin activity: {str(activity_error)}")
+                 print(f"DEBUG: Failed to log admin activity: {str(activity_error)}")
             
-            # print(f"DEBUG: Product created successfully - ID: {product.id}")
+            print(f"DEBUG: Product created successfully - ID: {product.id}")
             
             return Response({
                 'success': True,
