@@ -11,7 +11,7 @@
                     <h3 class="card-title">Add New Product with Variants</h3>
                 </div>
                 <div class="card-body">
-                    <form id="productForm" enctype="multipart/form-data">
+                    <form id="productForm" method="POST" enctype="multipart/form-data">
                         {% csrf_token %}
                         
                         <!-- Basic Product Information -->
@@ -103,7 +103,7 @@
                         </div>
                         
                         <!-- Variants Preview -->
-                        <div class="row mt-4" id="variants-section" style="display: none;">
+                        <div class="row mt-4" id="variants-preview-section" style="display: none;">
                             <div class="col-12">
                                 <h4>Generated Variants</h4>
                                 <div class="alert alert-warning">
@@ -158,10 +158,10 @@ $(document).ready(function() {
     loadCategories();
     
     // Then test authentication for admin features
-    // testAuthentication();
-    // setupImagePreview();
-    // setupFormSubmission();
-    // setupBasePriceListener();
+    testAuthentication();
+    setupImagePreview();
+    setupFormSubmission();
+    setupBasePriceListener();
 });
 
 let allVariants = {};
@@ -192,7 +192,7 @@ function testAuthentication() {
 }
 
 function loadCategories() {
-    console.log('SIMPLE: Loading categories...');
+    // console.log('SIMPLE: Loading categories...');
     
     // Test if jQuery works
     if (typeof $ === 'undefined') {
@@ -207,16 +207,16 @@ function loadCategories() {
         return;
     }
     
-    console.log('SIMPLE: Element found, making request...');
+    // console.log('SIMPLE: Element found, making request...');
     
     // Try with vanilla fetch first
     fetch('/api/products/categories/')
         .then(function(response) {
-            console.log('SIMPLE: Response status:', response.status);
+            // console.log('SIMPLE: Response status:', response.status);
             return response.json();
         })
         .then(function(data) {
-            console.log('SIMPLE: Got data:', data ? data.length : 'null');
+            // console.log('SIMPLE: Got data:', data ? data.length : 'null');
             
             // Clear dropdown
             select.innerHTML = '<option value="">Select Main Category</option>';
@@ -229,10 +229,10 @@ function loadCategories() {
                         option.value = data[i].id;
                         option.textContent = data[i].name;
                         select.appendChild(option);
-                        console.log('SIMPLE: Added', data[i].name);
+                        // console.log('SIMPLE: Added', data[i].name);
                     }
                 }
-                console.log('SIMPLE: Done - dropdown has', select.options.length, 'options');
+                // console.log('SIMPLE: Done - dropdown has', select.options.length, 'options');
             }
         })
         .catch(function(error) {
@@ -241,7 +241,9 @@ function loadCategories() {
 }
 
 function loadSubcategories() {
+    // console.log('DEBUG: loadSubcategories called');
     const mainCategoryId = $('#main_category').val();
+    // console.log('DEBUG: Selected main category ID:', mainCategoryId);
     const subcategorySelect = $('#subcategory');
     
     // Reset subcategory dropdown
@@ -254,15 +256,16 @@ function loadSubcategories() {
     }
     
     // Load attributes for main category immediately
+    // console.log('DEBUG: About to call loadCategoryVariants()');
     loadCategoryVariants();
     
-    console.log('Loading subcategories for main category:', mainCategoryId);
+    // console.log('Loading subcategories for main category:', mainCategoryId);
     
     $.ajax({
         url: '/api/products/categories/',
         method: 'GET',
         success: function(response) {
-            console.log('All categories loaded for subcategory filtering:', response);
+            // console.log('All categories loaded for subcategory filtering:', response);
             
             if (Array.isArray(response) && response.length > 0) {
                 // Filter subcategories that belong to the selected main category
@@ -270,14 +273,14 @@ function loadSubcategories() {
                     return category.parent && category.parent.toString() === mainCategoryId.toString();
                 });
                 
-                console.log('Filtering subcategories for main category ID:', mainCategoryId);
-                console.log('Found subcategories:', subcategories.map(sub => sub.name));
+                // console.log('Filtering subcategories for main category ID:', mainCategoryId);
+                // console.log('Found subcategories:', subcategories.map(sub => sub.name));
                 
                 subcategories.forEach(function(subcategory) {
                     subcategorySelect.append('<option value="' + subcategory.id + '">' + subcategory.name + '</option>');
                 });
                 
-                console.log(subcategories.length + ' subcategories added to dropdown');
+                // console.log(subcategories.length + ' subcategories added to dropdown');
             }
         },
         error: function(xhr) {
@@ -288,19 +291,20 @@ function loadSubcategories() {
 }
 
 function loadCategoryVariants() {
-    // Determine which category to use for attributes
-    // If subcategory is selected, use subcategory; otherwise use main category
+    // console.log('DEBUG: loadCategoryVariants called');
+    // Always use main category for variants since variants depend on main category
     const subcategoryId = $('#subcategory').val();
     const mainCategoryId = $('#main_category').val();
-    const categoryId = subcategoryId || mainCategoryId;
+    const categoryId = mainCategoryId; // Always use main category for variants
+    // console.log('DEBUG: subcategoryId:', subcategoryId, 'mainCategoryId:', mainCategoryId, 'using categoryId:', categoryId, '(always main category for variants)');
     
     if (!categoryId) {
         $('#variants-section').hide();
         return;
     }
 
-    console.log('Loading category variants for category:', categoryId);
-    console.log('Using subcategory:', subcategoryId ? 'Yes' : 'No');
+    // console.log('Loading category variants for category:', categoryId);
+    // console.log('Using subcategory:', subcategoryId ? 'Yes' : 'No');
     
     $.ajax({
         url: '/api/admin/products/admin/categories/' + categoryId + '/attributes/',
@@ -310,7 +314,9 @@ function loadCategoryVariants() {
             'X-Requested-With': 'XMLHttpRequest'
         },
         success: function(response) {
-            console.log('Category variants loaded:', response);
+            // console.log('DEBUG: Category variants loaded:', response);
+            // console.log('DEBUG: Response is array?', Array.isArray(response) ? 'YES (' + response.length + ')' : 'NO');
+            // console.log('DEBUG: Response has variants property?', response.variants ? 'YES (' + response.variants.length + ')' : 'NO');
             allVariants = {};
             selectedVariants = {};
             
@@ -319,13 +325,26 @@ function loadCategoryVariants() {
             $('#sizes-section').hide();
             $('#other-variants-section').empty();
             
-            if (response.variants && response.variants.length > 0) {
-                response.variants.forEach(variantType => {
+            // Handle both response formats: direct array or object with variants property
+            const variants = Array.isArray(response) ? response : (response.variants || []);
+            // console.log('DEBUG: Final variants to process:', variants.length);
+            
+            if (variants && variants.length > 0) {
+                variants.forEach(function(variantType) {
+                    // console.log('DEBUG: Processing variant type:', variantType);
+                    // console.log('DEBUG: Attribute object:', variantType.attribute);
+                    // console.log('DEBUG: Attribute name:', variantType.attribute ? variantType.attribute.name : 'NO ATTRIBUTE');
+                    
+                    if (!variantType.attribute || !variantType.attribute.name) {
+                        // console.error('ERROR: Variant type has no attribute.name property:', variantType);
+                        return; // Skip this variant
+                    }
+                    
                     allVariants[variantType.id] = variantType;
                     selectedVariants[variantType.id] = [];
                     
                     // Check variant type name to determine display style
-                    const lowerName = variantType.name.toLowerCase();
+                    const lowerName = variantType.attribute.name.toLowerCase();
                     if (lowerName.includes('لون') || lowerName.includes('إطار') || lowerName.includes('color')) {
                         renderColors(variantType);
                     } else if (lowerName.includes('حجم') || lowerName.includes('size')) {
@@ -335,7 +354,9 @@ function loadCategoryVariants() {
                     }
                 });
                 
+                // console.log('DEBUG: Showing variants section...');
                 $('#variants-section').show();
+                // console.log('DEBUG: Variants section display:', $('#variants-section').css('display'));
             } else {
                 console.log('No variants found for this category');
                 $('#variants-section').hide();
@@ -355,7 +376,7 @@ function renderColors(variantType) {
     const container = $('#frame-colors-list');
     container.empty();
     
-    variantType.options.forEach(option => {
+    variantType.attribute.options.forEach(function(option) {
         if (!option.is_active) return;
         
         // Simple color display for CategoryVariantOptions (no color_code field)
@@ -380,7 +401,7 @@ function renderSizes(variantType) {
     const container = $('#sizes-list');
     container.empty();
     
-    variantType.options.forEach(option => {
+    variantType.attribute.options.forEach(function(option) {
         if (!option.is_active) return;
         
         container.append(
@@ -406,7 +427,7 @@ function renderOtherVariant(variantType) {
     const requiredText = variantType.is_required ? ' *' : '';
     let optionsHtml = '';
     
-    variantType.options.forEach(option => {
+    variantType.attribute.options.forEach(function(option) {
         if (!option.is_active) return;
         
         optionsHtml += 
@@ -424,13 +445,15 @@ function renderOtherVariant(variantType) {
     
     container.append(
         '<div class="mb-4">' +
-            '<h5>' + variantType.name + requiredText + '</h5>' +
+            '<h5>' + variantType.attribute.name + requiredText + '</h5>' +
             '<div class="row">' + optionsHtml + '</div>' +
         '</div>'
     );
 }
 
 function updateSelectedVariant(variantTypeId, optionId, isSelected) {
+    // console.log('DEBUG: updateSelectedVariant called:', variantTypeId, optionId, isSelected);
+    
     if (!selectedVariants[variantTypeId]) {
         selectedVariants[variantTypeId] = [];
     }
@@ -438,27 +461,38 @@ function updateSelectedVariant(variantTypeId, optionId, isSelected) {
     if (isSelected) {
         if (!selectedVariants[variantTypeId].includes(optionId)) {
             selectedVariants[variantTypeId].push(optionId);
+            // console.log('DEBUG: Added option', optionId, 'to variant type', variantTypeId);
         }
     } else {
         selectedVariants[variantTypeId] = selectedVariants[variantTypeId].filter(function(id) { return id !== optionId; });
+        // console.log('DEBUG: Removed option', optionId, 'from variant type', variantTypeId);
     }
+    
+    // console.log('DEBUG: Current selectedVariants:', selectedVariants);
     
     // Auto-preview variants when attributes are selected
     autoPreviewVariants();
 }
 
 function autoPreviewVariants() {
+    // console.log('DEBUG: autoPreviewVariants called');
+    // console.log('DEBUG: selectedVariants state:', selectedVariants);
+    
     // Check if at least one variant type has selections
     const hasSelections = Object.keys(selectedVariants).some(variantTypeId => selectedVariants[variantTypeId].length > 0);
+    // console.log('DEBUG: hasSelections:', hasSelections);
     
     if (hasSelections) {
         const variants = generateVariantCombinations();
+        // console.log('DEBUG: Generated variants:', variants.length);
         if (variants.length > 0) {
             renderVariantsTable(variants);
-            $('#variants-section').show();
+            $('#variants-preview-section').show();
+            // console.log('DEBUG: Variants preview section shown');
         }
     } else {
-        $('#variants-section').hide();
+        $('#variants-preview-section').hide();
+        // console.log('DEBUG: Variants preview section hidden - no selections');
     }
 }
 
@@ -470,7 +504,7 @@ function previewVariants() {
     }
     
     renderVariantsTable(variants);
-    $('#variants-section').show();
+    $('#variants-preview-section').show();
 }
 
 function generateVariantCombinations() {
@@ -500,7 +534,7 @@ function cartesianProduct(arrays) {
 
 function findOptionById(variantTypeId, optionId) {
     const variantType = allVariants[variantTypeId];
-    return variantType ? variantType.options.find(opt => opt.id === optionId) : null;
+    return variantType ? variantType.attribute.options.find(function(opt) { return opt.id === optionId; }) : null;
 }
 
 function renderVariantsTable(variants) {
@@ -608,11 +642,11 @@ function setupFormSubmission() {
         formData.delete('subcategory');
         formData.append('category', finalCategoryId);
         
-        console.log('Final category ID:', finalCategoryId);
-        console.log('Using subcategory:', subcategoryId ? 'Yes' : 'No');
         
         // Add selected variant options - now we store which specific variant combination options were selected
         const selectedVariantData = [];
+        const variantRows = $('#variants-tbody tr');
+        
         $('#variants-tbody tr').each(function(index) {
             const $row = $(this);
             const optionIds = JSON.parse($row.find('.variant-options').val());
@@ -631,7 +665,7 @@ function setupFormSubmission() {
             }
         });
         
-        formData.append('selected_variants', JSON.stringify(selectedVariantData));
+        formData.append('variants_data', JSON.stringify(selectedVariantData));
         
         // Convert checkbox values to proper booleans
         const isFeatured = $('#is_featured').is(':checked');
