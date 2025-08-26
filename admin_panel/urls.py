@@ -73,6 +73,14 @@ urlpatterns = [
     path('support-tickets/<str:ticket_id>/update/', views.update_support_ticket, name='update_support_ticket'),
     path('support-tickets/<str:ticket_id>/typing/', views.send_typing_indicator, name='send_typing_indicator'),
     
+    # Admin Management
+    path('admin-management/', views.admin_management, name='admin_management'),
+    path('api/admin-users/create/', views.create_admin_user, name='create_admin_user'),
+    path('api/admin-users/<int:user_id>/', views.get_admin_user_details, name='get_admin_user_details'),
+    path('api/admin-users/<int:user_id>/update/', views.update_admin_user, name='update_admin_user'),
+    path('api/admin-users/<int:user_id>/delete/', views.delete_admin_user, name='delete_admin_user'),
+    path('api/admin-permissions-roles/', views.get_permissions_and_roles, name='get_permissions_and_roles'),
+    
     # Settings
     path('settings/', views.settings, name='settings'),
     

@@ -1,0 +1,514 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Admin Management - To7fa Admin Panel{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header Section -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-2 text-dark fw-bold">
+                        <i class="fas fa-user-shield me-2 text-primary"></i>
+                        Admin Management
+                    </h1>
+                    <p class="text-muted mb-0">Manage admin users and their permissions</p>
+                </div>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAdminModal">
+                    <i class="fas fa-plus me-2"></i>Add Admin User
+                </button>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="bg-primary bg-gradient rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                        <i class="fas fa-users text-white"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <div class="fw-semibold text-dark">Total Admins</div>
+                                    <div class="h4 mb-0" id="totalAdmins">{{ admin_users|length }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="bg-success bg-gradient rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                        <i class="fas fa-user-check text-white"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <div class="fw-semibold text-dark">Active Admins</div>
+                                    <div class="h4 mb-0" id="activeAdmins">{{ active_admins_count }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="bg-info bg-gradient rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                        <i class="fas fa-user-cog text-white"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <div class="fw-semibold text-dark">Roles</div>
+                                    <div class="h4 mb-0" id="totalRoles">{{ roles|length }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="bg-warning bg-gradient rounded-circle d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+                                        <i class="fas fa-key text-white"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <div class="fw-semibold text-dark">Permissions</div>
+                                    <div class="h4 mb-0" id="totalPermissions">{{ permissions|length }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Users Table -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white border-bottom">
+                    <h5 class="mb-0">Admin Users</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="adminUsersTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="border-0 fw-semibold">User</th>
+                                    <th class="border-0 fw-semibold">Role</th>
+                                    <th class="border-0 fw-semibold">Status</th>
+                                    <th class="border-0 fw-semibold">Last Login</th>
+                                    <th class="border-0 fw-semibold">Created</th>
+                                    <th class="border-0 fw-semibold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for admin_user in admin_users %}
+                                <tr data-admin-id="{{ admin_user.user.id }}">
+                                    <td class="py-3">
+                                        <div class="d-flex align-items-center">
+                                            <div class="flex-shrink-0">
+                                                <div class="bg-primary bg-gradient rounded-circle d-flex align-items-center justify-content-center text-white fw-semibold" style="width: 40px; height: 40px;">
+                                                    {{ admin_user.user.email.0|upper }}
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1 ms-3">
+                                                <div class="fw-semibold text-dark">{{ admin_user.user.email }}</div>
+                                                <small class="text-muted">{{ admin_user.user.first_name }} {{ admin_user.user.last_name }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="badge bg-light text-dark border">{{ admin_user.role.display_name }}</span>
+                                    </td>
+                                    <td class="py-3">
+                                        {% if admin_user.is_active %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="py-3">
+                                        {% if admin_user.user.last_login %}
+                                            <span class="text-muted">{{ admin_user.user.last_login|date:"M d, Y H:i" }}</span>
+                                        {% else %}
+                                            <span class="text-muted">Never</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="py-3">
+                                        <span class="text-muted">{{ admin_user.created_at|date:"M d, Y" }}</span>
+                                    </td>
+                                    <td class="py-3">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary btn-edit-admin" 
+                                                    data-admin-id="{{ admin_user.user.id }}" 
+                                                    data-bs-toggle="tooltip" 
+                                                    title="Edit Admin">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            {% if not admin_user.is_super_admin %}
+                                            <button class="btn btn-outline-danger btn-delete-admin" 
+                                                    data-admin-id="{{ admin_user.user.id }}" 
+                                                    data-admin-email="{{ admin_user.user.email }}"
+                                                    data-bs-toggle="tooltip" 
+                                                    title="Delete Admin">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-4 text-muted">
+                                        <i class="fas fa-users fa-3x mb-3 text-muted opacity-50"></i>
+                                        <p>No admin users found</p>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Admin Modal -->
+<div class="modal fade" id="addAdminModal" tabindex="-1" aria-labelledby="addAdminModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addAdminModalLabel">
+                    <i class="fas fa-user-plus me-2"></i>Add Admin User
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addAdminForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                            <div class="invalid-feedback"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="password" class="form-label">Password *</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                            <div class="invalid-feedback"></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="first_name" class="form-label">First Name</label>
+                            <input type="text" class="form-control" id="first_name" name="first_name">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="last_name" class="form-label">Last Name</label>
+                            <input type="text" class="form-control" id="last_name" name="last_name">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="role" class="form-label">Role *</label>
+                        <select class="form-select" id="role" name="role" required>
+                            <option value="">Select a role</option>
+                            {% for role in roles %}
+                            <option value="{{ role.id }}">{{ role.display_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Additional Permissions</label>
+                        <div class="row">
+                            {% for permission in permissions %}
+                            <div class="col-md-6 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           value="{{ permission.id }}" 
+                                           id="permission_{{ permission.id }}"
+                                           name="additional_permissions">
+                                    <label class="form-check-label" for="permission_{{ permission.id }}">
+                                        {{ permission.display_name }}
+                                    </label>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active" checked>
+                                <label class="form-check-label" for="is_active">
+                                    Active
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="can_login" name="can_login" checked>
+                                <label class="form-check-label" for="can_login">
+                                    Can Login
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Create Admin
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Admin Modal -->
+<div class="modal fade" id="editAdminModal" tabindex="-1" aria-labelledby="editAdminModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editAdminModalLabel">
+                    <i class="fas fa-user-edit me-2"></i>Edit Admin User
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="editAdminForm">
+                {% csrf_token %}
+                <input type="hidden" id="edit_admin_id" name="admin_id">
+                <div class="modal-body">
+                    <!-- Same form fields as add modal but populated with existing data -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="edit_email" name="email" required>
+                            <div class="invalid-feedback"></div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_password" class="form-label">New Password (leave blank to keep current)</label>
+                            <input type="password" class="form-control" id="edit_password" name="password">
+                            <div class="invalid-feedback"></div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_first_name" class="form-label">First Name</label>
+                            <input type="text" class="form-control" id="edit_first_name" name="first_name">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="edit_last_name" class="form-label">Last Name</label>
+                            <input type="text" class="form-control" id="edit_last_name" name="last_name">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_role" class="form-label">Role *</label>
+                        <select class="form-select" id="edit_role" name="role" required>
+                            <option value="">Select a role</option>
+                            {% for role in roles %}
+                            <option value="{{ role.id }}">{{ role.display_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="invalid-feedback"></div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Additional Permissions</label>
+                        <div class="row" id="edit_permissions_container">
+                            <!-- Will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="edit_is_active" name="is_active">
+                                <label class="form-check-label" for="edit_is_active">
+                                    Active
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="edit_can_login" name="can_login">
+                                <label class="form-check-label" for="edit_can_login">
+                                    Can Login
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Update Admin
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteAdminModal" tabindex="-1" aria-labelledby="deleteAdminModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteAdminModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2 text-danger"></i>Confirm Delete
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the admin user <strong id="deleteAdminEmail"></strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteAdmin">
+                    <i class="fas fa-trash me-2"></i>Delete Admin
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Get CSRF token
+    function getCSRFToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    }
+
+    // Add admin form submission
+    document.getElementById('addAdminForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const selectedPermissions = Array.from(document.querySelectorAll('input[name="additional_permissions"]:checked')).map(cb => cb.value);
+        
+        const data = {
+            email: formData.get('email'),
+            password: formData.get('password'),
+            first_name: formData.get('first_name'),
+            last_name: formData.get('last_name'),
+            role: formData.get('role'),
+            additional_permissions: selectedPermissions,
+            is_active: document.getElementById('is_active').checked,
+            can_login: document.getElementById('can_login').checked
+        };
+
+        fetch('{% url "admin_panel:create_admin_user" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCSRFToken()
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                // Handle form errors
+                Object.keys(data.errors || {}).forEach(field => {
+                    const input = document.getElementById(field);
+                    if (input) {
+                        input.classList.add('is-invalid');
+                        const feedback = input.parentElement.querySelector('.invalid-feedback');
+                        if (feedback) {
+                            feedback.textContent = data.errors[field];
+                        }
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while creating the admin user.');
+        });
+    });
+
+    // Edit admin functionality
+    document.querySelectorAll('.btn-edit-admin').forEach(button => {
+        button.addEventListener('click', function() {
+            const adminId = this.getAttribute('data-admin-id');
+            loadAdminForEdit(adminId);
+        });
+    });
+
+    function loadAdminForEdit(adminId) {
+        fetch(`{% url "admin_panel:get_admin_user_details" user_id=0 %}`.replace('0', adminId))
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const admin = data.admin;
+                
+                // Populate form fields
+                document.getElementById('edit_admin_id').value = adminId;
+                document.getElementById('edit_email').value = admin.email;
+                document.getElementById('edit_first_name').value = admin.first_name || '';
+                document.getElementById('edit_last_name').value = admin.last_name || '';
+                document.getElementById('edit_role').value = admin.role_id;
+                document.getElementById('edit_is_active').checked = admin.is_active;
+                document.getElementById('edit_can_login').checked = admin.can_login;
+                
+                // Show edit modal
+                new bootstrap.Modal(document.getElementById('editAdminModal')).show();
+            }
+        });
+    }
+
+    // Delete admin functionality
+    let deleteAdminId = null;
+    
+    document.querySelectorAll('.btn-delete-admin').forEach(button => {
+        button.addEventListener('click', function() {
+            deleteAdminId = this.getAttribute('data-admin-id');
+            const adminEmail = this.getAttribute('data-admin-email');
+            
+            document.getElementById('deleteAdminEmail').textContent = adminEmail;
+            new bootstrap.Modal(document.getElementById('deleteAdminModal')).show();
+        });
+    });
+
+    document.getElementById('confirmDeleteAdmin').addEventListener('click', function() {
+        if (deleteAdminId) {
+            fetch(`{% url "admin_panel:delete_admin_user" user_id=0 %}`.replace('0', deleteAdminId), {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error deleting admin user: ' + (data.error || 'Unknown error'));
+                }
+            });
+        }
+    });
+});
+</script>
+
+{% endblock %}
