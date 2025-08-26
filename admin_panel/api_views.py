@@ -923,8 +923,17 @@ def create_product_with_variants(request):
                 # Ensure all needed variant types are associated with the category
                 for variant_type in variant_types_needed:
                     if not category.variant_types.filter(id=variant_type.id).exists():
-                        category.variant_types.add(variant_type)
-                        print(f"DEBUG: Added variant type '{variant_type.name}' to category '{category.name}'")
+                        # Create CategoryVariantType if it doesn't exist instead of trying to add
+                        from products.models import CategoryVariantType
+                        category_variant_type, created = CategoryVariantType.objects.get_or_create(
+                            category=category,
+                            name=variant_type.name,
+                            defaults={'is_required': variant_type.is_required}
+                        )
+                        if created:
+                            print(f"DEBUG: Created variant type '{variant_type.name}' for category '{category.name}'")
+                        else:
+                            print(f"DEBUG: Variant type '{variant_type.name}' already exists for category '{category.name}'")
                 
                 print(f"DEBUG: Category '{category.name}' now has {category.variant_types.count()} variant types")
                 # print(f"DEBUG: Processing {len(variants_data)} variant options...")
@@ -2451,8 +2460,17 @@ def create_product_wizard(request):
                 # Ensure all needed variant types are associated with the category
                 for variant_type in variant_types_needed:
                     if not category.variant_types.filter(id=variant_type.id).exists():
-                        category.variant_types.add(variant_type)
-                        print(f"DEBUG: Added variant type '{variant_type.name}' to seller category '{category.name}'")
+                        # Create CategoryVariantType if it doesn't exist instead of trying to add
+                        from products.models import CategoryVariantType
+                        category_variant_type, created = CategoryVariantType.objects.get_or_create(
+                            category=category,
+                            name=variant_type.name,
+                            defaults={'is_required': variant_type.is_required}
+                        )
+                        if created:
+                            print(f"DEBUG: Created variant type '{variant_type.name}' for seller category '{category.name}'")
+                        else:
+                            print(f"DEBUG: Variant type '{variant_type.name}' already exists for seller category '{category.name}'")
                 
                 print(f"DEBUG: Seller category '{category.name}' now has {category.variant_types.count()} variant types")
                 
