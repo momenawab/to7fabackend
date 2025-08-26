@@ -1573,11 +1573,6 @@ def category_variants(request, category_id):
             'variants': [],
             'error': 'Category not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({
-            'variants': [],
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])

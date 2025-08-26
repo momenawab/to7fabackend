@@ -29,6 +29,7 @@ urlpatterns = [
     # Product Approval
     path('product-approval/', views.product_approval, name='product_approval'),
     path('product-approval/<int:product_id>/process/', views.process_product_approval, name='process_product_approval'),
+    path('api/product/<int:product_id>/details/', views.product_detail_api, name='product_detail_api'),
     
     # Order Management
     path('orders/', views.order_management, name='order_management'),
