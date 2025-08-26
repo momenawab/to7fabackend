@@ -2281,3 +2281,306 @@ def send_typing_indicator(request, ticket_id):
     except Exception as e:
         print(f'Error sending typing indicator: {e}')
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ================================
+# ADMIN MANAGEMENT VIEWS
+# ================================
+
+@login_required
+@user_passes_test(is_admin)
+def admin_management(request):
+    """Admin management page"""
+    from .models import AdminUser, AdminRole
+    
+    # Check if user has admin management permission
+    try:
+        admin_user = request.user.admin_profile
+        if not admin_user.has_permission('admin_management'):
+            messages.error(request, 'You do not have permission to access admin management')
+            return redirect('admin_panel:dashboard')
+    except:
+        # If user doesn't have admin profile, they must be a super user
+        if not request.user.is_superuser:
+            messages.error(request, 'You do not have permission to access admin management')
+            return redirect('admin_panel:dashboard')
+    
+    admin_users = AdminUser.objects.select_related('user', 'role').order_by('-created_at')
+    roles = AdminRole.objects.filter(is_active=True).order_by('display_name')
+    
+    context = {
+        'active_tab': 'admin_management',
+        'admin_users': admin_users,
+        'roles': roles,
+    }
+    
+    # Log admin activity
+    AdminActivity.objects.create(
+        admin=request.user,
+        action='other',
+        description="Accessed admin management page",
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+    
+    return render(request, 'admin_panel/admin_management.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def create_admin_user(request):
+    """Create a new admin user"""
+    from .models import AdminUser, AdminRole, AdminPermission
+    from django.contrib.auth import get_user_model
+    import json
+    
+    User = get_user_model()
+    
+    try:
+        # Check permissions
+        admin_user = request.user.admin_profile
+        if not admin_user.has_permission('admin_management'):
+            return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+    except:
+        if not request.user.is_superuser:
+            return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Validate required fields
+        email = data.get('email', '').strip()
+        password = data.get('password', '').strip()
+        role_id = data.get('role_id')
+        additional_permissions = data.get('additional_permissions', [])
+        
+        if not email or not password or not role_id:
+            return JsonResponse({
+                'success': False,
+                'message': 'Email, password, and role are required'
+            })
+        
+        # Check if user already exists
+        if User.objects.filter(email=email).exists():
+            return JsonResponse({
+                'success': False,
+                'message': 'User with this email already exists'
+            })
+        
+        # Get role
+        role = AdminRole.objects.get(id=role_id, is_active=True)
+        
+        # Create user
+        user = User.objects.create_user(
+            email=email,
+            password=password,
+            user_type='admin',
+            first_name=data.get('first_name', ''),
+            last_name=data.get('last_name', '')
+        )
+        
+        # Create admin profile
+        admin_profile = AdminUser.objects.create(
+            user=user,
+            role=role,
+            created_by=request.user
+        )
+        
+        # Add additional permissions if provided
+        if additional_permissions:
+            permissions = AdminPermission.objects.filter(id__in=additional_permissions)
+            admin_profile.additional_permissions.set(permissions)
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='create',
+            description=f"Created admin user: {email} with role: {role.display_name}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Admin user {email} created successfully',
+            'admin_id': admin_profile.id
+        })
+        
+    except AdminRole.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Invalid role selected'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+def get_admin_user_details(request, admin_id):
+    """Get admin user details"""
+    from .models import AdminUser
+    
+    try:
+        admin_user = AdminUser.objects.select_related('user', 'role').get(id=admin_id)
+        
+        return JsonResponse({
+            'success': True,
+            'admin': {
+                'id': admin_user.id,
+                'email': admin_user.user.email,
+                'first_name': admin_user.user.first_name,
+                'last_name': admin_user.user.last_name,
+                'role_id': admin_user.role.id,
+                'role_name': admin_user.role.display_name,
+                'is_active': admin_user.is_active,
+                'can_login': admin_user.can_login,
+                'additional_permissions': list(admin_user.additional_permissions.values('id', 'display_name')),
+                'created_at': admin_user.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'last_login': admin_user.user.last_login.strftime('%Y-%m-%d %H:%M:%S') if admin_user.user.last_login else None
+            }
+        })
+        
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Admin user not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_admin_user(request, admin_id):
+    """Update admin user"""
+    from .models import AdminUser, AdminRole, AdminPermission
+    import json
+    
+    try:
+        # Check permissions
+        admin_user_profile = request.user.admin_profile
+        if not admin_user_profile.has_permission('admin_management'):
+            return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+    except:
+        if not request.user.is_superuser:
+            return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+    
+    try:
+        admin_user = AdminUser.objects.get(id=admin_id)
+        data = json.loads(request.body)
+        
+        # Update user fields
+        user = admin_user.user
+        if 'first_name' in data:
+            user.first_name = data['first_name']
+        if 'last_name' in data:
+            user.last_name = data['last_name']
+        if 'email' in data and data['email'] != user.email:
+            # Check if email is already taken
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            if User.objects.filter(email=data['email']).exclude(id=user.id).exists():
+                return JsonResponse({'success': False, 'message': 'Email already exists'})
+            user.email = data['email']
+        
+        user.save()
+        
+        # Update admin profile fields
+        if 'role_id' in data:
+            role = AdminRole.objects.get(id=data['role_id'], is_active=True)
+            admin_user.role = role
+        
+        if 'is_active' in data:
+            admin_user.is_active = data['is_active']
+        
+        if 'can_login' in data:
+            admin_user.can_login = data['can_login']
+        
+        admin_user.save()
+        
+        # Update additional permissions
+        if 'additional_permissions' in data:
+            permissions = AdminPermission.objects.filter(id__in=data['additional_permissions'])
+            admin_user.additional_permissions.set(permissions)
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"Updated admin user: {user.email}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Admin user updated successfully'
+        })
+        
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Admin user not found'}, status=404)
+    except AdminRole.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Invalid role selected'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def delete_admin_user(request, admin_id):
+    """Delete admin user"""
+    from .models import AdminUser
+    
+    try:
+        # Check permissions
+        admin_user_profile = request.user.admin_profile
+        if not admin_user_profile.has_permission('admin_management'):
+            return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+    except:
+        if not request.user.is_superuser:
+            return JsonResponse({'success': False, 'message': 'Permission denied'}, status=403)
+    
+    try:
+        admin_user = AdminUser.objects.get(id=admin_id)
+        
+        # Prevent deletion of current user
+        if admin_user.user == request.user:
+            return JsonResponse({'success': False, 'message': 'Cannot delete your own account'})
+        
+        user_email = admin_user.user.email
+        
+        # Delete user (this will cascade delete the admin profile)
+        admin_user.user.delete()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='delete',
+            description=f"Deleted admin user: {user_email}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'Admin user {user_email} deleted successfully'
+        })
+        
+    except AdminUser.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Admin user not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+def get_permissions_and_roles(request):
+    """Get all permissions and roles for admin management"""
+    from .models import AdminPermission, AdminRole
+    
+    try:
+        permissions = AdminPermission.objects.all().values('id', 'name', 'display_name', 'description')
+        roles = AdminRole.objects.filter(is_active=True).values('id', 'name', 'display_name', 'description')
+        
+        return JsonResponse({
+            'success': True,
+            'permissions': list(permissions),
+            'roles': list(roles)
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
