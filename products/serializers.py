@@ -119,7 +119,8 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'description', 'base_price', 'price', 'stock', 'stock_quantity', 'category', 'category_name', 
                  'seller', 'seller_name', 'is_featured', 'is_active', 'approval_status', 'rejection_reason', 'created_at', 
                  'updated_at', 'images', 'average_rating', 'selected_variants', 'available_variant_types',
-                 'price_range', 'stock_status', 'has_variants', 'colors', 'sizes', 'combination_stocks')
+                 'price_range', 'stock_status', 'has_variants', 'colors', 'sizes', 'combination_stocks',
+                 'featured_request_pending', 'offers_request_pending', 'featured_requested_at', 'offers_requested_at')
         read_only_fields = ('seller',)
     
     def get_stock_status(self, obj):
@@ -151,8 +152,19 @@ class ProductSerializer(serializers.ModelSerializer):
         return sizes if sizes else ['20x30cm', '30x40cm', '40x50cm']  # Default fallback
     
     def create(self, validated_data):
+        from django.utils import timezone
+        
         user = self.context['request'].user
         validated_data['seller'] = user
+        
+        # Handle featured request timestamp
+        if validated_data.get('featured_request_pending', False):
+            validated_data['featured_requested_at'] = timezone.now()
+        
+        # Handle offers request timestamp  
+        if validated_data.get('offers_request_pending', False):
+            validated_data['offers_requested_at'] = timezone.now()
+            
         return super().create(validated_data)
 
 class ProductDetailSerializer(ProductSerializer):

@@ -268,12 +268,15 @@
 
 <!-- Product Details Modal -->
 <div class="modal-overlay" id="detailsModal">
-    <div class="modal-content" style="max-width: 800px;">
-        <h5 class="mb-3">Product Details</h5>
+    <div class="modal-content" style="max-width: 95%; max-height: 95%; overflow-y: auto;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Product Details</h5>
+            <button type="button" class="btn-close" onclick="closeDetailsModal()" aria-label="Close"></button>
+        </div>
         <div id="productDetailsContent">
             <!-- Product details will be loaded here -->
         </div>
-        <div class="d-flex justify-content-end">
+        <div class="d-flex justify-content-end mt-3 pt-3 border-top">
             <button type="button" class="btn btn-secondary" onclick="closeDetailsModal()">Close</button>
         </div>
     </div>
@@ -315,25 +318,259 @@ function editProduct(productId) {
 }
 
 function viewProductDetails(productId) {
-    // For now, just show a simple message
-    // In the future, you can load product details via AJAX
+    // Show loading state
     document.getElementById('productDetailsContent').innerHTML = `
-        <p>Product ID: ${productId}</p>
-        <p>Detailed product information will be implemented here.</p>
-        <p>This could include:</p>
-        <ul>
-            <li>Product images</li>
-            <li>Full description</li>
-            <li>Variants and pricing</li>
-            <li>Seller information</li>
-            <li>Submission history</li>
-        </ul>
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading product details...</p>
+        </div>
     `;
     document.getElementById('detailsModal').style.display = 'block';
+    
+    // Fetch product details via AJAX
+    fetch(`/dashboard/api/product/${productId}/details/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayProductDetails(data.product);
+            } else {
+                document.getElementById('productDetailsContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6>Error Loading Product Details</h6>
+                        <p>${data.message || 'Failed to load product information.'}</p>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching product details:', error);
+            document.getElementById('productDetailsContent').innerHTML = `
+                <div class="alert alert-danger">
+                    <h6>Error Loading Product Details</h6>
+                    <p>Network error occurred while loading product information.</p>
+                </div>
+            `;
+        });
+}
+
+function displayProductDetails(product) {
+    const imagesHtml = product.images && product.images.length > 0 
+        ? product.images.map((img, index) => `
+            <div class="col-md-4 mb-2">
+                <img src="${img.image}" alt="Product Image ${index + 1}" 
+                     class="img-fluid rounded" style="max-height: 200px; object-fit: cover;">
+                ${img.is_primary ? '<span class="badge bg-primary">Primary</span>' : ''}
+            </div>
+        `).join('')
+        : '<p class="text-muted">No images available</p>';
+
+    const variantsHtml = product.variants && product.variants.length > 0
+        ? product.variants.map(variant => `
+            <div class="border rounded p-2 mb-2">
+                <strong>${variant.variant_type}: ${variant.value}</strong><br>
+                <small class="text-muted">
+                    Stock: ${variant.stock_count} | 
+                    Final Price: $${variant.final_price} 
+                    ${variant.price_adjustment != 0 ? `(${variant.price_adjustment > 0 ? '+' : ''}$${variant.price_adjustment})` : ''}
+                </small>
+            </div>
+        `).join('')
+        : '<p class="text-muted">No variants available</p>';
+
+    const sellerInfoHtml = `
+        <div class="card">
+            <div class="card-body">
+                <h6>Seller Information</h6>
+                <p><strong>Email:</strong> ${product.seller.email}</p>
+                <p><strong>User Type:</strong> ${product.seller.user_type}</p>
+                ${product.seller.name ? `<p><strong>Name:</strong> ${product.seller.name}</p>` : ''}
+                ${product.seller.store_name ? `<p><strong>Store Name:</strong> ${product.seller.store_name}</p>` : ''}
+                <p><strong>Seller Since:</strong> ${new Date(product.seller.date_joined).toLocaleDateString()}</p>
+            </div>
+        </div>
+    `;
+
+    document.getElementById('productDetailsContent').innerHTML = `
+        <div class="row">
+            <!-- Product Information -->
+            <div class="col-md-8">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Product Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <h5>${product.name}</h5>
+                        <p class="text-muted mb-2">${product.description}</p>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p><strong>Category:</strong> ${product.category}</p>
+                                <p><strong>Base Price:</strong> $${product.base_price}</p>
+                                <p><strong>Stock:</strong> ${product.stock}</p>
+                            </div>
+                            <div class="col-md-6">
+                                <p><strong>Status:</strong> 
+                                    <span class="badge ${getStatusBadgeClass(product.approval_status)}">
+                                        ${product.approval_status.charAt(0).toUpperCase() + product.approval_status.slice(1)}
+                                    </span>
+                                </p>
+                                <p><strong>Created:</strong> ${new Date(product.created_at).toLocaleString()}</p>
+                                <p><strong>Updated:</strong> ${new Date(product.updated_at).toLocaleString()}</p>
+                            </div>
+                        </div>
+                        
+                        ${product.rejection_reason ? `
+                            <div class="alert alert-warning mt-2">
+                                <strong>Rejection Reason:</strong> ${product.rejection_reason}
+                            </div>
+                        ` : ''}
+                        
+                        ${product.featured_request_pending || product.offers_request_pending ? `
+                            <div class="alert alert-info mt-2">
+                                <h6><i class="fas fa-star"></i> Seller Requests</h6>
+                                ${product.featured_request_pending ? `
+                                    <p class="mb-1">
+                                        <strong>Featured Product Request:</strong> Yes
+                                        ${product.featured_requested_at ? `<br><small class="text-muted">Requested on: ${new Date(product.featured_requested_at).toLocaleString()}</small>` : ''}
+                                    </p>
+                                ` : ''}
+                                ${product.offers_request_pending ? `
+                                    <p class="mb-0">
+                                        <strong>Latest Offers Request:</strong> Yes
+                                        ${product.offers_requested_at ? `<br><small class="text-muted">Requested on: ${new Date(product.offers_requested_at).toLocaleString()}</small>` : ''}
+                                    </p>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Product Images -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Product Images</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            ${imagesHtml}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product Variants -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Product Variants</h6>
+                    </div>
+                    <div class="card-body">
+                        ${variantsHtml}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seller Information -->
+            <div class="col-md-4">
+                ${sellerInfoHtml}
+                
+                <!-- Quick Actions -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">Quick Actions</h6>
+                    </div>
+                    <div class="card-body">
+                        ${product.approval_status === 'pending' || product.approval_status === 'rejected' ? `
+                            <button class="btn btn-success btn-sm w-100 mb-2" onclick="closeDetailsModal(); approveProduct(${product.id}, '${product.name}')">
+                                <i class="fas fa-check"></i> Approve Product
+                            </button>
+                        ` : ''}
+                        ${product.approval_status === 'pending' || product.approval_status === 'approved' ? `
+                            <button class="btn btn-danger btn-sm w-100 mb-2" onclick="closeDetailsModal(); rejectProduct(${product.id}, '${product.name}')">
+                                <i class="fas fa-times"></i> Reject Product
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-primary btn-sm w-100 mb-2" onclick="editProduct(${product.id})">
+                            <i class="fas fa-edit"></i> Edit Product
+                        </button>
+                        
+                        ${product.featured_request_pending ? `
+                            <hr>
+                            <h6 class="text-muted mb-2"><small>Featured Requests</small></h6>
+                            <button class="btn btn-warning btn-sm w-100 mb-1" onclick="approveFeaturedRequest(${product.id}, '${product.name}')">
+                                <i class="fas fa-star"></i> Approve Featured
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="rejectFeaturedRequest(${product.id}, '${product.name}')">
+                                <i class="fas fa-times"></i> Reject Featured
+                            </button>
+                        ` : ''}
+                        
+                        ${product.offers_request_pending ? `
+                            <button class="btn btn-info btn-sm w-100 mb-1" onclick="approveOffersRequest(${product.id}, '${product.name}')">
+                                <i class="fas fa-fire"></i> Approve Offers
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm w-100 mb-2" onclick="rejectOffersRequest(${product.id}, '${product.name}')">
+                                <i class="fas fa-times"></i> Reject Offers
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getStatusBadgeClass(status) {
+    switch(status) {
+        case 'approved': return 'bg-success';
+        case 'rejected': return 'bg-danger';
+        case 'pending': return 'bg-warning text-dark';
+        default: return 'bg-secondary';
+    }
 }
 
 function closeDetailsModal() {
     document.getElementById('detailsModal').style.display = 'none';
+}
+
+// Featured request functions
+function approveFeaturedRequest(productId, productName) {
+    if (confirm(`Approve featured request for "${productName}"?`)) {
+        processFeaturedRequest(productId, 'approve_featured');
+    }
+}
+
+function rejectFeaturedRequest(productId, productName) {
+    if (confirm(`Reject featured request for "${productName}"?`)) {
+        processFeaturedRequest(productId, 'reject_featured');
+    }
+}
+
+function approveOffersRequest(productId, productName) {
+    if (confirm(`Approve latest offers request for "${productName}"?`)) {
+        processFeaturedRequest(productId, 'approve_offers');
+    }
+}
+
+function rejectOffersRequest(productId, productName) {
+    if (confirm(`Reject latest offers request for "${productName}"?`)) {
+        processFeaturedRequest(productId, 'reject_offers');
+    }
+}
+
+function processFeaturedRequest(productId, action) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `/dashboard/product-approval/${productId}/process/`;
+    
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    form.innerHTML = `
+        <input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}">
+        <input type="hidden" name="action" value="${action}">
+    `;
+    
+    document.body.appendChild(form);
+    form.submit();
 }
 
 // Close modals when clicking outside

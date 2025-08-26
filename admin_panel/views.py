@@ -599,11 +599,204 @@ def process_product_approval(request, product_id):
 
         messages.success(request, f'تم رفض المنتج "{product.name}" بنجاح')
 
+    elif action == 'approve_featured':
+        product.is_featured = True
+        product.featured_request_pending = False
+        product.save()
+        
+        # Create featured product entry
+        from products.models import FeaturedProduct
+        FeaturedProduct.objects.get_or_create(
+            product=product,
+            defaults={'reason': 'Approved by admin from seller request'}
+        )
+
+        # Create notification for seller
+        Notification.objects.create(
+            user=product.seller,
+            title='تم قبول طلب المنتج المميز',
+            message=f'تم قبول طلبك لجعل منتج "{product.name}" مميزاً.',
+            notification_type='featured_approved'
+        )
+
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='approve_featured_request',
+            description=f'Approved featured request for product "{product.name}" (ID: {product.id})',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f'تم قبول طلب المنتج المميز لـ "{product.name}"')
+
+    elif action == 'reject_featured':
+        product.featured_request_pending = False
+        product.save()
+
+        # Create notification for seller
+        Notification.objects.create(
+            user=product.seller,
+            title='تم رفض طلب المنتج المميز',
+            message=f'تم رفض طلبك لجعل منتج "{product.name}" مميزاً.',
+            notification_type='featured_rejected'
+        )
+
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='reject_featured_request',
+            description=f'Rejected featured request for product "{product.name}" (ID: {product.id})',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f'تم رفض طلب المنتج المميز لـ "{product.name}"')
+
+    elif action == 'approve_offers':
+        product.offers_request_pending = False
+        product.save()
+        
+        # Create product offer entry
+        from products.models import ProductOffer
+        from datetime import timedelta
+        from django.utils import timezone
+        
+        # Create a default offer (you can customize this)
+        ProductOffer.objects.get_or_create(
+            product=product,
+            defaults={
+                'discount_percentage': 10,  # Default 10% discount
+                'start_date': timezone.now(),
+                'end_date': timezone.now() + timedelta(days=30),
+                'description': 'Latest offer approved by admin'
+            }
+        )
+
+        # Create notification for seller
+        Notification.objects.create(
+            user=product.seller,
+            title='تم قبول طلب العروض الحديثة',
+            message=f'تم قبول طلبك لإضافة منتج "{product.name}" إلى العروض الحديثة.',
+            notification_type='offers_approved'
+        )
+
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='approve_offers_request',
+            description=f'Approved latest offers request for product "{product.name}" (ID: {product.id})',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f'تم قبول طلب العروض الحديثة لـ "{product.name}"')
+
+    elif action == 'reject_offers':
+        product.offers_request_pending = False
+        product.save()
+
+        # Create notification for seller
+        Notification.objects.create(
+            user=product.seller,
+            title='تم رفض طلب العروض الحديثة',
+            message=f'تم رفض طلبك لإضافة منتج "{product.name}" إلى العروض الحديثة.',
+            notification_type='offers_rejected'
+        )
+
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='reject_offers_request',
+            description=f'Rejected latest offers request for product "{product.name}" (ID: {product.id})',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+
+        messages.success(request, f'تم رفض طلب العروض الحديثة لـ "{product.name}"')
+
     elif action == 'edit':
         # Redirect to edit page
         return redirect('admin_panel:edit_product_with_variants', product_id=product.id)
 
     return redirect('admin_panel:product_approval')
+
+@login_required
+@user_passes_test(is_admin)
+def product_detail_api(request, product_id):
+    """API endpoint to get detailed product information for the approval modal"""
+    try:
+        product = get_object_or_404(Product, id=product_id)
+        
+        # Get product images
+        product_images = []
+        for img in product.images.all():
+            product_images.append({
+                'image': img.image.url if img.image else '',
+                'is_primary': img.is_primary
+            })
+        
+        # Get product variants
+        product_variants = []
+        for variant in product.selected_variants.filter(is_active=True):
+            product_variants.append({
+                'variant_type': variant.variant_type_name,
+                'value': variant.variant_option_value,
+                'stock_count': variant.stock_count,
+                'final_price': str(variant.final_price),
+                'price_adjustment': str(variant.price_adjustment)
+            })
+        
+        # Get seller information
+        seller_info = {
+            'email': product.seller.email,
+            'user_type': product.seller.user_type,
+            'name': None,
+            'store_name': None,
+            'date_joined': product.seller.date_joined.isoformat()
+        }
+        
+        # Add seller-specific information
+        if product.seller.user_type == 'artist':
+            try:
+                seller_info['name'] = f"{product.seller.first_name} {product.seller.last_name}".strip()
+            except:
+                pass
+        elif product.seller.user_type == 'store':
+            try:
+                seller_info['store_name'] = product.seller.store_profile.store_name
+            except:
+                pass
+        
+        # Prepare response data
+        product_data = {
+            'id': product.id,
+            'name': product.name,
+            'description': product.description,
+            'base_price': str(product.base_price),
+            'stock': product.stock,
+            'category': product.category.name,
+            'approval_status': product.approval_status,
+            'rejection_reason': product.rejection_reason,
+            'is_featured': product.is_featured,
+            'is_active': product.is_active,
+            'featured_request_pending': product.featured_request_pending,
+            'offers_request_pending': product.offers_request_pending,
+            'featured_requested_at': product.featured_requested_at.isoformat() if product.featured_requested_at else None,
+            'offers_requested_at': product.offers_requested_at.isoformat() if product.offers_requested_at else None,
+            'created_at': product.created_at.isoformat(),
+            'updated_at': product.updated_at.isoformat(),
+            'images': product_images,
+            'variants': product_variants,
+            'seller': seller_info
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'product': product_data
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': f'Error loading product details: {str(e)}'
+        }, status=500)
 
 # Order Management
 @login_required
@@ -1382,36 +1575,71 @@ def create_variant_option(request):
 @login_required
 @user_passes_test(is_admin)
 def get_category_variants_json(request, category_id):
-    """JSON endpoint to get category variants for the admin panel"""
+    """JSON endpoint to get category variants for the admin panel, including inherited variants from parent categories"""
     from products.models import Category, CategoryVariantType
 
     try:
         category = get_object_or_404(Category, id=category_id)
 
-        variant_types = CategoryVariantType.objects.filter(category=category).prefetch_related('options')
+        # Collect all categories in the hierarchy (current + all parents)
+        categories_to_check = [category]
+        current_cat = category
+        while current_cat.parent is not None:
+            categories_to_check.append(current_cat.parent)
+            current_cat = current_cat.parent
 
-        variants_data = []
-        for variant_type in variant_types:
-            options_data = []
-            for option in variant_type.options.all().order_by('id'):
-                options_data.append({
-                    'id': option.id,
-                    'value': option.value,
-                    'extra_price': float(option.extra_price),
-                    'is_active': option.is_active
-                })
+        # Get variant types from all categories in the hierarchy
+        all_variant_types = CategoryVariantType.objects.filter(
+            category__in=categories_to_check
+        ).prefetch_related('options').order_by('name')
 
-            variants_data.append({
-                'id': variant_type.id,
-                'name': variant_type.name,
-                'is_required': variant_type.is_required,
-                'options': options_data
-            })
+        # Group variants by name to merge options from different levels
+        variants_by_name = {}
+        for variant_type in all_variant_types:
+            variant_name = variant_type.name
 
-        return JsonResponse({'variants': variants_data})
+            if variant_name not in variants_by_name:
+                variants_by_name[variant_name] = {
+                    'id': variant_type.id,  # Use the most specific (deepest) variant type ID
+                    'name': variant_name,
+                    'is_required': variant_type.is_required,
+                    'options': [],
+                    'category_source': variant_type.category.name
+                }
+
+            # Add options from this variant type, avoiding duplicates by value
+            existing_option_values = {opt['value'] for opt in variants_by_name[variant_name]['options']}
+
+            for option in variant_type.options.filter(is_active=True):
+                if option.value not in existing_option_values:
+                    variants_by_name[variant_name]['options'].append({
+                        'id': option.id,
+                        'value': option.value,
+                        'extra_price': float(option.extra_price),
+                        'is_active': option.is_active,
+                        'variant_type_id': variant_type.id,
+                        'category_source': variant_type.category.name
+                    })
+                    existing_option_values.add(option.value)
+
+        # Convert to list and sort
+        variants_data = list(variants_by_name.values())
+        variants_data.sort(key=lambda x: x['name'])
+
+        # Sort options within each variant type
+        for variant in variants_data:
+            variant['options'].sort(key=lambda x: x['value'])
+
+        return JsonResponse({
+            'success': True,
+            'variants': variants_data,
+            'category_hierarchy': [cat.name for cat in reversed(categories_to_check)]
+        })
 
     except Category.DoesNotExist:
         return JsonResponse({'error': 'Category not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 
 @login_required
