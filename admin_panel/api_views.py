@@ -896,9 +896,42 @@ def create_product_with_variants(request):
             
             # Create variants using the new ProductCategoryVariantOption model
             variants_created = 0
+            combination_stocks = {}  # For Flutter app compatibility
             
             if variants_data:
+                # Ensure category has the required variant types for the variants being created
+                category = product.category
+                print(f"DEBUG: Ensuring variant types for category: {category.name}")
+                
+                # Analyze what variant types are needed based on the variants being created
+                variant_types_needed = set()
+                for variant_data in variants_data:
+                    try:
+                        option_id = variant_data.get('option_id')
+                        # Try to get the option to see what variant type it belongs to
+                        try:
+                            category_variant_option = CategoryVariantOption.objects.get(id=option_id)
+                            variant_type = category_variant_option.variant_type
+                            variant_types_needed.add(variant_type)
+                        except CategoryVariantOption.DoesNotExist:
+                            print(f"DEBUG: CategoryVariantOption with id {option_id} not found, skipping")
+                            continue
+                    except Exception as e:
+                        print(f"DEBUG: Error analyzing variant data: {e}")
+                        continue
+                
+                # Ensure all needed variant types are associated with the category
+                for variant_type in variant_types_needed:
+                    if not category.variant_types.filter(id=variant_type.id).exists():
+                        category.variant_types.add(variant_type)
+                        print(f"DEBUG: Added variant type '{variant_type.name}' to category '{category.name}'")
+                
+                print(f"DEBUG: Category '{category.name}' now has {category.variant_types.count()} variant types")
                 # print(f"DEBUG: Processing {len(variants_data)} variant options...")
+                
+                # Group variants by combination for combination_stocks
+                from collections import defaultdict
+                combination_groups = defaultdict(list)
                 
                 for variant_data in variants_data:
                     # print(f"DEBUG: Processing variant data: {variant_data}")
@@ -933,13 +966,31 @@ def create_product_with_variants(request):
                             product_variant.stock_count = stock_count
                             product_variant.price_adjustment = price_adjustment
                             product_variant.save()
-                            
+                        
+                        # Add to combination_stocks for Flutter compatibility
+                        # Use the option_id as the key and stock_count as value
+                        combination_stocks[str(option_id)] = stock_count
+                        
                     except CategoryVariantOption.DoesNotExist:
                         # print(f"DEBUG: CategoryVariantOption with id {option_id} not found")
                         continue
                     except Exception as e:
                         # print(f"DEBUG: Error creating variant: {e}")
                         continue
+                
+                # Update the product's combination_stocks field for Flutter app compatibility
+                product.combination_stocks = combination_stocks
+                product.save(update_fields=['combination_stocks'])
+                print(f"DEBUG: Updated product.combination_stocks: {product.combination_stocks}")
+                print(f"DEBUG: Product has_variants: {product.has_variants}")
+                print(f"DEBUG: Product selected_variants count: {product.selected_variants.count()}")
+                
+                # Log a sample variant for debugging
+                sample_variant = product.selected_variants.first()
+                if sample_variant:
+                    print(f"DEBUG: Sample variant - Type: {sample_variant.variant_type_name}, Value: {sample_variant.variant_option_value}, Stock: {sample_variant.stock_count}")
+                    print(f"DEBUG: Sample variant category_variant_option.variant_type: {sample_variant.category_variant_option.variant_type}")
+                
             
             # print(f"DEBUG: Total variants created: {variants_created}")
             
@@ -2375,6 +2426,35 @@ def create_product_wizard(request):
             if selected_variants:
                 # print(f"DEBUG: Processing {len(selected_variants)} category variants...")
                 from products.models import CategoryVariantOption, ProductCategoryVariantOption
+                
+                # Ensure category has the required variant types for the variants being created
+                category = product.category
+                print(f"DEBUG: Ensuring variant types for seller category: {category.name}")
+                
+                # Analyze what variant types are needed based on the variants being created
+                variant_types_needed = set()
+                for variant_data in selected_variants:
+                    try:
+                        option_id = variant_data.get('option_id')
+                        # Try to get the option to see what variant type it belongs to
+                        try:
+                            category_variant_option = CategoryVariantOption.objects.get(id=option_id)
+                            variant_type = category_variant_option.variant_type
+                            variant_types_needed.add(variant_type)
+                        except CategoryVariantOption.DoesNotExist:
+                            print(f"DEBUG: CategoryVariantOption with id {option_id} not found, skipping")
+                            continue
+                    except Exception as e:
+                        print(f"DEBUG: Error analyzing seller variant data: {e}")
+                        continue
+                
+                # Ensure all needed variant types are associated with the category
+                for variant_type in variant_types_needed:
+                    if not category.variant_types.filter(id=variant_type.id).exists():
+                        category.variant_types.add(variant_type)
+                        print(f"DEBUG: Added variant type '{variant_type.name}' to seller category '{category.name}'")
+                
+                print(f"DEBUG: Seller category '{category.name}' now has {category.variant_types.count()} variant types")
                 
                 variants_created = 0
                 for variant_data in selected_variants:

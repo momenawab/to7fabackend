@@ -527,7 +527,7 @@ function cartesianProduct(arrays) {
 
 function findOptionById(variantTypeId, optionId) {
     const variantType = allVariants[variantTypeId];
-    return variantType ? variantType.attribute.options.find(function(opt) { return opt.id === optionId; }) : null;
+    return variantType ? variantType.options.find(function(opt) { return opt.id === optionId; }) : null;
 }
 
 function renderVariantsTable(variants) {
