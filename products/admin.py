@@ -566,9 +566,11 @@ class CategoryVariantOptionInline(admin.TabularInline):
     fields = ('value', 'extra_price', 'is_active')
 
 class CategoryVariantTypeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'is_required', 'option_count')
+    list_display = ('name', 'category', 'is_required', 'priority', 'option_count')
     list_filter = ('category', 'is_required')
     search_fields = ('name', 'category__name')
+    list_editable = ('priority',)
+    ordering = ('priority', 'name')
     inlines = [CategoryVariantOptionInline]
     
     def option_count(self, obj):

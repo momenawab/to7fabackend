@@ -79,7 +79,7 @@ class CategoryVariantTypeSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CategoryVariantType
-        fields = ('id', 'name', 'is_required', 'options')
+        fields = ('id', 'name', 'is_required', 'priority', 'options')
 
 class ProductCategoryVariantSelectionSerializer(serializers.ModelSerializer):
     category_variant_option = CategoryVariantOptionSerializer(read_only=True)
@@ -101,7 +101,7 @@ class ProductSerializer(serializers.ModelSerializer):
     
     # CategoryVariant-related fields
     selected_variants = ProductCategoryVariantSelectionSerializer(many=True, read_only=True)
-    available_variant_types = CategoryVariantTypeSerializer(many=True, read_only=True)
+    available_variant_types = serializers.SerializerMethodField()
     price_range = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
     has_variants = serializers.ReadOnlyField()
@@ -127,6 +127,11 @@ class ProductSerializer(serializers.ModelSerializer):
         """Get stock status for this product"""
         return obj.get_stock_status()
     
+    def get_available_variant_types(self, obj):
+        """Get available variant types with inheritance"""
+        variant_types = obj.available_variant_types
+        return CategoryVariantTypeSerializer(variant_types, many=True, context=self.context).data
+    
     def get_price_range(self, obj):
         """Get price range for this product"""
         min_price, max_price = obj.get_price_range()
@@ -138,7 +143,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_colors(self, obj):
         """Get available colors for backward compatibility"""
         colors = []
-        for variant_type in obj.available_variant_types.all():
+        for variant_type in obj.available_variant_types:
             if variant_type.name.lower() in ['لون', 'color', 'لون الإطار', 'frame_color']:
                 colors.extend([option.value for option in variant_type.options.filter(is_active=True)])
         return colors if colors else ['أبيض', 'أسود', 'ذهبي']  # Default fallback
@@ -146,7 +151,7 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_sizes(self, obj):
         """Get available sizes for backward compatibility"""
         sizes = []
-        for variant_type in obj.available_variant_types.all():
+        for variant_type in obj.available_variant_types:
             if variant_type.name.lower() in ['حجم', 'size', 'الحجم']:
                 sizes.extend([option.value for option in variant_type.options.filter(is_active=True)])
         return sizes if sizes else ['20x30cm', '30x40cm', '40x50cm']  # Default fallback

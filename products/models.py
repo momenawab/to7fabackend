@@ -42,6 +42,7 @@ class CategoryVariantType(models.Model):
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='variant_types')
     name = models.CharField(max_length=50, help_text="e.g., 'Size', 'Color', 'Storage', 'Material'")
     is_required = models.BooleanField(default=True, help_text="Whether this variant type is required for products in this category")
+    priority = models.IntegerField(default=999, help_text="Display order (lower number = higher priority, appears first)")
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -208,7 +209,7 @@ class Product(models.Model):
     # Category Variant management methods
     def get_available_category_variants(self):
         """Get all category variant types available for this product's category"""
-        return self.category.variant_types.all().order_by('name')
+        return self.category.variant_types.all().order_by('priority', 'name')
     
     def get_category_variant_options(self, variant_type):
         """Get available options for a specific category variant type"""
@@ -228,8 +229,33 @@ class Product(models.Model):
     
     @property
     def available_variant_types(self):
-        """Get all available variant types for this product's category"""
-        return self.category.variant_types.all().order_by('name')
+        """Get all available variant types for this product's category with parent category inheritance"""
+        # Start with current category's variant types
+        variant_types = list(self.category.variant_types.all())
+        
+        # If there's a parent category, inherit its variant types with smart merging
+        if self.category.parent:
+            parent_variant_types = list(self.category.parent.variant_types.all())
+            
+            # Create a map of current category variant types by name
+            current_types_map = {vt.name: vt for vt in variant_types}
+            
+            # For each parent variant type, either add it or update priority if same name exists
+            for parent_vt in parent_variant_types:
+                if parent_vt.name in current_types_map:
+                    # Same variant type exists in subcategory
+                    current_vt = current_types_map[parent_vt.name]
+                    # If subcategory has default priority (999), inherit parent's priority
+                    if current_vt.priority == 999 and parent_vt.priority != 999:
+                        # Create a temporary object with parent's priority for this query
+                        current_vt.priority = parent_vt.priority
+                else:
+                    # Variant type doesn't exist in subcategory, add parent's variant type
+                    variant_types.append(parent_vt)
+        
+        # Sort by priority and return as QuerySet-like object
+        variant_types.sort(key=lambda x: (x.priority, x.name))
+        return variant_types
     
     def get_price_range(self):
         """Get min and max price across all selected variants"""
