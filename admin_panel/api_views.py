@@ -109,6 +109,8 @@ def approve_application(request, pk):
                     artist_profile.bio = application.description
                     artist_profile.social_media = application.social_media
                     artist_profile.is_verified = True
+                    if application.profile_picture:
+                        artist_profile.profile_picture = application.profile_picture
                     artist_profile.save()
                 except Artist.DoesNotExist:
                     # Create new profile if it doesn't exist
@@ -117,6 +119,7 @@ def approve_application(request, pk):
                         specialty=application.specialty or '',
                         bio=application.description,
                         social_media=application.social_media,
+                        profile_picture=application.profile_picture,
                         is_verified=True
                     )
             elif application.seller_type == 'store':
@@ -130,6 +133,8 @@ def approve_application(request, pk):
                     store_profile.physical_address = application.physical_address or ''
                     store_profile.social_media = application.social_media
                     store_profile.is_verified = True
+                    if application.profile_picture:
+                        store_profile.logo = application.profile_picture
                     store_profile.save()
                 except Store.DoesNotExist:
                     # Create new profile if it doesn't exist
@@ -140,6 +145,7 @@ def approve_application(request, pk):
                         has_physical_store=application.has_physical_store,
                         physical_address=application.physical_address or '',
                         social_media=application.social_media,
+                        logo=application.profile_picture,
                         is_verified=True
                     )
     
@@ -359,9 +365,14 @@ def mark_all_notifications_read(request):
 
 # Report API Views
 @api_view(['GET'])
-@permission_classes([IsAuthenticated, IsAdminUser])
+@permission_classes([IsAuthenticated])
 def report_summary(request):
     """API endpoint to get summary report data"""
+    # Check if user is admin
+    from .decorators import is_admin
+    if not is_admin(request.user):
+        return Response({'error': 'Admin access required'}, status=403)
+    
     # Get date range parameters
     days = request.query_params.get('days', '30')
     start_date = request.query_params.get('start_date', None)
@@ -503,8 +514,8 @@ def report_summary(request):
         })
     
     # Top categories with optimized queries
-    top_categories = Category.objects.prefetch_related('product_set').annotate(
-        product_count=Count('product')
+    top_categories = Category.objects.prefetch_related('products').annotate(
+        product_count=Count('products')
     ).order_by('-product_count')[:5]
     
     top_categories_data = []

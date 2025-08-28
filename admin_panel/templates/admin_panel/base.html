@@ -338,6 +338,16 @@
             padding: 1rem 0;
             list-style: none;
         }
+        
+        /* Hide empty nav sections */
+        .nav-section:empty,
+        .nav-section:has(.nav-item:empty) {
+            display: none;
+        }
+        
+        .nav-section:not(:has(.nav-item)) {
+            display: none;
+        }
 
         .nav-section {
             margin-bottom: 2rem;
@@ -1066,16 +1076,20 @@
                         <span class="nav-text">Dashboard</span>
                     </a>
                 </div>
+                {% if 'analytics_view' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'reports' %}active{% endif %}" href="{% url 'admin_panel:reports' %}">
                         <i class="nav-icon fas fa-chart-bar"></i>
                         <span class="nav-text">Analytics</span>
                     </a>
                 </div>
+                {% endif %}
             </li>
             
+            {% if 'seller_applications' in user_permissions or 'users_management' in user_permissions or 'support_tickets' in user_permissions or is_super_admin %}
             <li class="nav-section">
                 <div class="nav-section-title">Management</div>
+                {% if 'seller_applications' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                 <a class="nav-link {% if active_tab == 'applications' %}active{% endif %}" href="{% url 'admin_panel:seller_applications' %}">
                         <i class="nav-icon fas fa-user-plus"></i>
@@ -1085,18 +1099,24 @@
                         {% endif %}
                     </a>
                 </div>
+                {% endif %}
+                {% if 'users_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                 <a class="nav-link {% if active_tab == 'users' %}active{% endif %}" href="{% url 'admin_panel:user_management' %}">
                         <i class="nav-icon fas fa-users"></i>
                         <span class="nav-text">Users</span>
                     </a>
                 </div>
+                {% endif %}
+                {% if 'users_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'artists_stores' %}active{% endif %}" href="{% url 'admin_panel:artists_stores' %}">
                         <i class="nav-icon fas fa-store"></i>
                         <span class="nav-text">Artists & Stores</span>
                     </a>
                 </div>
+                {% endif %}
+                {% if 'support_tickets' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'support' %}active{% endif %}" href="{% url 'admin_panel:support_tickets' %}">
                         <i class="nav-icon fas fa-headset"></i>
@@ -1106,16 +1126,22 @@
                         {% endif %}
                     </a>
                 </div>
+                {% endif %}
             </li>
+            {% endif %}
             
+            {% if 'products_management' in user_permissions or 'products_add' in user_permissions or 'product_approval' in user_permissions or 'categories_management' in user_permissions or 'variants_management' in user_permissions or is_super_admin %}
             <li class="nav-section">
                 <div class="nav-section-title">Products</div>
+                {% if 'products_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                 <a class="nav-link {% if active_tab == 'products' %}active{% endif %}" href="{% url 'admin_panel:product_management' %}">
                         <i class="nav-icon fas fa-box"></i>
                         <span class="nav-text">Products</span>
                     </a>
                 </div>
+                {% endif %}
+                {% if 'product_approval' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                 <a class="nav-link {% if active_tab == 'product_approval' %}active{% endif %}" href="{% url 'admin_panel:product_approval' %}">
                         <i class="nav-icon fas fa-check-circle"></i>
@@ -1125,6 +1151,8 @@
                         {% endif %}
                     </a>
                 </div>
+                {% endif %}
+                {% if 'categories_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'categories' %}active{% endif %}" href="{% url 'admin_panel:categories' %}">
                         <i class="nav-icon fas fa-tags"></i>
@@ -1143,20 +1171,27 @@
                         <span class="nav-text">Subcategory Sections</span>
                     </a>
                 </div>
+                {% endif %}
+                {% if 'variants_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'variants' %}active{% endif %}" href="{% url 'admin_panel:variant_management' %}">
                         <i class="nav-icon fas fa-palette"></i>
                         <span class="nav-text">Variants</span>
                     </a>
                 </div>
+                {% endif %}
+                {% if 'products_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                     <a class="nav-link {% if active_tab == 'featured_products' %}active{% endif %}" href="{% url 'admin_panel:featured_products' %}">
                         <i class="nav-icon fas fa-star"></i>
                         <span class="nav-text">Featured</span>
                     </a>
                 </div>
+                {% endif %}
             </li>
+            {% endif %}
             
+            {% if 'orders_view' in user_permissions or is_super_admin %}
             <li class="nav-section">
                 <div class="nav-section-title">Sales</div>
                 <div class="nav-item">
@@ -1166,7 +1201,9 @@
                     </a>
                 </div>
             </li>
+            {% endif %}
             
+            {% if 'advertising_management' in user_permissions or is_super_admin %}
             <li class="nav-section">
                 <div class="nav-section-title">Marketing</div>
                 <div class="nav-item">
@@ -1176,6 +1213,7 @@
                     </a>
                 </div>
             </li>
+            {% endif %}
             
             <li class="nav-section">
                 <div class="nav-section-title">System</div>
@@ -1185,24 +1223,28 @@
                         <span class="nav-text">Settings</span>
                 </a>
                 </div>
+                {% if 'admin_management' in user_permissions or is_super_admin %}
                 <div class="nav-item">
                 <a class="nav-link {% if active_tab == 'admin_management' %}active{% endif %}" href="{% url 'admin_panel:admin_management' %}">
                         <i class="nav-icon fas fa-user-shield"></i>
                         <span class="nav-text">Admin Management</span>
                 </a>
                 </div>
+                {% endif %}
                 <div class="nav-item">
                 <a class="nav-link {% if active_tab == 'activity_log' %}active{% endif %}" href="{% url 'admin_panel:activity_log' %}">
                         <i class="nav-icon fas fa-history"></i>
                         <span class="nav-text">Activity Log</span>
                 </a>
                 </div>
+                {% if is_super_admin %}
                 <div class="nav-item">
                 <a class="nav-link" href="{% url 'admin:index' %}">
                         <i class="nav-icon fas fa-tools"></i>
                         <span class="nav-text">Django Admin</span>
                 </a>
                 </div>
+                {% endif %}
                 <div class="nav-item">
                 <a class="nav-link" href="{% url 'admin_panel:logout' %}">
                         <i class="nav-icon fas fa-sign-out-alt"></i>
@@ -1275,7 +1317,7 @@
                         </div>
                         <div class="user-info">
                             <div class="user-name">{{ request.user.email|truncatechars:20 }}</div>
-                            <div class="user-role">Administrator</div>
+                            <div class="user-role">{{ user_role_display|default:"Administrator" }}</div>
                     </div>
                         <i class="fas fa-chevron-down" style="margin-left: 0.5rem;"></i>
                 </div>

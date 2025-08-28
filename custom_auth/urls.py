@@ -27,6 +27,12 @@ urlpatterns = [
     path('api/stores/featured/', api_views.featured_stores, name='featured_stores'),
     path('api/stores/search/', api_views.search_stores, name='search_stores'),
     
+    # Admin endpoints for managing featured status and priority
+    path('api/admin/artists/<int:artist_id>/toggle-featured/', api_views.toggle_artist_featured, name='toggle_artist_featured'),
+    path('api/admin/artists/<int:artist_id>/update-priority/', api_views.update_artist_priority, name='update_artist_priority'),
+    path('api/admin/stores/<int:store_id>/toggle-featured/', api_views.toggle_store_featured, name='toggle_store_featured'),
+    path('api/admin/stores/<int:store_id>/update-priority/', api_views.update_store_priority, name='update_store_priority'),
+    
     # Address management endpoints
     path('api/addresses/', address_views.list_user_addresses, name='list_addresses'),
     path('api/addresses/create/', address_views.create_address, name='create_address'),

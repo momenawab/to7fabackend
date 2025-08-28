@@ -78,11 +78,13 @@ class Customer(models.Model):
 class Artist(models.Model):
     """Artist profile model"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='artist_profile')
-    profile_picture = models.ImageField(upload_to='profile_pictures/artists/', blank=True, null=True)
+    profile_picture = models.ImageField(upload_to='profile_pictures/artists/', blank=True, null=True, help_text="Profile picture (required for new artists)")
     specialty = models.CharField(max_length=100, blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
     social_media = models.JSONField(default=dict, blank=True, null=True)
     is_verified = models.BooleanField(default=False)
+    is_featured_on_homepage = models.BooleanField(default=False, help_text="Show this artist in 'اشطر فنانين' section")
+    homepage_priority = models.PositiveIntegerField(default=0, help_text="Lower numbers appear first (0 = highest priority)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -94,12 +96,14 @@ class Store(models.Model):
     """Store profile model"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='store_profile')
     store_name = models.CharField(max_length=100)
-    logo = models.ImageField(upload_to='profile_pictures/stores/', blank=True, null=True)
+    logo = models.ImageField(upload_to='profile_pictures/stores/', blank=True, null=True, help_text="Store logo (required for new stores)")
     tax_id = models.CharField(max_length=50, blank=True, null=True)
     has_physical_store = models.BooleanField(default=False)
     physical_address = models.TextField(blank=True, null=True)
     social_media = models.JSONField(default=dict, blank=True, null=True)
     is_verified = models.BooleanField(default=False)
+    is_featured_on_homepage = models.BooleanField(default=False, help_text="Show this store in 'المتاجر الأكثر مبيعاً' section")
+    homepage_priority = models.PositiveIntegerField(default=0, help_text="Lower numbers appear first (0 = highest priority)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -151,7 +155,8 @@ class SellerApplication(models.Model):
     terms_accepted = models.BooleanField(default=False)
     terms_accepted_at = models.DateTimeField(blank=True, null=True)
     
-    # Documents
+    # Documents and Images
+    profile_picture = models.ImageField(upload_to='seller_applications/profiles/', blank=True, null=True, help_text="Profile picture for artists/stores (required for new applications)")
     business_license = models.FileField(upload_to='seller_applications/documents/', blank=True, null=True)
     id_document_front = models.FileField(upload_to='seller_applications/ids/', blank=True, null=True)
     id_document_back = models.FileField(upload_to='seller_applications/ids/', blank=True, null=True)

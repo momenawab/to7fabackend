@@ -501,10 +501,30 @@
             contentRefreshInterval: parseInt($('#listRefreshInterval').val())
         };
 
-        // Note: Implement the backend endpoint for saving display settings
-        showAlert('Display settings saved successfully', 'success');
-        loadPreviewData(); // Refresh preview
-        console.log('Display settings to save:', settings);
+        // Save to backend
+        fetch('/api/products/content-settings/', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() || $('meta[name=csrf-token]').attr('content')
+            },
+            body: JSON.stringify(settings)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Display settings saved successfully', 'success');
+                loadPreviewData(); // Refresh preview
+                loadArtists(); // Refresh artist data
+                loadStores(); // Refresh store data
+            } else {
+                showAlert('Failed to save settings: ' + (data.error || 'Unknown error'), 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error saving settings:', error);
+            showAlert('Failed to save settings: Network error', 'error');
+        });
     }
 
     // Artists Management Functions
@@ -546,10 +566,12 @@
                     <tr>
                         <td>
                             <img src="${avatarUrl}" alt="${artist.name}" class="rounded-circle" style="width: 40px; height: 40px; object-fit: cover;">
+                            ${artist.isFeatured ? '<div class="text-warning"><i class="fas fa-star" style="font-size: 0.7rem;"></i></div>' : ''}
                         </td>
                         <td>
                             <strong>${artist.name}</strong>
                             <br><small class="text-muted">${artist.email}</small>
+                            ${artist.isFeatured ? '<br><small class="text-warning"><i class="fas fa-star"></i> Featured on Homepage</small>' : ''}
                         </td>
                         <td>${artist.specialty || 'Not specified'}</td>
                         <td>
@@ -570,6 +592,9 @@
                                 </button>
                                 <button class="btn btn-sm btn-outline-warning" onclick="toggleArtistVerification('${artist.id}', ${!artist.isVerified})" title="${artist.isVerified ? 'Remove Verification' : 'Verify Artist'}">
                                     <i class="fas fa-${artist.isVerified ? 'times' : 'check'}"></i>
+                                </button>
+                                <button class="btn btn-sm ${artist.isFeatured ? 'btn-success' : 'btn-outline-secondary'}" onclick="toggleArtistFeatured('${artist.id}')" title="${artist.isFeatured ? 'Remove from Homepage' : 'Add to Homepage'}">
+                                    <i class="fas fa-star"></i>
                                 </button>
                                 <button class="btn btn-sm btn-outline-info" onclick="viewArtistProducts('${artist.id}')" title="View Products">
                                     <i class="fas fa-box"></i>
@@ -635,6 +660,30 @@
         console.log('View artist products:', id);
     }
 
+    function toggleArtistFeatured(artistId) {
+        fetch(`/api/auth/api/admin/artists/${artistId}/toggle-featured/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() || $('meta[name=csrf-token]').attr('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadArtists(); // Refresh artist table
+                loadPreviewData(); // Refresh preview
+            } else {
+                showAlert(data.message || 'Failed to toggle featured status', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error toggling artist featured status:', error);
+            showAlert('Network error occurred', 'error');
+        });
+    }
+
     // Stores Management Functions
     function loadStores() {
         $('#storesTable').html(`
@@ -675,10 +724,12 @@
                     <tr>
                         <td>
                             <img src="${logoUrl}" alt="${store.name}" class="rounded" style="width: 40px; height: 40px; object-fit: cover;">
+                            ${store.isFeatured ? '<div class="text-warning"><i class="fas fa-star" style="font-size: 0.7rem;"></i></div>' : ''}
                         </td>
                         <td>
                             <strong>${store.name}</strong>
                             <br><small class="text-muted">${store.email}</small>
+                            ${store.isFeatured ? '<br><small class="text-warning"><i class="fas fa-star"></i> Featured on Homepage</small>' : ''}
                         </td>
                         <td>
                             <span class="badge ${store.hasPhysicalStore ? 'bg-info' : 'bg-secondary'}">${storeType}</span>
@@ -701,6 +752,9 @@
                                 </button>
                                 <button class="btn btn-sm btn-outline-warning" onclick="toggleStoreVerification('${store.id}', ${!store.isVerified})" title="${store.isVerified ? 'Remove Verification' : 'Verify Store'}">
                                     <i class="fas fa-${store.isVerified ? 'times' : 'check'}"></i>
+                                </button>
+                                <button class="btn btn-sm ${store.isFeatured ? 'btn-success' : 'btn-outline-secondary'}" onclick="toggleStoreFeatured('${store.id}')" title="${store.isFeatured ? 'Remove from Homepage' : 'Add to Homepage'}">
+                                    <i class="fas fa-star"></i>
                                 </button>
                                 <button class="btn btn-sm btn-outline-info" onclick="viewStoreProducts('${store.id}')" title="View Products">
                                     <i class="fas fa-box"></i>
@@ -765,6 +819,30 @@
         // Note: Navigate to products page filtered by store
         showAlert('Redirecting to store products...', 'info');
         console.log('View store products:', id);
+    }
+
+    function toggleStoreFeatured(storeId) {
+        fetch(`/api/auth/api/admin/stores/${storeId}/toggle-featured/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val() || $('meta[name=csrf-token]').attr('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert(data.message, 'success');
+                loadStores(); // Refresh stores table
+                loadPreviewData(); // Refresh preview
+            } else {
+                showAlert(data.message || 'Failed to toggle featured status', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error toggling store featured status:', error);
+            showAlert('Network error occurred', 'error');
+        });
     }
 
     // Preview Functions

@@ -547,27 +547,100 @@ def advertisements(request):
         }
     })
 
-@api_view(['GET'])
+@api_view(['GET', 'PUT', 'POST'])
 @permission_classes([AllowAny])
 def content_settings(request):
-    """Get content display settings"""
-    settings = ContentSettings.get_settings()
+    """Get or update content display settings"""
+    if request.method == 'GET':
+        # Get current settings
+        settings = ContentSettings.get_settings()
 
-    return Response({
-        'showLatestOffers': settings.show_latest_offers,
-        'showFeaturedProducts': settings.show_featured_products,
-        'showTopArtists': settings.show_top_artists,
-        'showTopStores': settings.show_top_stores,
-        'showAdsSlider': settings.show_ads_slider,
-        'maxProductsPerSection': settings.max_products_per_section,
-        'maxArtistsToShow': settings.max_artists_to_show,
-        'maxStoresToShow': settings.max_stores_to_show,
-        'maxAdsToShow': settings.max_ads_to_show,
-        'adsRotationInterval': settings.ads_rotation_interval,
-        'contentRefreshInterval': settings.content_refresh_interval,
-        'enableContentCache': settings.enable_content_cache,
-        'cacheDuration': settings.cache_duration
-    })
+        return Response({
+            'showLatestOffers': settings.show_latest_offers,
+            'showFeaturedProducts': settings.show_featured_products,
+            'showTopArtists': settings.show_top_artists,
+            'showTopStores': settings.show_top_stores,
+            'showAdsSlider': settings.show_ads_slider,
+            'maxProductsPerSection': settings.max_products_per_section,
+            'maxArtistsToShow': settings.max_artists_to_show,
+            'maxStoresToShow': settings.max_stores_to_show,
+            'maxAdsToShow': settings.max_ads_to_show,
+            'adsRotationInterval': settings.ads_rotation_interval,
+            'contentRefreshInterval': settings.content_refresh_interval,
+            'enableContentCache': settings.enable_content_cache,
+            'cacheDuration': settings.cache_duration
+        })
+    
+    elif request.method in ['PUT', 'POST']:
+        # Only staff can update settings
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get current settings (singleton pattern)
+        settings = ContentSettings.get_settings()
+        
+        # Update settings from request data
+        data = request.data
+        if 'showTopArtists' in data:
+            settings.show_top_artists = data['showTopArtists']
+        if 'showTopStores' in data:
+            settings.show_top_stores = data['showTopStores']
+        if 'showLatestOffers' in data:
+            settings.show_latest_offers = data['showLatestOffers']
+        if 'showFeaturedProducts' in data:
+            settings.show_featured_products = data['showFeaturedProducts']
+        if 'showAdsSlider' in data:
+            settings.show_ads_slider = data['showAdsSlider']
+        if 'maxProductsPerSection' in data:
+            settings.max_products_per_section = data['maxProductsPerSection']
+        if 'maxArtistsToShow' in data:
+            settings.max_artists_to_show = data['maxArtistsToShow']
+        if 'maxStoresToShow' in data:
+            settings.max_stores_to_show = data['maxStoresToShow']
+        if 'maxAdsToShow' in data:
+            settings.max_ads_to_show = data['maxAdsToShow']
+        if 'adsRotationInterval' in data:
+            settings.ads_rotation_interval = data['adsRotationInterval']
+        if 'contentRefreshInterval' in data:
+            settings.content_refresh_interval = data['contentRefreshInterval']
+        if 'enableContentCache' in data:
+            settings.enable_content_cache = data['enableContentCache']
+        if 'cacheDuration' in data:
+            settings.cache_duration = data['cacheDuration']
+        
+        # Save the updated settings
+        settings.save()
+        
+        # Log admin activity
+        from admin_panel.models import AdminActivity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update_content_settings',
+            description='Updated homepage content display settings',
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({
+            'success': True,
+            'message': 'Content settings updated successfully',
+            'settings': {
+                'showLatestOffers': settings.show_latest_offers,
+                'showFeaturedProducts': settings.show_featured_products,
+                'showTopArtists': settings.show_top_artists,
+                'showTopStores': settings.show_top_stores,
+                'showAdsSlider': settings.show_ads_slider,
+                'maxProductsPerSection': settings.max_products_per_section,
+                'maxArtistsToShow': settings.max_artists_to_show,
+                'maxStoresToShow': settings.max_stores_to_show,
+                'maxAdsToShow': settings.max_ads_to_show,
+                'adsRotationInterval': settings.ads_rotation_interval,
+                'contentRefreshInterval': settings.content_refresh_interval,
+                'enableContentCache': settings.enable_content_cache,
+                'cacheDuration': settings.cache_duration
+            }
+        })
+    
+    return Response({"error": "Method not allowed"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 # Admin management endpoints for offers and featured products
 
@@ -623,11 +696,27 @@ def manage_offers(request):
                     'error': 'This product already has an active offer'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            # Parse datetime strings to timezone-aware datetimes
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone as tz
+            
+            start_date_str = request.data.get('start_date')
+            end_date_str = request.data.get('end_date')
+            
+            # Parse and make timezone-aware
+            start_date = parse_datetime(start_date_str)
+            end_date = parse_datetime(end_date_str)
+            
+            if start_date and not start_date.tzinfo:
+                start_date = tz.make_aware(start_date)
+            if end_date and not end_date.tzinfo:
+                end_date = tz.make_aware(end_date)
+
             offer = ProductOffer.objects.create(
                 product=product,
                 discount_percentage=request.data.get('discount_percentage'),
-                start_date=request.data.get('start_date'),
-                end_date=request.data.get('end_date'),
+                start_date=start_date,
+                end_date=end_date,
                 description=request.data.get('description', ''),
                 is_active=request.data.get('is_active', True)
             )
