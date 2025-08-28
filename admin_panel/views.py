@@ -25,7 +25,16 @@ from support.models import SupportTicket, SupportCategory, SupportMessage
 
 # Helper function to check if user is admin
 def is_admin(user):
-    return user.is_staff or user.is_superuser
+    # Check if user is staff or superuser
+    if user.is_staff or user.is_superuser:
+        return True
+    
+    # Check if user has admin profile
+    try:
+        admin_profile = user.admin_profile
+        return admin_profile.is_active and admin_profile.can_login
+    except AttributeError:
+        return False
 
 # Authentication views
 def admin_login(request):
