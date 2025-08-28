@@ -37,12 +37,43 @@ class CartItemSerializer(serializers.ModelSerializer):
     product = ProductMinimalSerializer(read_only=True)
     product_id = serializers.IntegerField(write_only=True)
     line_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    current_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    has_offer = serializers.SerializerMethodField()
+    original_price = serializers.SerializerMethodField()
     
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'product_id', 'quantity', 'selected_variants', 'variant_id', 'line_total', 'added_at', 'updated_at']
-        read_only_fields = ['id', 'line_total', 'added_at', 'updated_at']
+        fields = ['id', 'product', 'product_id', 'quantity', 'selected_variants', 'variant_id', 'line_total', 'current_price', 'has_offer', 'original_price', 'added_at', 'updated_at']
+        read_only_fields = ['id', 'line_total', 'current_price', 'has_offer', 'original_price', 'added_at', 'updated_at']
         
+    def get_has_offer(self, obj):
+        """Check if the product has an active offer"""
+        from django.utils import timezone
+        now = timezone.now()
+        
+        active_offer = obj.product.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).exists()
+        
+        return active_offer
+    
+    def get_original_price(self, obj):
+        """Get the original price (before offer) if product has an offer"""
+        from django.utils import timezone
+        now = timezone.now()
+        
+        active_offer = obj.product.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).first()
+        
+        if active_offer:
+            return obj.product.price
+        return None
+    
     def to_representation(self, instance):
         """Override to pass context to nested serializers"""
         representation = super().to_representation(instance)

@@ -114,13 +114,22 @@ class ProductSerializer(serializers.ModelSerializer):
     colors = serializers.SerializerMethodField()
     sizes = serializers.SerializerMethodField()
     
+    # Offer-related fields
+    is_offer = serializers.SerializerMethodField()
+    offer_price = serializers.SerializerMethodField()
+    original_price = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
+    discount_text = serializers.SerializerMethodField()
+    display_price = serializers.SerializerMethodField()
+    
     class Meta:
         model = Product
         fields = ('id', 'name', 'description', 'base_price', 'price', 'stock', 'stock_quantity', 'category', 'category_name', 
                  'seller', 'seller_name', 'is_featured', 'is_active', 'approval_status', 'rejection_reason', 'created_at', 
                  'updated_at', 'images', 'average_rating', 'selected_variants', 'available_variant_types',
                  'price_range', 'stock_status', 'has_variants', 'colors', 'sizes', 'combination_stocks',
-                 'featured_request_pending', 'offers_request_pending', 'featured_requested_at', 'offers_requested_at')
+                 'featured_request_pending', 'offers_request_pending', 'featured_requested_at', 'offers_requested_at',
+                 'is_offer', 'offer_price', 'original_price', 'discount_percentage', 'discount_text', 'display_price')
         read_only_fields = ('seller',)
     
     def get_stock_status(self, obj):
@@ -155,6 +164,65 @@ class ProductSerializer(serializers.ModelSerializer):
             if variant_type.name.lower() in ['حجم', 'size', 'الحجم']:
                 sizes.extend([option.value for option in variant_type.options.filter(is_active=True)])
         return sizes if sizes else ['20x30cm', '30x40cm', '40x50cm']  # Default fallback
+    
+    def get_is_offer(self, obj):
+        """Check if product has an active offer"""
+        from django.utils import timezone
+        now = timezone.now()
+        
+        return obj.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).exists()
+    
+    def get_offer_price(self, obj):
+        """Get the offer price if available"""
+        from django.utils import timezone
+        now = timezone.now()
+        
+        active_offer = obj.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).first()
+        
+        if active_offer:
+            return float(active_offer.offer_price)
+        return None
+    
+    def get_original_price(self, obj):
+        """Get the original price (always the base price)"""
+        return float(obj.price)
+    
+    def get_discount_percentage(self, obj):
+        """Get the discount percentage if available"""
+        from django.utils import timezone
+        now = timezone.now()
+        
+        active_offer = obj.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).first()
+        
+        if active_offer:
+            return active_offer.discount_percentage
+        return None
+    
+    def get_discount_text(self, obj):
+        """Get the discount text for display"""
+        discount_percentage = self.get_discount_percentage(obj)
+        if discount_percentage:
+            return f"{int(discount_percentage)}% OFF"
+        return ""
+    
+    def get_display_price(self, obj):
+        """Get the price to display (offer price if available, original price otherwise)"""
+        offer_price = self.get_offer_price(obj)
+        if offer_price is not None:
+            return offer_price
+        return float(obj.price)
     
     def create(self, validated_data):
         from django.utils import timezone
