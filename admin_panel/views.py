@@ -2399,11 +2399,12 @@ def create_admin_user(request):
     
     try:
         data = json.loads(request.body)
+        print(f"DEBUG: Received data for admin creation: {data}")  # Debug output
         
         # Validate required fields
         email = data.get('email', '').strip()
         password = data.get('password', '').strip()
-        role_id = data.get('role_id')
+        role_id = data.get('role') or data.get('role_id')  # Accept both 'role' and 'role_id'
         additional_permissions = data.get('additional_permissions', [])
         
         if not email or not password or not role_id:
@@ -2435,6 +2436,8 @@ def create_admin_user(request):
         admin_profile = AdminUser.objects.create(
             user=user,
             role=role,
+            is_active=data.get('is_active', True),
+            can_login=data.get('can_login', True),
             created_by=request.user
         )
         
@@ -2444,12 +2447,17 @@ def create_admin_user(request):
             admin_profile.additional_permissions.set(permissions)
         
         # Log admin activity
-        AdminActivity.objects.create(
-            admin=request.user,
-            action='create',
-            description=f"Created admin user: {email} with role: {role.display_name}",
-            ip_address=request.META.get('REMOTE_ADDR')
-        )
+        try:
+            from .models import AdminActivity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='create',
+                description=f"Created admin user: {email} with role: {role.display_name}",
+                ip_address=request.META.get('REMOTE_ADDR')
+            )
+        except Exception as log_error:
+            # Don't fail user creation if logging fails
+            print(f"Failed to log admin activity: {log_error}")
         
         return JsonResponse({
             'success': True,
@@ -2458,8 +2466,12 @@ def create_admin_user(request):
         })
         
     except AdminRole.DoesNotExist:
+        print(f"DEBUG: AdminRole.DoesNotExist - role_id: {role_id}")
         return JsonResponse({'success': False, 'message': 'Invalid role selected'})
     except Exception as e:
+        print(f"DEBUG: Exception in create_admin_user: {e}")
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
 
