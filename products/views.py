@@ -24,25 +24,25 @@ def product_list(request):
     if request.method == 'GET':
         # Get active products only
         products = Product.objects.filter(is_active=True).order_by('-created_at')
-        
+
         # Filter by category if provided
         category_id = request.query_params.get('category')
         if category_id:
             products = products.filter(category_id=category_id)
-            
+
         # Filter by featured if provided
         featured = request.query_params.get('featured')
         if featured and featured.lower() == 'true':
             products = products.filter(is_featured=True)
-        
+
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
-    
+
     elif request.method == 'POST':
         # Only authenticated users can create products
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         serializer = ProductSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             product = serializer.save()
@@ -57,26 +57,26 @@ def product_detail(request, pk):
         product = Product.objects.get(pk=pk, is_active=True)
     except Product.DoesNotExist:
         return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         serializer = ProductDetailSerializer(product)
         return Response(serializer.data)
-    
+
     # For PUT and DELETE, check if the user is the seller
     if not request.user.is_authenticated:
         return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-    
+
     if product.seller != request.user:
-        return Response({"error": "You don't have permission to modify this product"}, 
+        return Response({"error": "You don't have permission to modify this product"},
                         status=status.HTTP_403_FORBIDDEN)
-    
+
     if request.method == 'PUT':
         serializer = ProductSerializer(product, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     elif request.method == 'DELETE':
         product.delete()
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
@@ -87,20 +87,20 @@ def product_search(request):
     """Search products by name, description, or category"""
     query = request.query_params.get('q', '')
     if not query:
-        return Response({"error": "Search query parameter 'q' is required"}, 
+        return Response({"error": "Search query parameter 'q' is required"},
                         status=status.HTTP_400_BAD_REQUEST)
-    
+
     # Search in name and description
     products = Product.objects.filter(
         Q(name__icontains=query) | Q(description__icontains=query),
         is_active=True
     ).order_by('-created_at')
-    
+
     # Filter by category if provided
     category_id = request.query_params.get('category')
     if category_id:
         products = products.filter(category_id=category_id)
-    
+
     serializer = ProductSerializer(products, many=True)
     return Response({
         "query": query,
@@ -117,27 +117,27 @@ def product_reviews(request, pk):
         product = Product.objects.get(pk=pk, is_active=True)
     except Product.DoesNotExist:
         return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         reviews = Review.objects.filter(product=product).order_by('-created_at')
         serializer = ReviewSerializer(reviews, many=True)
         return Response(serializer.data)
-    
+
     elif request.method == 'POST':
         # Only authenticated users can add reviews
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         # Check if user has already reviewed this product
         if Review.objects.filter(product=product, user=request.user).exists():
-            return Response({"error": "You have already reviewed this product"}, 
+            return Response({"error": "You have already reviewed this product"},
                             status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Create review
         data = request.data.copy()
         data['product'] = pk
         serializer = ReviewSerializer(data=data, context={'request': request})
-        
+
         if serializer.is_valid():
             serializer.save(user=request.user, product=product)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -151,15 +151,15 @@ def category_list(request):
         categories = Category.objects.filter(is_active=True)
         serializer = CategorySerializer(categories, many=True)
         return Response(serializer.data)
-    
+
     elif request.method == 'POST':
         # Only authenticated users with staff permissions can create categories
         if not request.user.is_authenticated:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         if not request.user.is_staff:
             return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-        
+
         serializer = CategorySerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -174,17 +174,17 @@ def category_detail(request, pk):
         category = Category.objects.get(pk=pk)
     except Category.DoesNotExist:
         return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         serializer = CategorySerializer(category)
-        
+
         # Get products in this category AND all its subcategories
         # This is crucial for ReactiveSubcategorySections to work properly
         if category.parent is None:
             # For main categories: get direct products + all subcategory products
             subcategories = Category.objects.filter(parent=category, is_active=True)
             subcategory_ids = [sub.id for sub in subcategories]
-            
+
             # Get products from main category and all its subcategories
             products = Product.objects.filter(
                 category_id__in=[category.id] + subcategory_ids,
@@ -193,9 +193,9 @@ def category_detail(request, pk):
         else:
             # For subcategories: only get products directly assigned to this subcategory
             products = Product.objects.filter(category=category, is_active=True)
-        
+
         product_serializer = ProductSerializer(products, many=True)
-        
+
         # Include subcategories in response for ReactiveSubcategorySections
         if category.parent is None:
             # For main categories, include subcategories list with section control info
@@ -205,7 +205,7 @@ def category_detail(request, pk):
                 section_enabled = True  # Default to enabled
                 max_products = 4  # Default max products
                 section_priority = 0  # Default priority
-                
+
                 try:
                     from .models import SubcategorySectionControl
                     section_control = SubcategorySectionControl.objects.get(subcategory=sub)
@@ -214,7 +214,7 @@ def category_detail(request, pk):
                     section_priority = section_control.section_priority
                 except SubcategorySectionControl.DoesNotExist:
                     pass  # Use defaults
-                
+
                 subcategories_data.append({
                     'id': sub.id,
                     'name': sub.name,
@@ -226,7 +226,7 @@ def category_detail(request, pk):
                     'max_products': max_products,
                     'section_priority': section_priority,
                 })
-            
+
             return Response({
                 "category": serializer.data,
                 "products": product_serializer.data,
@@ -238,21 +238,21 @@ def category_detail(request, pk):
                 "category": serializer.data,
                 "products": product_serializer.data
             })
-    
+
     # Only staff can update or delete categories
     if not request.user.is_authenticated:
         return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-    
+
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     if request.method == 'PUT':
         serializer = CategorySerializer(category, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     elif request.method == 'DELETE':
         category.delete()
         return Response({"message": "Category deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
@@ -263,14 +263,14 @@ def seller_products(request):
     """Get all products for the authenticated seller or create a new product"""
     # Check if the user is a seller (artist or store)
     if request.user.user_type not in ['artist', 'store']:
-        return Response({"error": "Only sellers can access this endpoint"}, 
+        return Response({"error": "Only sellers can access this endpoint"},
                         status=status.HTTP_403_FORBIDDEN)
-    
+
     if request.method == 'GET':
         products = Product.objects.filter(seller=request.user).order_by('-created_at')
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
-    
+
     elif request.method == 'POST':
         serializer = ProductSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
@@ -284,26 +284,26 @@ def seller_product_detail(request, pk):
     """Get, update or delete a seller's product"""
     # Check if the user is a seller (artist or store)
     if request.user.user_type not in ['artist', 'store']:
-        return Response({"error": "Only sellers can access this endpoint"}, 
+        return Response({"error": "Only sellers can access this endpoint"},
                         status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         product = Product.objects.get(pk=pk, seller=request.user)
     except Product.DoesNotExist:
-        return Response({"error": "Product not found or you don't have permission to access it"}, 
+        return Response({"error": "Product not found or you don't have permission to access it"},
                         status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         serializer = ProductDetailSerializer(product)
         return Response(serializer.data)
-    
+
     elif request.method == 'PUT':
         serializer = ProductSerializer(product, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     elif request.method == 'DELETE':
         product.delete()
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
@@ -319,7 +319,7 @@ def latest_offers(request):
         limit = int(limit)
     except (ValueError, TypeError):
         limit = 10
-    
+
     # Get settings to check if this section should be shown
     settings = ContentSettings.get_settings()
     if not settings.show_latest_offers:
@@ -328,7 +328,7 @@ def latest_offers(request):
             'count': 0,
             'message': 'Latest offers section is currently disabled'
         })
-    
+
     # Get current active offers
     now = timezone.now()
     offers = ProductOffer.objects.filter(
@@ -337,7 +337,7 @@ def latest_offers(request):
         end_date__gte=now,
         product__is_active=True
     ).select_related('product', 'product__category').order_by('-created_at')[:min(limit, settings.max_products_per_section)]
-    
+
     # Serialize the products with offer information
     results = []
     for offer in offers:
@@ -354,7 +354,7 @@ def latest_offers(request):
             'is_offer': True
         })
         results.append(product_data)
-    
+
     return Response({
         'results': results,
         'count': len(results),
@@ -373,7 +373,7 @@ def featured_products(request):
         limit = int(limit)
     except (ValueError, TypeError):
         limit = 10
-    
+
     # Get settings to check if this section should be shown
     settings = ContentSettings.get_settings()
     if not settings.show_featured_products:
@@ -382,7 +382,7 @@ def featured_products(request):
             'count': 0,
             'message': 'Featured products section is currently disabled'
         })
-    
+
     # Get current featured products from FeaturedProduct model
     now = timezone.now()
     featured_products = FeaturedProduct.objects.filter(
@@ -391,7 +391,7 @@ def featured_products(request):
     ).filter(
         Q(featured_until__isnull=True) | Q(featured_until__gte=now)
     ).select_related('product', 'product__category').order_by('priority', '-featured_since')[:min(limit, settings.max_products_per_section)]
-    
+
     # Serialize the products with featured information
     results = []
     for featured in featured_products:
@@ -405,7 +405,7 @@ def featured_products(request):
             'featured_priority': featured.priority,
             'is_featured': True
         })
-        
+
         # Check if this product also has an active offer
         active_offer = ProductOffer.objects.filter(
             product=featured.product,
@@ -413,7 +413,7 @@ def featured_products(request):
             start_date__lte=now,
             end_date__gte=now
         ).first()
-        
+
         if active_offer:
             product_data.update({
                 'offer_id': active_offer.id,
@@ -426,9 +426,9 @@ def featured_products(request):
                 'is_offer': True,
                 'has_both_featured_and_offer': True
             })
-        
+
         results.append(product_data)
-    
+
     return Response({
         'results': results,
         'count': len(results),
@@ -447,10 +447,10 @@ def top_rated_products(request):
         limit = int(limit)
     except (ValueError, TypeError):
         limit = 10
-    
+
     # Get settings
     settings = ContentSettings.get_settings()
-    
+
     # Get products with reviews and order by average rating
     products = Product.objects.filter(
         is_active=True,
@@ -460,7 +460,7 @@ def top_rated_products(request):
     ).filter(
         review_count__gt=0
     ).order_by('-created_at')[:min(limit, settings.max_products_per_section)]
-    
+
     serializer = ProductSerializer(products, many=True)
     return Response({
         'results': serializer.data,
@@ -483,19 +483,19 @@ def advertisements(request):
             'count': 0,
             'message': 'Ads slider is currently disabled'
         })
-    
+
     # Get category parameter from query string
     category_id = request.query_params.get('category')
-    
+
     # Base query for active ads
     ads_query = Advertisement.objects.filter(is_active=True)
-    
+
     if category_id:
         try:
             # Filter ads for specific category
             category_id = int(category_id)
             ads_query = ads_query.filter(category_id=category_id)
-            
+
             # Verify category exists
             try:
                 category = Category.objects.get(id=category_id)
@@ -506,7 +506,7 @@ def advertisements(request):
                     'count': 0,
                     'message': 'Category not found'
                 }, status=status.HTTP_404_NOT_FOUND)
-                
+
         except (ValueError, TypeError):
             return Response({
                 'error': 'Invalid category ID'
@@ -515,11 +515,11 @@ def advertisements(request):
         # Main page ads - show ads with show_on_main=True and category=None
         ads_query = ads_query.filter(show_on_main=True, category__isnull=True)
         category_name = 'Main Page'
-    
+
     # Get ads with limit and count before slicing
     ads_count = ads_query.count()
     ads = ads_query.order_by('order', '-created_at')[:settings.max_ads_to_show]
-    
+
     ads_data = []
     for ad in ads:
         ads_data.append({
@@ -534,7 +534,7 @@ def advertisements(request):
             'category_name': ad.category.name if ad.category else None,
             'display_location': ad.display_location
         })
-    
+
     return Response({
         'results': ads_data,
         'count': len(ads_data),
@@ -552,7 +552,7 @@ def advertisements(request):
 def content_settings(request):
     """Get content display settings"""
     settings = ContentSettings.get_settings()
-    
+
     return Response({
         'showLatestOffers': settings.show_latest_offers,
         'showFeaturedProducts': settings.show_featured_products,
@@ -578,11 +578,11 @@ def manage_offers(request):
     """Manage product offers for admin dashboard"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     if request.method == 'GET':
         # Get all offers with product details
         offers = ProductOffer.objects.select_related('product', 'product__category').order_by('-created_at')
-        
+
         results = []
         for offer in offers:
             product_data = ProductSerializer(offer.product).data
@@ -600,29 +600,29 @@ def manage_offers(request):
                 'created_at': offer.created_at.isoformat()
             })
             results.append(product_data)
-        
+
         return Response({
             'results': results,
             'count': len(results)
         })
-    
+
     elif request.method == 'POST':
         # Create new offer
         try:
             product_id = request.data.get('product_id')
             product = Product.objects.get(id=product_id, is_active=True)
-            
+
             # Check if product already has an active offer
             existing_offer = ProductOffer.objects.filter(
                 product=product,
                 is_active=True
             ).first()
-            
+
             if existing_offer:
                 return Response({
                     'error': 'This product already has an active offer'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             offer = ProductOffer.objects.create(
                 product=product,
                 discount_percentage=request.data.get('discount_percentage'),
@@ -631,7 +631,7 @@ def manage_offers(request):
                 description=request.data.get('description', ''),
                 is_active=request.data.get('is_active', True)
             )
-            
+
             # Also feature the product if requested
             if request.data.get('also_feature', False):
                 featured, created = FeaturedProduct.objects.get_or_create(
@@ -642,12 +642,12 @@ def manage_offers(request):
                         'is_active': True
                     }
                 )
-            
+
             return Response({
                 'message': 'Offer created successfully',
                 'offer_id': offer.id
             }, status=status.HTTP_201_CREATED)
-            
+
         except Product.DoesNotExist:
             return Response({
                 'error': 'Product not found'
@@ -667,7 +667,7 @@ def manage_offer_detail(request, offer_id):
         return Response({
             'error': 'Offer not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         product_data = ProductSerializer(offer.product).data
         product_data.update({
@@ -683,7 +683,7 @@ def manage_offer_detail(request, offer_id):
             'is_offer_valid': offer.is_valid
         })
         return Response(product_data)
-    
+
     elif request.method == 'PUT':
         # Update offer
         offer.discount_percentage = request.data.get('discount_percentage', offer.discount_percentage)
@@ -692,11 +692,11 @@ def manage_offer_detail(request, offer_id):
         offer.description = request.data.get('description', offer.description)
         offer.is_active = request.data.get('is_active', offer.is_active)
         offer.save()
-        
+
         return Response({
             'message': 'Offer updated successfully'
         })
-    
+
     elif request.method == 'DELETE':
         offer.delete()
         return Response({
@@ -710,11 +710,11 @@ def manage_featured_products(request):
     """Manage featured products for admin dashboard"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     if request.method == 'GET':
         # Get all featured products
         featured_products = FeaturedProduct.objects.select_related('product', 'product__category').order_by('priority', '-featured_since')
-        
+
         results = []
         for featured in featured_products:
             product_data = ProductSerializer(featured.product).data
@@ -728,29 +728,29 @@ def manage_featured_products(request):
                 'is_featured_valid': featured.is_valid
             })
             results.append(product_data)
-        
+
         return Response({
             'results': results,
             'count': len(results)
         })
-    
+
     elif request.method == 'POST':
         # Feature a product
         try:
             product_id = request.data.get('product_id')
             product = Product.objects.get(id=product_id, is_active=True)
-            
+
             # Check if product is already featured
             existing_featured = FeaturedProduct.objects.filter(
                 product=product,
                 is_active=True
             ).first()
-            
+
             if existing_featured:
                 return Response({
                     'error': 'This product is already featured'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             featured = FeaturedProduct.objects.create(
                 product=product,
                 priority=request.data.get('priority', 0),
@@ -758,12 +758,12 @@ def manage_featured_products(request):
                 reason=request.data.get('reason', ''),
                 is_active=request.data.get('is_active', True)
             )
-            
+
             return Response({
                 'message': 'Product featured successfully',
                 'featured_id': featured.id
             }, status=status.HTTP_201_CREATED)
-            
+
         except Product.DoesNotExist:
             return Response({
                 'error': 'Product not found'
@@ -783,7 +783,7 @@ def manage_featured_detail(request, featured_id):
         return Response({
             'error': 'Featured product not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         product_data = ProductSerializer(featured.product).data
         product_data.update({
@@ -796,7 +796,7 @@ def manage_featured_detail(request, featured_id):
             'is_featured_valid': featured.is_valid
         })
         return Response(product_data)
-    
+
     elif request.method == 'PUT':
         # Update featured product
         featured.priority = request.data.get('priority', featured.priority)
@@ -804,11 +804,11 @@ def manage_featured_detail(request, featured_id):
         featured.reason = request.data.get('reason', featured.reason)
         featured.is_active = request.data.get('is_active', featured.is_active)
         featured.save()
-        
+
         return Response({
             'message': 'Featured product updated successfully'
         })
-    
+
     elif request.method == 'DELETE':
         featured.delete()
         return Response({
@@ -822,12 +822,12 @@ def toggle_product_featured(request, product_id):
     """Toggle featured status of a product"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         product = Product.objects.get(id=product_id, is_active=True)
-        
+
         featured = FeaturedProduct.objects.filter(product=product).first()
-        
+
         if featured:
             # Remove from featured
             featured.delete()
@@ -843,12 +843,12 @@ def toggle_product_featured(request, product_id):
             )
             message = 'Product added to featured'
             is_featured = True
-        
+
         return Response({
             'message': message,
             'is_featured': is_featured
         })
-        
+
     except Product.DoesNotExist:
         return Response({
             'error': 'Product not found'
@@ -863,7 +863,7 @@ def manage_advertisements(request):
     if request.method == 'GET':
         # Get all advertisements for admin management
         ads = Advertisement.objects.select_related('category').all().order_by('category', 'order', '-created_at')
-        
+
         ads_data = []
         for ad in ads:
             ads_data.append({
@@ -881,12 +881,12 @@ def manage_advertisements(request):
                 'created_at': ad.created_at.isoformat(),
                 'updated_at': ad.updated_at.isoformat()
             })
-        
+
         return Response({
             'results': ads_data,
             'count': len(ads_data)
         })
-    
+
     elif request.method == 'POST':
         # Create new advertisement
         try:
@@ -896,13 +896,13 @@ def manage_advertisements(request):
                 return Response({
                     'error': 'Title is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             image_url = request.data.get('imageUrl', '').strip()
             if not image_url:
                 return Response({
                     'error': 'Image URL is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # Handle category assignment
             category = None
             category_id = request.data.get('category_id')
@@ -913,7 +913,7 @@ def manage_advertisements(request):
                     return Response({
                         'error': 'Category not found'
                     }, status=status.HTTP_404_NOT_FOUND)
-            
+
             # Create the advertisement
             ad = Advertisement.objects.create(
                 title=title,
@@ -925,7 +925,7 @@ def manage_advertisements(request):
                 show_on_main=request.data.get('showOnMain', True),
                 order=request.data.get('order', 0)
             )
-            
+
             return Response({
                 'id': str(ad.id),
                 'title': ad.title,
@@ -941,7 +941,7 @@ def manage_advertisements(request):
                 'created_at': ad.created_at.isoformat(),
                 'message': 'Advertisement created successfully'
             }, status=status.HTTP_201_CREATED)
-            
+
         except Exception as e:
             return Response({
                 'error': f'Failed to create advertisement: {str(e)}'
@@ -957,7 +957,7 @@ def manage_advertisement_detail(request, ad_id):
         return Response({
             'error': 'Advertisement not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     if request.method == 'GET':
         return Response({
             'id': str(ad.id),
@@ -974,7 +974,7 @@ def manage_advertisement_detail(request, ad_id):
             'created_at': ad.created_at.isoformat(),
             'updated_at': ad.updated_at.isoformat()
         })
-    
+
     elif request.method == 'PUT':
         # Update advertisement
         try:
@@ -1003,9 +1003,9 @@ def manage_advertisement_detail(request, ad_id):
                         }, status=status.HTTP_404_NOT_FOUND)
                 else:
                     ad.category = None
-            
+
             ad.save()
-            
+
             return Response({
                 'id': str(ad.id),
                 'title': ad.title,
@@ -1017,12 +1017,12 @@ def manage_advertisement_detail(request, ad_id):
                 'updated_at': ad.updated_at.isoformat(),
                 'message': 'Advertisement updated successfully'
             })
-            
+
         except Exception as e:
             return Response({
                 'error': f'Failed to update advertisement: {str(e)}'
             }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     elif request.method == 'DELETE':
         ad.delete()
         return Response({
@@ -1038,14 +1038,14 @@ def manage_categories(request):
     """Get all categories for admin management with hierarchical structure"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     # Get all categories
     categories = Category.objects.all().order_by('name')
-    
+
     # Build hierarchical structure
     parent_categories = []
     category_dict = {}
-    
+
     # First pass: create dictionary of all categories
     for category in categories:
         category_data = {
@@ -1062,7 +1062,7 @@ def manage_categories(request):
             'children': []
         }
         category_dict[category.id] = category_data
-    
+
     # Second pass: build hierarchy
     for category in categories:
         category_data = category_dict[category.id]
@@ -1073,7 +1073,7 @@ def manage_categories(request):
         else:
             # This is a parent category
             parent_categories.append(category_data)
-    
+
     return Response({
         'results': parent_categories,
         'total_count': categories.count(),
@@ -1088,28 +1088,28 @@ def create_category(request):
     """Create a new category or subcategory"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     # Debug logging (can be removed in production)
     print(f"Create request data: {request.data}")
     print(f"Create request content type: {request.content_type}")
     print(f"Create is_active value: {request.data.get('is_active')} (type: {type(request.data.get('is_active'))})")
-    
+
     try:
         name = request.data.get('name', '').strip()
         if not name:
             return Response({
                 'error': 'Category name is required'
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         # Check if category with this name already exists
         if Category.objects.filter(name__iexact=name).exists():
             return Response({
                 'error': 'A category with this name already exists'
             }, status=status.HTTP_400_BAD_REQUEST)
-        
+
         parent_id = request.data.get('parent_id')
         parent_category = None
-        
+
         if parent_id:
             try:
                 parent_category = Category.objects.get(id=parent_id)
@@ -1122,26 +1122,26 @@ def create_category(request):
                 return Response({
                     'error': 'Parent category not found'
                 }, status=status.HTTP_404_NOT_FOUND)
-        
+
         # Handle is_active field properly
         is_active_value = request.data.get('is_active', True)
         if isinstance(is_active_value, str):
             is_active = is_active_value.lower() in ['true', '1', 'yes', 'on']
         else:
             is_active = bool(is_active_value)
-        
+
         category = Category.objects.create(
             name=name,
             description=request.data.get('description', '').strip(),
             parent=parent_category,
             is_active=is_active
         )
-        
+
         # Handle image upload if provided
         if 'image' in request.FILES:
             category.image = request.FILES['image']
             category.save()
-        
+
         return Response({
             'id': category.id,
             'name': category.name,
@@ -1153,7 +1153,7 @@ def create_category(request):
             'created_at': category.created_at.isoformat(),
             'message': f'Category "{category.name}" created successfully'
         }, status=status.HTTP_201_CREATED)
-        
+
     except Exception as e:
         return Response({
             'error': f'Failed to create category: {str(e)}'
@@ -1166,14 +1166,14 @@ def manage_category_detail(request, category_id):
     """Get category details with products and subcategories"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
         return Response({
             'error': 'Category not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     # Get subcategories
     subcategories = Category.objects.filter(parent=category).order_by('name')
     subcategory_data = [{
@@ -1184,7 +1184,7 @@ def manage_category_detail(request, category_id):
         'is_active': sub.is_active,
         'product_count': sub.products.count()
     } for sub in subcategories]
-    
+
     # Get products in this category
     products = Product.objects.filter(category=category).order_by('-created_at')[:10]  # Latest 10 products
     product_data = [{
@@ -1195,7 +1195,7 @@ def manage_category_detail(request, category_id):
         'seller_name': product.seller_name,
         'created_at': product.created_at.isoformat()
     } for product in products]
-    
+
     return Response({
         'id': category.id,
         'name': category.name,
@@ -1219,19 +1219,19 @@ def update_category(request, category_id):
     """Update category details"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     # Debug logging (can be removed in production)
     print(f"Request data: {request.data}")
     print(f"Request content type: {request.content_type}")
     print(f"Is_active value: {request.data.get('is_active')} (type: {type(request.data.get('is_active'))})")
-    
+
     try:
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
         return Response({
             'error': 'Category not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     try:
         # Update name if provided
         if 'name' in request.data:
@@ -1240,19 +1240,19 @@ def update_category(request, category_id):
                 return Response({
                     'error': 'Category name cannot be empty'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # Check if another category with this name exists
             if Category.objects.filter(name__iexact=new_name).exclude(id=category_id).exists():
                 return Response({
                     'error': 'A category with this name already exists'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             category.name = new_name
-        
+
         # Update other fields
         if 'description' in request.data:
             category.description = request.data['description'].strip()
-        
+
         if 'is_active' in request.data:
             # Handle both boolean and string values
             is_active_value = request.data['is_active']
@@ -1260,7 +1260,7 @@ def update_category(request, category_id):
                 category.is_active = is_active_value.lower() in ['true', '1', 'yes', 'on']
             else:
                 category.is_active = bool(is_active_value)
-        
+
         # Handle parent change
         if 'parent_id' in request.data:
             parent_id = request.data['parent_id']
@@ -1272,19 +1272,19 @@ def update_category(request, category_id):
                         return Response({
                             'error': 'Category cannot be its own parent'
                         }, status=status.HTTP_400_BAD_REQUEST)
-                    
+
                     # Prevent deep nesting
                     if parent_category.parent:
                         return Response({
                             'error': 'Cannot move category under a subcategory. Only 2-level hierarchy is supported.'
                         }, status=status.HTTP_400_BAD_REQUEST)
-                    
+
                     # Prevent moving parent under its child
                     if category.children.filter(id=parent_category.id).exists():
                         return Response({
                             'error': 'Cannot move category under its own subcategory'
                         }, status=status.HTTP_400_BAD_REQUEST)
-                    
+
                     category.parent = parent_category
                 except Category.DoesNotExist:
                     return Response({
@@ -1292,13 +1292,13 @@ def update_category(request, category_id):
                     }, status=status.HTTP_404_NOT_FOUND)
             else:
                 category.parent = None
-        
+
         # Handle image upload
         if 'image' in request.FILES:
             category.image = request.FILES['image']
-        
+
         category.save()
-        
+
         return Response({
             'id': category.id,
             'name': category.name,
@@ -1310,7 +1310,7 @@ def update_category(request, category_id):
             'updated_at': category.updated_at.isoformat(),
             'message': f'Category "{category.name}" updated successfully'
         })
-        
+
     except Exception as e:
         return Response({
             'error': f'Failed to update category: {str(e)}'
@@ -1323,31 +1323,31 @@ def delete_category(request, category_id):
     """Delete a category"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
         return Response({
             'error': 'Category not found'
         }, status=status.HTTP_404_NOT_FOUND)
-    
+
     # Check if category has products
     product_count = category.products.count()
     if product_count > 0:
         return Response({
             'error': f'Cannot delete category. It contains {product_count} products. Please move or delete the products first.'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     # Check if category has subcategories
     subcategory_count = category.children.count()
     if subcategory_count > 0:
         return Response({
             'error': f'Cannot delete category. It has {subcategory_count} subcategories. Please delete or move the subcategories first.'
         }, status=status.HTTP_400_BAD_REQUEST)
-    
+
     category_name = category.name
     category.delete()
-    
+
     return Response({
         'message': f'Category "{category_name}" deleted successfully'
     }, status=status.HTTP_204_NO_CONTENT)
@@ -1362,7 +1362,7 @@ def get_attribute_options(request, attribute_type):
     """Get all options for a specific attribute type"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         attribute = ProductAttribute.objects.get(attribute_type=attribute_type)
         options = attribute.options.all().order_by('sort_order')
@@ -1379,7 +1379,7 @@ def get_category_attributes(request, category_id):
     """Get all attributes for a specific category"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         category = Category.objects.get(id=category_id)
         category_attributes = category.category_attributes.all().order_by('sort_order')
@@ -1396,23 +1396,23 @@ def update_category_attributes(request, category_id):
     """Update which attributes and options are available for a category"""
     if not request.user.is_staff:
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-    
+
     try:
         import json
         data = json.loads(request.body)
-        
+
         category = Category.objects.get(id=category_id)
-        
+
         # Clear existing category attributes
         CategoryAttribute.objects.filter(category=category).delete()
-        
+
         # Add frame colors if enabled
         if data.get('frame_colors', {}).get('enabled', False):
             frame_color_attr = ProductAttribute.objects.get(attribute_type='frame_color')
-            
+
             # First, disable all frame color options for this attribute
             ProductAttributeOption.objects.filter(attribute=frame_color_attr).update(is_active=False)
-            
+
             # Enable selected options
             selected_colors = data['frame_colors'].get('options', [])
             if selected_colors:
@@ -1420,7 +1420,7 @@ def update_category_attributes(request, category_id):
                     attribute=frame_color_attr,
                     id__in=selected_colors
                 ).update(is_active=True)
-            
+
             # Create category attribute relationship
             CategoryAttribute.objects.create(
                 category=category,
@@ -1428,14 +1428,14 @@ def update_category_attributes(request, category_id):
                 is_required=False,
                 sort_order=0
             )
-        
+
         # Add sizes if enabled
         if data.get('sizes', {}).get('enabled', False):
             size_attr = ProductAttribute.objects.get(attribute_type='size')
-            
+
             # First, disable all size options for this attribute
             ProductAttributeOption.objects.filter(attribute=size_attr).update(is_active=False)
-            
+
             # Enable selected options
             selected_sizes = data['sizes'].get('options', [])
             if selected_sizes:
@@ -1443,7 +1443,7 @@ def update_category_attributes(request, category_id):
                     attribute=size_attr,
                     id__in=selected_sizes
                 ).update(is_active=True)
-            
+
             # Create category attribute relationship
             CategoryAttribute.objects.create(
                 category=category,
@@ -1451,11 +1451,11 @@ def update_category_attributes(request, category_id):
                 is_required=data['sizes'].get('required', False),
                 sort_order=1
             )
-        
+
         return Response({
             'message': f'Attributes updated successfully for category "{category.name}"'
         })
-        
+
     except Category.DoesNotExist:
         return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
     except ProductAttribute.DoesNotExist:
@@ -1482,7 +1482,7 @@ def debug_arabic_encoding(request):
                 'description': 'هذا منتج رائع بوصف عربي طويل يحتوي على كلمات متنوعة'
             }
         }
-        
+
         # Get some real categories
         categories = Category.objects.all()[:3]
         for cat in categories:
@@ -1493,7 +1493,7 @@ def debug_arabic_encoding(request):
                 'name_length': len(cat.name),
                 'contains_arabic': bool(cat.name and any('\u0600' <= c <= '\u06FF' for c in cat.name))
             })
-        
+
         # Get some real products
         products = Product.objects.all()[:3]
         for prod in products:
@@ -1504,7 +1504,7 @@ def debug_arabic_encoding(request):
                 'name_length': len(prod.name),
                 'contains_arabic': bool(prod.name and any('\u0600' <= c <= '\u06FF' for c in prod.name))
             })
-        
+
         return Response(test_data)
     except Exception as e:
         return Response({
@@ -1520,7 +1520,7 @@ def categories_for_product_wizard(request):
     """Get all active categories with descriptions for product creation wizard"""
     try:
         categories = Category.objects.filter(is_active=True, parent__isnull=True).order_by('name')
-        
+
         category_data = []
         for category in categories:
             category_data.append({
@@ -1529,7 +1529,7 @@ def categories_for_product_wizard(request):
                 'description': category.description or f'منتجات {category.name} عالية الجودة',
                 'image': category.image.url if category.image else None
             })
-        
+
         return Response({
             'categories': category_data
         })
@@ -1547,7 +1547,7 @@ def category_variants(request, category_id):
     try:
         category = Category.objects.get(id=category_id, is_active=True)
         variant_types = CategoryVariantType.objects.filter(category=category).order_by('name')
-        
+
         variants_data = []
         for variant_type in variant_types:
             options_data = []
@@ -1557,14 +1557,14 @@ def category_variants(request, category_id):
                     'value': option.value,
                     'extra_price': float(option.extra_price) if option.extra_price else 0
                 })
-            
+
             variants_data.append({
                 'id': variant_type.id,
                 'name': variant_type.name,
                 'is_required': variant_type.is_required,
                 'options': options_data
             })
-        
+
         return Response({
             'variants': variants_data
         })
@@ -1585,7 +1585,7 @@ def category_tags(request, category_id):
             Q(category=category) | Q(category__isnull=True),
             is_predefined=True
         ).order_by('name')
-        
+
         tags_data = []
         for tag in tags:
             tags_data.append({
@@ -1593,7 +1593,7 @@ def category_tags(request, category_id):
                 'name': tag.name,
                 'category_specific': tag.category is not None
             })
-        
+
         return Response({
             'tags': tags_data
         })
@@ -1616,7 +1616,7 @@ def subcategory_sections(request, category_id):
     try:
         # Get the parent category
         parent_category = Category.objects.get(id=category_id, is_active=True)
-        
+
         # Get enabled subcategory sections for this parent category
         sections = SubcategorySectionControl.objects.filter(
             subcategory__parent=parent_category,
@@ -1627,9 +1627,9 @@ def subcategory_sections(request, category_id):
         ).prefetch_related(
             'featured_products'
         ).order_by('section_priority', 'subcategory__name')
-        
+
         serializer = SubcategorySectionControlSerializer(sections, many=True, context={'request': request})
-        
+
         return Response({
             'parent_category': {
                 'id': parent_category.id,
@@ -1637,7 +1637,7 @@ def subcategory_sections(request, category_id):
             },
             'sections': serializer.data
         })
-        
+
     except Category.DoesNotExist:
         return Response({
             'parent_category': None,
@@ -1668,13 +1668,13 @@ def all_subcategory_sections(request):
         ).order_by(
             'subcategory__parent__name', 'section_priority', 'subcategory__name'
         )
-        
+
         # Group by parent category
         sections_by_category = {}
         for section in sections:
             parent_id = section.subcategory.parent.id
             parent_name = section.subcategory.parent.name
-            
+
             if parent_id not in sections_by_category:
                 sections_by_category[parent_id] = {
                     'parent_category': {
@@ -1683,14 +1683,14 @@ def all_subcategory_sections(request):
                     },
                     'sections': []
                 }
-            
+
             section_serializer = SubcategorySectionControlSerializer(section, context={'request': request})
             sections_by_category[parent_id]['sections'].append(section_serializer.data)
-        
+
         return Response({
             'sections_by_category': list(sections_by_category.values())
         })
-        
+
     except Exception as e:
         return Response({
             'sections_by_category': [],
