@@ -65,6 +65,7 @@ urlpatterns = [
     path('variants/create-type/', views.create_variant_type, name='create_variant_type'),
     path('variants/create-option/', views.create_variant_option, name='create_variant_option'),
     path('variants/delete-type/', views.delete_variant_type, name='delete_variant_type'),
+    path('variants/update-priority/', views.update_variant_priority, name='update_variant_priority'),
     path('variants/delete-option/', views.delete_variant_option, name='delete_variant_option'),
     
     # Support Tickets

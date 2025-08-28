@@ -215,9 +215,15 @@
                                     </h6>
                                     <form class="add-variant-type-form" data-category-id="{{ category.id }}">
                                         <div class="row g-3">
-                                            <div class="col-md-6">
+                                            <div class="col-md-4">
                                                 <label class="form-label">Variant Type Name</label>
                                                 <input type="text" class="form-control" name="name" placeholder="e.g., Size, Color, Material" required>
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label class="form-label">Priority</label>
+                                                <input type="number" class="form-control" name="priority" value="999" min="1" max="999" 
+                                                       title="Lower number = higher priority (appears first)">
+                                                <div class="form-text small">1=First, 999=Last</div>
                                             </div>
                                             <div class="col-md-3">
                                                 <label class="form-label">Required</label>
@@ -290,6 +296,51 @@
         </div>
     </div>
 </div>
+
+<!-- Edit Priority Modal -->
+<div class="modal fade" id="editPriorityModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-sort me-2"></i>Edit Variant Priority
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editPriorityForm">
+                <div class="modal-body">
+                    <input type="hidden" id="editVariantTypeId" name="variant_type_id">
+                    <div class="mb-3">
+                        <label class="form-label">Variant Type</label>
+                        <input type="text" class="form-control" id="editVariantTypeName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Priority</label>
+                        <input type="number" class="form-control" id="editPriority" name="priority" min="1" max="999" required>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Lower number = higher priority (appears first). 1 = First, 999 = Last
+                        </div>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="fas fa-lightbulb me-2"></i>
+                        <strong>Priority Examples:</strong><br>
+                        • Size: Priority 1 (most important)<br>
+                        • Color: Priority 2 (second)<br>
+                        • Material: Priority 3 (third)<br>
+                        • Custom options: Priority 10+ (lower priority)
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-1"></i>Update Priority
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -314,6 +365,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Handle add variant option form
     document.getElementById('addVariantOptionForm').addEventListener('submit', handleAddVariantOption);
+    
+    // Handle edit priority form
+    document.getElementById('editPriorityForm').addEventListener('submit', handleEditPriority);
 });
 
 function loadCategoryVariants(categoryId) {
@@ -342,8 +396,12 @@ function loadCategoryVariants(categoryId) {
                             <h6 class="mb-0">
                                 <i class="fas fa-tag me-2 text-info"></i>${variantType.name}
                                 ${variantType.is_required ? '<span class="required-badge">Required</span>' : ''}
+                                <span class="badge bg-secondary ms-2" title="Display Priority">Priority: ${variantType.priority || 999}</span>
                             </h6>
                             <div>
+                                <button class="btn btn-info btn-sm me-2" onclick="showEditPriorityModal(${variantType.id}, '${variantType.name}', ${variantType.priority || 999})">
+                                    <i class="fas fa-sort me-1"></i>Priority
+                                </button>
                                 <button class="btn btn-success btn-sm me-2" onclick="showAddOptionModal(${variantType.id}, '${variantType.name}')">
                                     <i class="fas fa-plus me-1"></i>Add Option
                                 </button>
@@ -568,6 +626,61 @@ function deleteVariantOption(optionId, optionValue) {
     .catch(error => {
         console.error('Error:', error);
         showAlert('danger', 'Network error occurred');
+    });
+}
+
+function showEditPriorityModal(variantTypeId, variantTypeName, currentPriority) {
+    document.getElementById('editVariantTypeId').value = variantTypeId;
+    document.getElementById('editVariantTypeName').value = variantTypeName;
+    document.getElementById('editPriority').value = currentPriority;
+    
+    const modal = new bootstrap.Modal(document.getElementById('editPriorityModal'));
+    modal.show();
+}
+
+function handleEditPriority(event) {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Updating...';
+    submitBtn.disabled = true;
+    
+    fetch('/dashboard/variants/update-priority/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Close modal
+            bootstrap.Modal.getInstance(document.getElementById('editPriorityModal')).hide();
+            
+            // Find the category ID from the currently open accordion
+            const openAccordion = document.querySelector('.collapse.show');
+            if (openAccordion) {
+                const categoryId = openAccordion.id.replace('category', '');
+                loadCategoryVariants(categoryId);
+            }
+            
+            // Show success message
+            showAlert('success', `Priority updated successfully! "${data.variant_type.name}" priority set to ${data.variant_type.priority}.`);
+        } else {
+            showAlert('danger', data.error || 'Failed to update priority');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('danger', 'Network error occurred');
+    })
+    .finally(() => {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
     });
 }
 

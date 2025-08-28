@@ -1476,6 +1476,7 @@ def create_variant_type(request):
         category_id = request.POST.get('category_id')
         name = request.POST.get('name', '').strip()
         is_required = request.POST.get('is_required') == 'true'
+        priority = int(request.POST.get('priority', 999))
 
         if not category_id or not name:
             return JsonResponse({'success': False, 'error': 'Category ID and name are required'})
@@ -1490,7 +1491,8 @@ def create_variant_type(request):
         variant_type = CategoryVariantType.objects.create(
             category=category,
             name=name,
-            is_required=is_required
+            is_required=is_required,
+            priority=priority
         )
 
         # Log admin activity
@@ -1591,7 +1593,7 @@ def get_category_variants_json(request, category_id):
         # Get variant types from all categories in the hierarchy
         all_variant_types = CategoryVariantType.objects.filter(
             category__in=categories_to_check
-        ).prefetch_related('options').order_by('name')
+        ).prefetch_related('options').order_by('priority', 'name')
 
         # Group variants by name to merge options from different levels
         variants_by_name = {}
@@ -1603,6 +1605,7 @@ def get_category_variants_json(request, category_id):
                     'id': variant_type.id,  # Use the most specific (deepest) variant type ID
                     'name': variant_name,
                     'is_required': variant_type.is_required,
+                    'priority': variant_type.priority,
                     'options': [],
                     'category_source': variant_type.category.name
                 }
@@ -1670,6 +1673,55 @@ def delete_variant_type(request):
         )
         
         return JsonResponse({'success': True, 'message': f'Variant type "{variant_name}" deleted successfully'})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_variant_priority(request):
+    """Update the priority of a variant type"""
+    from products.models import CategoryVariantType
+
+    try:
+        variant_type_id = request.POST.get('variant_type_id')
+        priority = request.POST.get('priority')
+
+        if not variant_type_id or priority is None:
+            return JsonResponse({'success': False, 'error': 'Variant type ID and priority are required'})
+
+        try:
+            priority = int(priority)
+        except (ValueError, TypeError):
+            return JsonResponse({'success': False, 'error': 'Priority must be a valid number'})
+
+        if priority < 1 or priority > 999:
+            return JsonResponse({'success': False, 'error': 'Priority must be between 1 and 999'})
+
+        variant_type = get_object_or_404(CategoryVariantType, id=variant_type_id)
+        old_priority = variant_type.priority
+        variant_type.priority = priority
+        variant_type.save()
+
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f'Updated priority for variant type "{variant_type.name}" from {old_priority} to {priority}'
+        )
+        
+        return JsonResponse({
+            'success': True, 
+            'message': f'Priority updated successfully',
+            'variant_type': {
+                'id': variant_type.id,
+                'name': variant_type.name,
+                'priority': variant_type.priority,
+                'is_required': variant_type.is_required
+            }
+        })
         
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
