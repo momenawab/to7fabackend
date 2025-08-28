@@ -126,4 +126,40 @@ class CartItem(models.Model):
     @property
     def line_total(self):
         """Calculate the total price for this item"""
-        return Decimal(self.quantity) * self.product.price
+        # Check if product has an active offer
+        from django.utils import timezone
+        now = timezone.now()
+        
+        # Get active offer for this product
+        active_offer = self.product.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).first()
+        
+        if active_offer:
+            # Use offer price if available
+            price_per_item = active_offer.offer_price
+        else:
+            # Use regular price
+            price_per_item = self.product.price
+            
+        return Decimal(self.quantity) * Decimal(price_per_item)
+    
+    @property
+    def current_price(self):
+        """Get the current price per item (offer price if available, regular price otherwise)"""
+        from django.utils import timezone
+        now = timezone.now()
+        
+        # Get active offer for this product
+        active_offer = self.product.offers.filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).first()
+        
+        if active_offer:
+            return active_offer.offer_price
+        else:
+            return self.product.price
