@@ -697,7 +697,14 @@
             </tr>
         `);
 
-        fetch('/api/products/latest-offers/')
+        fetch('/api/products/admin/offers/', {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        })
             .then(response => response.json())
             .then(data => {
                 renderOffersTable(data.results);
@@ -824,8 +831,10 @@
                 $('#addOfferForm')[0].reset();
                 
                 // If also feature is checked, feature the product
-                if (offerData.alsoFeature) {
+                if (offerData.alsoFeature && offerData.productId) {
                     toggleFeatured(offerData.productId, true);
+                } else if (offerData.alsoFeature && !offerData.productId) {
+                    console.error('Cannot feature product: productId is undefined');
                 }
                 
                 loadOffers();
@@ -871,7 +880,14 @@
             </tr>
         `);
 
-        fetch('/api/products/featured/')
+        fetch('/api/products/admin/featured/', {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        })
             .then(response => response.json())
             .then(data => {
                 renderFeaturedTable(data.results);
@@ -953,6 +969,13 @@
     }
 
     function toggleFeatured(productId, newStatus) {
+        // Validate productId
+        if (!productId || productId === 'undefined') {
+            console.error('toggleFeatured: Invalid productId:', productId);
+            showAlert('Error: Invalid product ID', 'error');
+            return;
+        }
+        
         // Get CSRF token
         const csrfToken = $('[name=csrfmiddlewaretoken]').val();
         
@@ -1167,7 +1190,7 @@
             </div>
         `);
 
-        fetch('/api/products/latest-offers/')
+        fetch('/api/products/admin/offers/')
             .then(response => response.json())
             .then(data => {
                 const maxOffers = parseInt($('#maxOffers').val());

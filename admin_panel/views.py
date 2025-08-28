@@ -20,6 +20,7 @@ from custom_auth.models import User, Artist, Store, SellerApplication
 from products.models import Product, Category, ProductImage
 from orders.models import Order
 from .models import AdminActivity, AdminNotification
+from .decorators import admin_required, has_admin_permission
 from notifications.models import Notification
 from support.models import SupportTicket, SupportCategory, SupportMessage
 
@@ -125,8 +126,7 @@ def admin_dashboard(request):
     return render(request, 'admin_panel/dashboard.html', context)
 
 # Seller Applications List
-@login_required
-@user_passes_test(is_admin)
+@admin_required('seller_applications')
 def seller_applications(request):
     """View for managing seller applications - pending, approved, rejected applications"""
     status_filter = request.GET.get('status', 'pending')
@@ -406,8 +406,7 @@ def process_application(request, application_id):
     return render(request, 'admin_panel/process_application.html', context)
 
 # User Management
-@login_required
-@user_passes_test(is_admin)
+@admin_required('users_management')
 def user_management(request):
     user_type = request.GET.get('type', 'all')
     status = request.GET.get('status', 'all')
@@ -447,8 +446,7 @@ def user_management(request):
     return render(request, 'admin_panel/user_management.html', context)
 
 # Product Management
-@login_required
-@user_passes_test(is_admin)
+@admin_required('products_management')
 def product_management(request):
     category_id = request.GET.get('category', 'all')
     status = request.GET.get('status', 'all')
@@ -491,8 +489,7 @@ def product_management(request):
     return render(request, 'admin_panel/product_management.html', context)
 
 # Product Approval Management
-@login_required
-@user_passes_test(is_admin)
+@admin_required('product_approval')
 def product_approval(request):
     """View for managing product approvals - pending, approved, rejected products"""
     status_filter = request.GET.get('status', 'pending')
@@ -808,8 +805,7 @@ def product_detail_api(request, product_id):
         }, status=500)
 
 # Order Management
-@login_required
-@user_passes_test(is_admin)
+@admin_required('orders_view')
 def order_management(request):
     status = request.GET.get('status', 'all')
     search_query = request.GET.get('q', '')
@@ -894,8 +890,7 @@ def mark_notification_read(request, notification_id):
         )
 
 # Reports
-@login_required
-@user_passes_test(is_admin)
+@admin_required('analytics_view')
 def reports(request):
     """View for reports and analytics"""
     context = {
@@ -1031,8 +1026,7 @@ def view_order(request, order_id):
     return redirect(f'/admin/orders/order/{order.id}/change/')
 
 # Ads Control
-@login_required
-@user_passes_test(is_admin)
+@admin_required('advertising_management')
 def ads_control(request):
     """View for ads control and management"""
     context = {
@@ -1064,8 +1058,7 @@ def featured_products(request):
     return render(request, 'admin_panel/featured_products.html', context)
 
 # Category Management
-@login_required
-@user_passes_test(is_admin)
+@admin_required('categories_management')
 def category_management(request):
     """View for managing categories and subcategories"""
     context = {
@@ -1435,8 +1428,7 @@ def get_category_attributes_json(request, category_id):
         return JsonResponse({'error': 'Category not found'}, status=404)
 
 
-@login_required
-@user_passes_test(is_admin)
+@admin_required('variants_management')
 def variant_management(request):
     """Variant management page for categories"""
     from products.models import Category, CategoryVariantType, CategoryVariantOption
@@ -1737,8 +1729,7 @@ def update_variant_priority(request):
 
 
 # Support Tickets Management
-@login_required
-@user_passes_test(is_admin)
+@admin_required('support_tickets')
 def support_tickets(request):
     """View for managing support tickets"""
     status_filter = request.GET.get('status', 'all')
@@ -2348,8 +2339,7 @@ def send_typing_indicator(request, ticket_id):
 # ADMIN MANAGEMENT VIEWS
 # ================================
 
-@login_required
-@user_passes_test(is_admin)
+@admin_required('admin_management')
 def admin_management(request):
     """Admin management page"""
     from .models import AdminUser, AdminRole

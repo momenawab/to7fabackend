@@ -122,13 +122,22 @@ def submit_seller_application(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        # Validate profile picture
+        profile_picture = request.FILES.get('profile_picture')
+        if not profile_picture:
+            return Response({
+                'status': 'error',
+                'message': 'Profile picture is required for seller application'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # Create application object
         application = SellerApplication(
             user=user,
             seller_type=user_type,
             business_name=request.data.get('business_name') or f"{user.first_name} {user.last_name}",
             phone_number=request.data.get('phone_number') or user.phone_number,
-            description=request.data.get('description', '')
+            description=request.data.get('description', ''),
+            profile_picture=profile_picture
         )
         
         # Store social media links
@@ -196,15 +205,18 @@ def top_artists(request):
             'message': 'Top artists section is currently disabled'
         })
     
-    # Get verified artists with products, ordered by product count
-    artists = Artist.objects.filter(
-        is_verified=True,
-        user__products__isnull=False
-    ).annotate(
+    # Get artists - prioritize featured ones, then by verification and product count
+    artists = Artist.objects.annotate(
         product_count=Count('user__products', distinct=True)
     ).filter(
-        product_count__gt=0
-    ).order_by('-product_count', '-created_at')[:min(limit, settings.max_artists_to_show)]
+        Q(is_featured_on_homepage=True) | 
+        (Q(is_verified=True) & Q(product_count__gt=0))
+    ).order_by(
+        '-is_featured_on_homepage',  # Featured first
+        'homepage_priority',         # Then by priority (0 = highest)
+        '-product_count',           # Then by product count
+        '-created_at'              # Finally by creation date
+    )[:min(limit, settings.max_artists_to_show)]
     
     artist_data = []
     for artist in artists:
@@ -216,6 +228,8 @@ def top_artists(request):
             'bio': artist.bio,
             'profilePicture': artist.profile_picture.url if artist.profile_picture else None,
             'isVerified': artist.is_verified,
+            'isFeatured': artist.is_featured_on_homepage,
+            'priority': artist.homepage_priority,
             'productCount': artist.product_count,
             'socialMedia': artist.social_media,
             'joinedAt': artist.created_at.isoformat()
@@ -258,15 +272,18 @@ def top_stores(request):
             'message': 'Top stores section is currently disabled'
         })
     
-    # Get verified stores with products, ordered by product count
-    stores = Store.objects.filter(
-        is_verified=True,
-        user__products__isnull=False
-    ).annotate(
+    # Get stores - prioritize featured ones, then by verification and product count
+    stores = Store.objects.annotate(
         product_count=Count('user__products', distinct=True)
     ).filter(
-        product_count__gt=0
-    ).order_by('-product_count', '-created_at')[:min(limit, settings.max_stores_to_show)]
+        Q(is_featured_on_homepage=True) | 
+        (Q(is_verified=True) & Q(product_count__gt=0))
+    ).order_by(
+        '-is_featured_on_homepage',  # Featured first
+        'homepage_priority',         # Then by priority (0 = highest)
+        '-product_count',           # Then by product count
+        '-created_at'              # Finally by creation date
+    )[:min(limit, settings.max_stores_to_show)]
     
     store_data = []
     for store in stores:
@@ -279,6 +296,8 @@ def top_stores(request):
             'hasPhysicalStore': store.has_physical_store,
             'physicalAddress': store.physical_address,
             'isVerified': store.is_verified,
+            'isFeatured': store.is_featured_on_homepage,
+            'priority': store.homepage_priority,
             'productCount': store.product_count,
             'socialMedia': store.social_media,
             'joinedAt': store.created_at.isoformat()
@@ -371,4 +390,138 @@ def search_stores(request):
         "query": query,
         "results_count": len(store_data),
         "results": store_data
-    }) 
+    })
+
+# Admin API endpoints for featured status management
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def toggle_artist_featured(request, artist_id):
+    """Toggle featured status for an artist"""
+    try:
+        artist = Artist.objects.get(user_id=artist_id)
+        artist.is_featured_on_homepage = not artist.is_featured_on_homepage
+        artist.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"{'Featured' if artist.is_featured_on_homepage else 'Unfeatured'} artist: {artist.user.email}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({
+            'success': True,
+            'featured': artist.is_featured_on_homepage,
+            'message': f"Artist {'featured' if artist.is_featured_on_homepage else 'unfeatured'} successfully"
+        })
+    except Artist.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Artist not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def toggle_store_featured(request, store_id):
+    """Toggle featured status for a store"""
+    try:
+        store = Store.objects.get(user_id=store_id)
+        store.is_featured_on_homepage = not store.is_featured_on_homepage
+        store.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"{'Featured' if store.is_featured_on_homepage else 'Unfeatured'} store: {store.store_name}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({
+            'success': True,
+            'featured': store.is_featured_on_homepage,
+            'message': f"Store {'featured' if store.is_featured_on_homepage else 'unfeatured'} successfully"
+        })
+    except Store.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Store not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def update_artist_priority(request, artist_id):
+    """Update homepage priority for an artist"""
+    try:
+        artist = Artist.objects.get(user_id=artist_id)
+        priority = request.data.get('priority', 0)
+        
+        # Ensure priority is a valid number
+        try:
+            priority = int(priority)
+            if priority < 0:
+                priority = 0
+        except (ValueError, TypeError):
+            priority = 0
+        
+        artist.homepage_priority = priority
+        artist.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"Updated artist priority: {artist.user.email} -> {priority}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({
+            'success': True,
+            'priority': artist.homepage_priority,
+            'message': 'Artist priority updated successfully'
+        })
+    except Artist.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Artist not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def update_store_priority(request, store_id):
+    """Update homepage priority for a store"""
+    try:
+        store = Store.objects.get(user_id=store_id)
+        priority = request.data.get('priority', 0)
+        
+        # Ensure priority is a valid number
+        try:
+            priority = int(priority)
+            if priority < 0:
+                priority = 0
+        except (ValueError, TypeError):
+            priority = 0
+        
+        store.homepage_priority = priority
+        store.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='update',
+            description=f"Updated store priority: {store.store_name} -> {priority}",
+            ip_address=request.META.get('REMOTE_ADDR')
+        )
+        
+        return Response({
+            'success': True,
+            'priority': store.homepage_priority,
+            'message': 'Store priority updated successfully'
+        })
+    except Store.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Store not found'
+        }, status=status.HTTP_404_NOT_FOUND) 

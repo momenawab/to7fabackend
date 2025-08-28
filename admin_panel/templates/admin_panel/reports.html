@@ -468,8 +468,20 @@
         }
         
         // Fetch report data
-        fetch(url)
-            .then(response => response.json())
+        fetch(url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+                'Content-Type': 'application/json'
+            }
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 // Update summary stats
                 $('#totalSales').text('$' + data.sales.total_revenue.toFixed(2));
