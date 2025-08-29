@@ -47,6 +47,9 @@ urlpatterns = [
     # Featured Products Management
     path('featured-products/', views.featured_products, name='featured_products'),
     
+    # Seller Requests Management
+    path('seller-requests/', views.seller_requests_management, name='seller_requests_management'),
+    
     # Category Management
     path('categories/', views.category_management, name='categories'),
     

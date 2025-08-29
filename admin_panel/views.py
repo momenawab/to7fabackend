@@ -1057,6 +1057,16 @@ def featured_products(request):
 
     return render(request, 'admin_panel/featured_products.html', context)
 
+@login_required
+@user_passes_test(is_admin)
+def seller_requests_management(request):
+    """View for managing seller offer and featured product requests"""
+    context = {
+        'active_tab': 'seller_requests'
+    }
+
+    return render(request, 'admin_panel/seller_requests.html', context)
+
 # Category Management
 @admin_required('categories_management')
 def category_management(request):

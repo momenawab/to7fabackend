@@ -1187,6 +1187,15 @@
                         <span class="nav-text">Featured</span>
                     </a>
                 </div>
+                <div class="nav-item">
+                    <a class="nav-link {% if active_tab == 'seller_requests' %}active{% endif %}" href="{% url 'admin_panel:seller_requests_management' %}">
+                        <i class="nav-icon fas fa-handshake"></i>
+                        <span class="nav-text">Seller Requests</span>
+                        {% if pending_seller_requests > 0 %}
+                        <span class="nav-badge">{{ pending_seller_requests }}</span>
+                        {% endif %}
+                    </a>
+                </div>
                 {% endif %}
             </li>
             {% endif %}

@@ -1791,3 +1791,475 @@ def all_subcategory_sections(request):
             'sections_by_category': [],
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# =============== SELLER REQUEST VIEWS ===============
+
+@csrf_exempt
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def seller_offer_requests(request):
+    """Manage seller offer requests"""
+    from .models import SellerOfferRequest
+    
+    if not request.user.user_type in ['artist', 'store']:
+        return Response({"error": "Only sellers can create offer requests"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'GET':
+        # Get seller's offer requests
+        requests = SellerOfferRequest.objects.filter(seller=request.user).order_by('-created_at')
+        
+        results = []
+        for req in requests:
+            results.append({
+                'id': req.id,
+                'product_id': req.product.id,
+                'product_name': req.product.name,
+                'product_price': float(req.product.price),
+                'discount_percentage': req.discount_percentage,
+                'offer_price': float(req.offer_price),
+                'savings_amount': float(req.savings_amount),
+                'start_date': req.start_date.isoformat(),
+                'end_date': req.end_date.isoformat(),
+                'description': req.description,
+                'status': req.status,
+                'status_display': req.get_status_display(),
+                'request_fee': float(req.request_fee),
+                'payment_reference': req.payment_reference,
+                'admin_notes': req.admin_notes,
+                'created_at': req.created_at.isoformat(),
+                'updated_at': req.updated_at.isoformat(),
+            })
+        
+        return Response({
+            'results': results,
+            'count': len(results)
+        })
+
+    elif request.method == 'POST':
+        # Create new offer request
+        try:
+            product_id = request.data.get('product_id')
+            product = Product.objects.get(id=product_id, seller=request.user, is_active=True)
+
+            # Check if there's already an active request for this product
+            existing_request = SellerOfferRequest.objects.filter(
+                product=product,
+                seller=request.user,
+                status__in=['pending_payment', 'payment_completed', 'under_review']
+            ).first()
+
+            if existing_request:
+                return Response({
+                    'error': f'You already have an active offer request for this product (Status: {existing_request.get_status_display()})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Parse dates
+            from django.utils.dateparse import parse_datetime
+            start_date = parse_datetime(request.data.get('start_date'))
+            end_date = parse_datetime(request.data.get('end_date'))
+
+            if not start_date or not end_date:
+                return Response({
+                    'error': 'Invalid start_date or end_date format. Use ISO format.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            if start_date >= end_date:
+                return Response({
+                    'error': 'End date must be after start date'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create the offer request
+            offer_request = SellerOfferRequest.objects.create(
+                product=product,
+                seller=request.user,
+                discount_percentage=request.data.get('discount_percentage'),
+                start_date=start_date,
+                end_date=end_date,
+                description=request.data.get('description', ''),
+                request_fee=50.00  # Default fee
+            )
+
+            return Response({
+                'id': offer_request.id,
+                'message': f'Offer request created successfully! Please pay {offer_request.request_fee} SAR to proceed.',
+                'request_fee': float(offer_request.request_fee),
+                'status': offer_request.status,
+                'payment_instructions': 'Please contact admin to complete payment and activate your offer request.'
+            }, status=status.HTTP_201_CREATED)
+
+        except Product.DoesNotExist:
+            return Response({
+                'error': 'Product not found or you do not own this product'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to create offer request: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+@csrf_exempt
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def seller_featured_requests(request):
+    """Manage seller featured product requests"""
+    from .models import SellerFeaturedRequest
+    
+    if not request.user.user_type in ['artist', 'store']:
+        return Response({"error": "Only sellers can create featured requests"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == 'GET':
+        # Get seller's featured requests
+        requests = SellerFeaturedRequest.objects.filter(seller=request.user).order_by('-created_at')
+        
+        results = []
+        for req in requests:
+            results.append({
+                'id': req.id,
+                'product_id': req.product.id,
+                'product_name': req.product.name,
+                'product_price': float(req.product.price),
+                'priority': req.priority,
+                'featured_duration_days': req.featured_duration_days,
+                'reason': req.reason,
+                'status': req.status,
+                'status_display': req.get_status_display(),
+                'request_fee': float(req.request_fee),
+                'payment_reference': req.payment_reference,
+                'admin_notes': req.admin_notes,
+                'created_at': req.created_at.isoformat(),
+                'updated_at': req.updated_at.isoformat(),
+            })
+        
+        return Response({
+            'results': results,
+            'count': len(results)
+        })
+
+    elif request.method == 'POST':
+        # Create new featured request
+        try:
+            product_id = request.data.get('product_id')
+            product = Product.objects.get(id=product_id, seller=request.user, is_active=True)
+
+            # Check if there's already an active request for this product
+            existing_request = SellerFeaturedRequest.objects.filter(
+                product=product,
+                seller=request.user,
+                status__in=['pending_payment', 'payment_completed', 'under_review']
+            ).first()
+
+            if existing_request:
+                return Response({
+                    'error': f'You already have an active featured request for this product (Status: {existing_request.get_status_display()})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create the featured request
+            featured_request = SellerFeaturedRequest.objects.create(
+                product=product,
+                seller=request.user,
+                priority=request.data.get('priority', 0),
+                featured_duration_days=request.data.get('featured_duration_days', 30),
+                reason=request.data.get('reason', ''),
+                request_fee=100.00  # Default fee for featured products
+            )
+
+            return Response({
+                'id': featured_request.id,
+                'message': f'Featured request created successfully! Please pay {featured_request.request_fee} SAR to proceed.',
+                'request_fee': float(featured_request.request_fee),
+                'status': featured_request.status,
+                'payment_instructions': 'Please contact admin to complete payment and activate your featured request.'
+            }, status=status.HTTP_201_CREATED)
+
+        except Product.DoesNotExist:
+            return Response({
+                'error': 'Product not found or you do not own this product'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'Failed to create featured request: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+# =============== ADMIN REQUEST MANAGEMENT VIEWS ===============
+
+@csrf_exempt
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def manage_seller_requests(request):
+    """Get all seller requests for admin management"""
+    from .models import SellerOfferRequest, SellerFeaturedRequest
+    
+    if not request.user.is_staff:
+        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+
+    # Get offer requests
+    offer_requests = SellerOfferRequest.objects.all().order_by('-created_at')
+    offer_results = []
+    for req in offer_requests:
+        offer_results.append({
+            'id': req.id,
+            'type': 'offer',
+            'product_id': req.product.id,
+            'product_name': req.product.name,
+            'seller_name': req.seller.email,
+            'seller_type': req.seller.user_type,
+            'discount_percentage': req.discount_percentage,
+            'offer_price': float(req.offer_price),
+            'original_price': float(req.product.price),
+            'start_date': req.start_date.isoformat(),
+            'end_date': req.end_date.isoformat(),
+            'status': req.status,
+            'status_display': req.get_status_display(),
+            'request_fee': float(req.request_fee),
+            'payment_reference': req.payment_reference,
+            'created_at': req.created_at.isoformat(),
+        })
+
+    # Get featured requests
+    featured_requests = SellerFeaturedRequest.objects.all().order_by('-created_at')
+    featured_results = []
+    for req in featured_requests:
+        featured_results.append({
+            'id': req.id,
+            'type': 'featured',
+            'product_id': req.product.id,
+            'product_name': req.product.name,
+            'seller_name': req.seller.email,
+            'seller_type': req.seller.user_type,
+            'featured_duration_days': req.featured_duration_days,
+            'priority': req.priority,
+            'status': req.status,
+            'status_display': req.get_status_display(),
+            'request_fee': float(req.request_fee),
+            'payment_reference': req.payment_reference,
+            'created_at': req.created_at.isoformat(),
+        })
+
+    return Response({
+        'offer_requests': offer_results,
+        'featured_requests': featured_results,
+        'total_offer_requests': len(offer_results),
+        'total_featured_requests': len(featured_results),
+    })
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def approve_offer_request(request, request_id):
+    """Approve seller offer request and create actual offer"""
+    from .models import SellerOfferRequest
+    
+    if not request.user.is_staff:
+        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        offer_request = SellerOfferRequest.objects.get(id=request_id)
+        
+        if offer_request.status != 'payment_completed':
+            return Response({
+                'error': 'Request must have completed payment before approval'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Approve and create the actual offer
+        product_offer = offer_request.approve_and_create_offer(request.user)
+        
+        if product_offer:
+            return Response({
+                'message': f'Offer request approved successfully! Product "{offer_request.product.name}" is now featured in latest offers.',
+                'offer_id': product_offer.id
+            })
+        else:
+            return Response({
+                'error': 'Failed to create offer. Request status may not be valid.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except SellerOfferRequest.DoesNotExist:
+        return Response({
+            'error': 'Offer request not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def approve_featured_request(request, request_id):
+    """Approve seller featured request and create actual featured product"""
+    from .models import SellerFeaturedRequest
+    
+    if not request.user.is_staff:
+        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        featured_request = SellerFeaturedRequest.objects.get(id=request_id)
+        
+        if featured_request.status != 'payment_completed':
+            return Response({
+                'error': 'Request must have completed payment before approval'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Approve and create the actual featured product
+        featured_product = featured_request.approve_and_create_featured(request.user)
+        
+        if featured_product:
+            return Response({
+                'message': f'Featured request approved successfully! Product "{featured_request.product.name}" is now featured.',
+                'featured_id': featured_product.id
+            })
+        else:
+            return Response({
+                'error': 'Failed to create featured product. Request status may not be valid.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    except SellerFeaturedRequest.DoesNotExist:
+        return Response({
+            'error': 'Featured request not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+# =============== ADDITIONAL VIEWS FOR COMPLETENESS ===============
+
+@csrf_exempt
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def seller_offer_request_detail(request, request_id):
+    """Get, update or delete specific seller offer request"""
+    from .models import SellerOfferRequest
+    
+    try:
+        offer_request = SellerOfferRequest.objects.get(id=request_id, seller=request.user)
+    except SellerOfferRequest.DoesNotExist:
+        return Response({
+            'error': 'Offer request not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'id': offer_request.id,
+            'product_id': offer_request.product.id,
+            'product_name': offer_request.product.name,
+            'discount_percentage': offer_request.discount_percentage,
+            'offer_price': float(offer_request.offer_price),
+            'start_date': offer_request.start_date.isoformat(),
+            'end_date': offer_request.end_date.isoformat(),
+            'description': offer_request.description,
+            'status': offer_request.status,
+            'status_display': offer_request.get_status_display(),
+            'request_fee': float(offer_request.request_fee),
+            'payment_reference': offer_request.payment_reference,
+            'admin_notes': offer_request.admin_notes,
+            'created_at': offer_request.created_at.isoformat(),
+        })
+
+    elif request.method == 'DELETE':
+        if offer_request.status in ['approved', 'rejected']:
+            return Response({
+                'error': 'Cannot delete approved or rejected requests'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        offer_request.delete()
+        return Response({
+            'message': 'Offer request deleted successfully'
+        })
+
+
+@csrf_exempt
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def seller_featured_request_detail(request, request_id):
+    """Get, update or delete specific seller featured request"""
+    from .models import SellerFeaturedRequest
+    
+    try:
+        featured_request = SellerFeaturedRequest.objects.get(id=request_id, seller=request.user)
+    except SellerFeaturedRequest.DoesNotExist:
+        return Response({
+            'error': 'Featured request not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response({
+            'id': featured_request.id,
+            'product_id': featured_request.product.id,
+            'product_name': featured_request.product.name,
+            'priority': featured_request.priority,
+            'featured_duration_days': featured_request.featured_duration_days,
+            'reason': featured_request.reason,
+            'status': featured_request.status,
+            'status_display': featured_request.get_status_display(),
+            'request_fee': float(featured_request.request_fee),
+            'payment_reference': featured_request.payment_reference,
+            'admin_notes': featured_request.admin_notes,
+            'created_at': featured_request.created_at.isoformat(),
+        })
+
+    elif request.method == 'DELETE':
+        if featured_request.status in ['approved', 'rejected']:
+            return Response({
+                'error': 'Cannot delete approved or rejected requests'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        featured_request.delete()
+        return Response({
+            'message': 'Featured request deleted successfully'
+        })
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reject_offer_request(request, request_id):
+    """Reject seller offer request"""
+    from .models import SellerOfferRequest
+    
+    if not request.user.is_staff:
+        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        offer_request = SellerOfferRequest.objects.get(id=request_id)
+        
+        offer_request.status = 'rejected'
+        offer_request.admin_notes = request.data.get('admin_notes', '')
+        offer_request.reviewed_by = request.user
+        offer_request.reviewed_at = timezone.now()
+        offer_request.save()
+
+        return Response({
+            'message': f'Offer request for "{offer_request.product.name}" has been rejected.'
+        })
+
+    except SellerOfferRequest.DoesNotExist:
+        return Response({
+            'error': 'Offer request not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reject_featured_request(request, request_id):
+    """Reject seller featured request"""
+    from .models import SellerFeaturedRequest
+    
+    if not request.user.is_staff:
+        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        featured_request = SellerFeaturedRequest.objects.get(id=request_id)
+        
+        featured_request.status = 'rejected'
+        featured_request.admin_notes = request.data.get('admin_notes', '')
+        featured_request.reviewed_by = request.user
+        featured_request.reviewed_at = timezone.now()
+        featured_request.save()
+
+        return Response({
+            'message': f'Featured request for "{featured_request.product.name}" has been rejected.'
+        })
+
+    except SellerFeaturedRequest.DoesNotExist:
+        return Response({
+            'error': 'Featured request not found'
+        }, status=status.HTTP_404_NOT_FOUND)
