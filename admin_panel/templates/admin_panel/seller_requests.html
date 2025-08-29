@@ -294,7 +294,7 @@ function initializeTables() {
 }
 
 function loadSellerRequests() {
-    fetch('/api/products/admin/seller-requests/', {
+    fetch('/api/admin/seller-requests/', {
         method: 'GET',
         credentials: 'same-origin',
         headers: {
@@ -328,8 +328,9 @@ function populateOfferRequests(requests) {
                 <div class="text-success"><strong>Offer: ${request.offer_price} EGP</strong></div>
             </div>`,
             `<small>
-                <div>Start: ${formatDate(request.start_date)}</div>
-                <div>End: ${formatDate(request.end_date)}</div>
+                <div>Duration: ${request.offer_duration_days} days</div>
+                ${request.start_date ? `<div>Start: ${formatDate(request.start_date)}</div>` : '<div>Start: Will be set on approval</div>'}
+                ${request.end_date ? `<div>End: ${formatDate(request.end_date)}</div>` : '<div>End: Will be set on approval</div>'}
             </small>`,
             `${request.request_fee} EGP`,
             `<span class="badge status-${request.status.replace('_', '-')}">${request.status_display}</span>`,
@@ -414,10 +415,43 @@ function markPaymentCompleted() {
         return;
     }
     
-    // This would be implemented as an API call to update the payment status
-    showAlert('Payment marked as completed successfully!', 'success');
-    $('#markPaymentModal').modal('hide');
-    loadSellerRequests();
+    // API call to mark payment completed and auto-approve
+    fetch(`/api/admin/seller-requests/${currentRequestId}/mark-payment-and-approve/`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'X-CSRFToken': getCSRFToken(),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            request_type: currentRequestType,
+            payment_reference: paymentReference,
+            admin_notes: adminNotes
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            showAlert(data.message, 'success');
+            $('#markPaymentModal').modal('hide');
+            loadSellerRequests();
+        } else {
+            let errorMessage = data.error || 'Failed to process payment';
+            let alertType = 'error';
+            
+            // Handle already approved requests differently
+            if (data.status === 'already_approved') {
+                alertType = 'warning';
+                errorMessage = data.error + ' Please refresh the page to see current status.';
+            }
+            
+            showAlert(errorMessage, alertType);
+        }
+    })
+    .catch(error => {
+        console.error('Error processing payment:', error);
+        showAlert('Failed to process payment', 'error');
+    });
 }
 
 function approveRequest(requestId, requestType) {
@@ -426,8 +460,8 @@ function approveRequest(requestId, requestType) {
     }
 
     const endpoint = requestType === 'offer' ? 
-        `/api/products/admin/offer-requests/${requestId}/approve/` :
-        `/api/products/admin/featured-requests/${requestId}/approve/`;
+        `/api/admin/seller-requests/offer/${requestId}/approve/` :
+        `/api/admin/seller-requests/featured/${requestId}/approve/`;
 
     fetch(endpoint, {
         method: 'POST',
@@ -486,7 +520,21 @@ function formatDate(dateString) {
 }
 
 function getCSRFToken() {
-    return document.querySelector('[name=csrfmiddlewaretoken]').value;
+    // Try multiple ways to get CSRF token
+    let token = document.querySelector('[name=csrfmiddlewaretoken]');
+    if (token) return token.value;
+    
+    token = document.querySelector('meta[name=csrf-token]');
+    if (token) return token.getAttribute('content');
+    
+    // Get from cookie
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'csrftoken') return value;
+    }
+    
+    return '';
 }
 
 function showAlert(message, type = 'info') {
