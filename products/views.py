@@ -653,8 +653,14 @@ def manage_offers(request):
         return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
-        # Get all offers with product details
-        offers = ProductOffer.objects.select_related('product', 'product__category').order_by('-created_at')
+        # Get only valid/active offers with product details (hide expired offers)
+        from django.utils import timezone
+        now = timezone.now()
+        offers = ProductOffer.objects.select_related('product', 'product__category').filter(
+            is_active=True,
+            start_date__lte=now,
+            end_date__gte=now
+        ).order_by('-created_at')
 
         results = []
         for offer in offers:
