@@ -6,7 +6,7 @@ from .models import (
     ProductOffer, FeaturedProduct, ProductAttribute, ProductAttributeOption, 
     CategoryAttribute, ProductVariant, ProductVariantAttribute, Tag, 
     CategoryVariantType, CategoryVariantOption, DiscountRequest, ProductVariantOption,
-    SubcategorySectionControl
+    SubcategorySectionControl, SellerOfferRequest, SellerFeaturedRequest
 )
 
 # Custom forms for better product management
@@ -741,3 +741,172 @@ class SubcategorySectionControlAdmin(admin.ModelAdmin):
 
 # Register the new admin
 admin.site.register(SubcategorySectionControl, SubcategorySectionControlAdmin)
+
+# Seller Request Admin Classes
+class SellerOfferRequestAdmin(admin.ModelAdmin):
+    list_display = ('product', 'seller_name', 'discount_percentage', 'offer_price', 'request_fee', 'status', 'payment_reference', 'created_at')
+    list_filter = ('status', 'created_at', 'reviewed_at', 'discount_percentage')
+    search_fields = ('product__name', 'seller__email', 'payment_reference')
+    readonly_fields = ('offer_price', 'savings_amount', 'created_at', 'updated_at')
+    actions = ['mark_payment_completed_and_auto_approve', 'approve_requests', 'reject_requests']
+    ordering = ('-created_at',)
+    
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('product', 'seller', 'discount_percentage', 'offer_price', 'savings_amount')
+        }),
+        ('Offer Details', {
+            'fields': ('start_date', 'end_date', 'description')
+        }),
+        ('Payment & Status', {
+            'fields': ('status', 'request_fee', 'payment_reference')
+        }),
+        ('Admin Review', {
+            'fields': ('admin_notes', 'reviewed_by', 'reviewed_at')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def seller_name(self, obj):
+        return obj.seller.email
+    seller_name.short_description = 'Seller'
+    seller_name.admin_order_field = 'seller__email'
+    
+    def savings_amount(self, obj):
+        return obj.savings_amount
+    savings_amount.short_description = 'Savings Amount'
+    
+    def mark_payment_completed_and_auto_approve(self, request, queryset):
+        """Mark payment as completed and automatically approve, creating the actual offer"""
+        from django.utils import timezone
+        updated = 0
+        approved = 0
+        
+        for offer_request in queryset.filter(status__in=['pending_payment', 'payment_completed']):
+            # Mark payment as completed first
+            if offer_request.status == 'pending_payment':
+                offer_request.status = 'payment_completed'
+                offer_request.save()
+            
+            # Auto-approve and create the actual offer
+            product_offer = offer_request.approve_and_create_offer(request.user)
+            if product_offer:
+                approved += 1
+                self.message_user(request, f'✅ Created offer for {offer_request.product.name}')
+            updated += 1
+        
+        self.message_user(request, f'✅ {updated} payment(s) completed and {approved} offer(s) automatically created.')
+    mark_payment_completed_and_auto_approve.short_description = '💰 Mark Payment Successful & Auto-Approve'
+    
+    def approve_requests(self, request, queryset):
+        """Manually approve requests that have completed payment"""
+        approved = 0
+        for offer_request in queryset.filter(status='payment_completed'):
+            product_offer = offer_request.approve_and_create_offer(request.user)
+            if product_offer:
+                approved += 1
+        
+        self.message_user(request, f'✅ {approved} offer(s) approved and created.')
+    approve_requests.short_description = '✅ Approve Selected Requests'
+    
+    def reject_requests(self, request, queryset):
+        """Reject selected requests"""
+        from django.utils import timezone
+        updated = 0
+        
+        for offer_request in queryset.exclude(status='rejected'):
+            offer_request.status = 'rejected'
+            offer_request.reviewed_by = request.user
+            offer_request.reviewed_at = timezone.now()
+            offer_request.save()
+            updated += 1
+        
+        self.message_user(request, f'❌ {updated} request(s) rejected.')
+    reject_requests.short_description = '❌ Reject Selected Requests'
+
+class SellerFeaturedRequestAdmin(admin.ModelAdmin):
+    list_display = ('product', 'seller_name', 'priority', 'featured_duration_days', 'request_fee', 'status', 'payment_reference', 'created_at')
+    list_filter = ('status', 'created_at', 'reviewed_at', 'priority', 'featured_duration_days')
+    search_fields = ('product__name', 'seller__email', 'payment_reference', 'reason')
+    readonly_fields = ('created_at', 'updated_at')
+    actions = ['mark_payment_completed_and_auto_approve', 'approve_requests', 'reject_requests']
+    ordering = ('-created_at',)
+    
+    fieldsets = (
+        ('Request Information', {
+            'fields': ('product', 'seller', 'reason')
+        }),
+        ('Featured Details', {
+            'fields': ('priority', 'featured_duration_days')
+        }),
+        ('Payment & Status', {
+            'fields': ('status', 'request_fee', 'payment_reference')
+        }),
+        ('Admin Review', {
+            'fields': ('admin_notes', 'reviewed_by', 'reviewed_at')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def seller_name(self, obj):
+        return obj.seller.email
+    seller_name.short_description = 'Seller'
+    seller_name.admin_order_field = 'seller__email'
+    
+    def mark_payment_completed_and_auto_approve(self, request, queryset):
+        """Mark payment as completed and automatically approve, creating the actual featured product"""
+        from django.utils import timezone
+        updated = 0
+        approved = 0
+        
+        for featured_request in queryset.filter(status__in=['pending_payment', 'payment_completed']):
+            # Mark payment as completed first
+            if featured_request.status == 'pending_payment':
+                featured_request.status = 'payment_completed'
+                featured_request.save()
+            
+            # Auto-approve and create the actual featured product
+            featured_product = featured_request.approve_and_create_featured(request.user)
+            if featured_product:
+                approved += 1
+                self.message_user(request, f'✅ Featured {featured_request.product.name} for {featured_request.featured_duration_days} days')
+            updated += 1
+        
+        self.message_user(request, f'✅ {updated} payment(s) completed and {approved} product(s) automatically featured.')
+    mark_payment_completed_and_auto_approve.short_description = '💰 Mark Payment Successful & Auto-Approve'
+    
+    def approve_requests(self, request, queryset):
+        """Manually approve requests that have completed payment"""
+        approved = 0
+        for featured_request in queryset.filter(status='payment_completed'):
+            featured_product = featured_request.approve_and_create_featured(request.user)
+            if featured_product:
+                approved += 1
+        
+        self.message_user(request, f'✅ {approved} product(s) featured.')
+    approve_requests.short_description = '✅ Approve Selected Requests'
+    
+    def reject_requests(self, request, queryset):
+        """Reject selected requests"""
+        from django.utils import timezone
+        updated = 0
+        
+        for featured_request in queryset.exclude(status='rejected'):
+            featured_request.status = 'rejected'
+            featured_request.reviewed_by = request.user
+            featured_request.reviewed_at = timezone.now()
+            featured_request.save()
+            updated += 1
+        
+        self.message_user(request, f'❌ {updated} request(s) rejected.')
+    reject_requests.short_description = '❌ Reject Selected Requests'
+
+# Register Seller Request admins
+admin.site.register(SellerOfferRequest, SellerOfferRequestAdmin)
+admin.site.register(SellerFeaturedRequest, SellerFeaturedRequestAdmin)

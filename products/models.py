@@ -803,8 +803,9 @@ class SellerOfferRequest(models.Model):
         help_text="Discount percentage (1-90%)"
     )
     offer_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField()
+    offer_duration_days = models.PositiveIntegerField(default=7, help_text="How many days the offer should be active")
+    start_date = models.DateTimeField(null=True, blank=True, help_text="Legacy field - now calculated from approval date")
+    end_date = models.DateTimeField(null=True, blank=True, help_text="Legacy field - now calculated from approval date + duration")
     description = models.TextField(blank=True, null=True, help_text="Offer description")
     
     # Request management
@@ -845,16 +846,27 @@ class SellerOfferRequest(models.Model):
     def approve_and_create_offer(self, admin_user):
         """Create actual ProductOffer when request is approved"""
         if self.status == 'payment_completed':
+            from django.utils import timezone
+            from datetime import timedelta
+            
+            # Calculate offer dates from approval time
+            start_date = timezone.now()
+            end_date = start_date + timedelta(days=self.offer_duration_days)
+            
             # Create the actual offer
             product_offer = ProductOffer.objects.create(
                 product=self.product,
                 discount_percentage=self.discount_percentage,
                 offer_price=self.offer_price,
-                start_date=self.start_date,
-                end_date=self.end_date,
-                description=self.description,
+                start_date=start_date,
+                end_date=end_date,
+                description=self.description or f"Seller requested offer for {self.offer_duration_days} days",
                 is_active=True
             )
+            
+            # Update legacy fields for backward compatibility
+            self.start_date = start_date
+            self.end_date = end_date
             
             # Update request status
             self.status = 'approved'

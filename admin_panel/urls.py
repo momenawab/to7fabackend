@@ -1,6 +1,6 @@
 from django.urls import path
 from django.http import JsonResponse
-from . import views
+from . import views, api_views
 
 app_name = 'admin_panel'
 
@@ -97,4 +97,11 @@ urlpatterns = [
     path('api/categories/<int:category_id>/variants/', views.get_category_variants_json, name='get_category_variants_json'),
     
     path('activity-log/', views.activity_log, name='activity_log'),
+    
+    # Seller Requests API endpoints
+    path('api/seller-requests/', api_views.seller_requests_list, name='seller_requests_list'),
+    path('api/seller-requests/<int:request_id>/mark-payment/', api_views.mark_payment_completed, name='mark_payment_completed'),
+    path('api/seller-requests/<int:request_id>/mark-payment-and-approve/', api_views.mark_payment_and_auto_approve, name='mark_payment_and_auto_approve'),
+    path('api/seller-requests/offer/<int:request_id>/approve/', api_views.approve_offer_request, name='approve_offer_request'),
+    path('api/seller-requests/featured/<int:request_id>/approve/', api_views.approve_featured_request, name='approve_featured_request'),
 ] 

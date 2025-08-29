@@ -85,4 +85,11 @@ urlpatterns = [
     path('seller/dashboard/orders/', api_views.seller_orders, name='seller_orders'),
     path('seller/dashboard/orders/<int:order_id>/status/', api_views.update_order_status, name='update_order_status'),
     path('seller/dashboard/profile/', api_views.seller_profile, name='seller_profile'),
+    
+    # Seller Requests Management API endpoints
+    path('seller-requests/', api_views.seller_requests_list, name='seller_requests_list'),
+    path('seller-requests/<int:request_id>/mark-payment/', api_views.mark_payment_completed, name='mark_payment_completed'),
+    path('seller-requests/<int:request_id>/mark-payment-and-approve/', api_views.mark_payment_and_auto_approve, name='mark_payment_and_auto_approve'),
+    path('seller-requests/offer/<int:request_id>/approve/', api_views.approve_offer_request, name='approve_offer_request'),
+    path('seller-requests/featured/<int:request_id>/approve/', api_views.approve_featured_request, name='approve_featured_request'),
 ] 

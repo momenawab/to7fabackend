@@ -3014,3 +3014,287 @@ def seller_product_analytics(request):
         
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# Seller Requests API Endpoints
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def seller_requests_list(request):
+    """Get all seller requests (offers and featured products)"""
+    try:
+        from products.models import SellerOfferRequest, SellerFeaturedRequest
+        
+        # Get offer requests with related data
+        offer_requests = SellerOfferRequest.objects.select_related(
+            'product', 'seller', 'reviewed_by'
+        ).order_by('-created_at')
+        
+        # Get featured requests with related data
+        featured_requests = SellerFeaturedRequest.objects.select_related(
+            'product', 'seller', 'reviewed_by'
+        ).order_by('-created_at')
+        
+        # Serialize offer requests
+        offer_data = []
+        for req in offer_requests:
+            offer_data.append({
+                'id': req.id,
+                'product_name': req.product.name,
+                'product_id': req.product.id,
+                'seller_name': req.seller.email,
+                'seller_type': req.seller.user_type,
+                'seller_id': req.seller.id,
+                'discount_percentage': req.discount_percentage,
+                'original_price': float(req.product.price),
+                'offer_price': float(req.offer_price) if req.offer_price else 0,
+                'offer_duration_days': req.offer_duration_days,
+                'start_date': req.start_date.isoformat() if req.start_date else None,
+                'end_date': req.end_date.isoformat() if req.end_date else None,
+                'description': req.description or '',
+                'status': req.status,
+                'status_display': req.get_status_display(),
+                'request_fee': float(req.request_fee),
+                'payment_reference': req.payment_reference or '',
+                'admin_notes': req.admin_notes or '',
+                'reviewed_by': req.reviewed_by.email if req.reviewed_by else None,
+                'reviewed_at': req.reviewed_at.isoformat() if req.reviewed_at else None,
+                'created_at': req.created_at.isoformat(),
+                'updated_at': req.updated_at.isoformat(),
+            })
+        
+        # Serialize featured requests
+        featured_data = []
+        for req in featured_requests:
+            featured_data.append({
+                'id': req.id,
+                'product_name': req.product.name,
+                'product_id': req.product.id,
+                'seller_name': req.seller.email,
+                'seller_type': req.seller.user_type,
+                'seller_id': req.seller.id,
+                'priority': req.priority,
+                'featured_duration_days': req.featured_duration_days,
+                'reason': req.reason or '',
+                'status': req.status,
+                'status_display': req.get_status_display(),
+                'request_fee': float(req.request_fee),
+                'payment_reference': req.payment_reference or '',
+                'admin_notes': req.admin_notes or '',
+                'reviewed_by': req.reviewed_by.email if req.reviewed_by else None,
+                'reviewed_at': req.reviewed_at.isoformat() if req.reviewed_at else None,
+                'created_at': req.created_at.isoformat(),
+                'updated_at': req.updated_at.isoformat(),
+            })
+        
+        # Calculate statistics
+        total_offer_requests = len(offer_data)
+        total_featured_requests = len(featured_data)
+        pending_offers = sum(1 for r in offer_data if r['status'] == 'payment_completed')
+        pending_featured = sum(1 for r in featured_data if r['status'] == 'payment_completed')
+        
+        return Response({
+            'status': 'success',
+            'offer_requests': offer_data,
+            'featured_requests': featured_data,
+            'total_offer_requests': total_offer_requests,
+            'total_featured_requests': total_featured_requests,
+            'pending_requests': pending_offers + pending_featured,
+            'statistics': {
+                'total_offer_requests': total_offer_requests,
+                'total_featured_requests': total_featured_requests,
+                'pending_offers': pending_offers,
+                'pending_featured': pending_featured,
+            }
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def mark_payment_completed(request, request_id):
+    """Mark seller request payment as completed"""
+    try:
+        from products.models import SellerOfferRequest, SellerFeaturedRequest
+        
+        request_type = request.data.get('request_type')  # 'offer' or 'featured'
+        payment_reference = request.data.get('payment_reference')
+        admin_notes = request.data.get('admin_notes', '')
+        
+        if not payment_reference:
+            return Response({'error': 'Payment reference is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if request_type == 'offer':
+            seller_request = get_object_or_404(SellerOfferRequest, id=request_id)
+        elif request_type == 'featured':
+            seller_request = get_object_or_404(SellerFeaturedRequest, id=request_id)
+        else:
+            return Response({'error': 'Invalid request type'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update payment status
+        seller_request.status = 'payment_completed'
+        seller_request.payment_reference = payment_reference
+        if admin_notes:
+            seller_request.admin_notes = admin_notes
+        seller_request.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='mark_payment_completed',
+            description=f'Marked payment completed for {request_type} request #{request_id}',
+            ip_address=get_client_ip(request)
+        )
+        
+        return Response({
+            'status': 'success',
+            'message': f'Payment marked as completed for {request_type} request #{request_id}'
+        })
+        
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def approve_offer_request(request, request_id):
+    """Approve offer request and create actual ProductOffer"""
+    try:
+        from products.models import SellerOfferRequest
+        
+        offer_request = get_object_or_404(SellerOfferRequest, id=request_id)
+        
+        # Use the model's built-in approval method
+        product_offer = offer_request.approve_and_create_offer(request.user)
+        
+        if product_offer:
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='approve_offer_request',
+                description=f'Approved offer request #{request_id} and created ProductOffer #{product_offer.id}',
+                ip_address=get_client_ip(request)
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': f'Offer request approved and ProductOffer created successfully',
+                'offer_id': product_offer.id
+            })
+        else:
+            return Response({
+                'error': 'Failed to create ProductOffer. Request may not have completed payment.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def approve_featured_request(request, request_id):
+    """Approve featured request and create actual FeaturedProduct"""
+    try:
+        from products.models import SellerFeaturedRequest
+        
+        featured_request = get_object_or_404(SellerFeaturedRequest, id=request_id)
+        
+        # Use the model's built-in approval method
+        featured_product = featured_request.approve_and_create_featured(request.user)
+        
+        if featured_product:
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='approve_featured_request',
+                description=f'Approved featured request #{request_id} and created FeaturedProduct #{featured_product.id}',
+                ip_address=get_client_ip(request)
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': f'Featured request approved and FeaturedProduct created successfully',
+                'featured_id': featured_product.id
+            })
+        else:
+            return Response({
+                'error': 'Failed to create FeaturedProduct. Request may not have completed payment.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def mark_payment_and_auto_approve(request, request_id):
+    """Mark payment completed and automatically approve request"""
+    try:
+        from products.models import SellerOfferRequest, SellerFeaturedRequest
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        request_type = request.data.get('request_type')  # 'offer' or 'featured'
+        payment_reference = request.data.get('payment_reference')
+        admin_notes = request.data.get('admin_notes', '')
+        
+        if not payment_reference:
+            return Response({'error': 'Payment reference is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not request_type:
+            return Response({'error': 'Request type is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if request_type == 'offer':
+            seller_request = get_object_or_404(SellerOfferRequest, id=request_id)
+        elif request_type == 'featured':
+            seller_request = get_object_or_404(SellerFeaturedRequest, id=request_id)
+        else:
+            return Response({'error': f'Invalid request type: {request_type}. Must be "offer" or "featured"'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if already approved
+        if seller_request.status == 'approved':
+            return Response({
+                'error': f'This {request_type} request has already been approved and processed.',
+                'status': 'already_approved'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Mark payment as completed first
+        seller_request.status = 'payment_completed'
+        seller_request.payment_reference = payment_reference
+        if admin_notes:
+            seller_request.admin_notes = admin_notes
+        seller_request.save()
+        
+        # Auto-approve and create actual product
+        if request_type == 'offer':
+            created_item = seller_request.approve_and_create_offer(request.user)
+            item_type = 'ProductOffer'
+        else:
+            created_item = seller_request.approve_and_create_featured(request.user)
+            item_type = 'FeaturedProduct'
+        
+        if created_item:
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='mark_payment_and_auto_approve',
+                description=f'Payment completed and auto-approved {request_type} request #{request_id}, created {item_type} #{created_item.id}',
+                ip_address=get_client_ip(request)
+            )
+            
+            return Response({
+                'status': 'success',
+                'message': f'Payment completed and {request_type} request auto-approved successfully. {item_type} created.',
+                'created_item_id': created_item.id
+            })
+        else:
+            return Response({
+                'error': f'Payment marked but failed to create {item_type}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Exception in mark_payment_and_auto_approve: {str(e)}", exc_info=True)
+        return Response({'error': f'An error occurred: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)

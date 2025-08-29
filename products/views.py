@@ -1819,8 +1819,9 @@ def seller_offer_requests(request):
                 'discount_percentage': req.discount_percentage,
                 'offer_price': float(req.offer_price),
                 'savings_amount': float(req.savings_amount),
-                'start_date': req.start_date.isoformat(),
-                'end_date': req.end_date.isoformat(),
+                'offer_duration_days': req.offer_duration_days,
+                'start_date': req.start_date.isoformat() if req.start_date else None,
+                'end_date': req.end_date.isoformat() if req.end_date else None,
                 'description': req.description,
                 'status': req.status,
                 'status_display': req.get_status_display(),
@@ -1854,19 +1855,23 @@ def seller_offer_requests(request):
                     'error': f'You already have an active offer request for this product (Status: {existing_request.get_status_display()})'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Parse dates
-            from django.utils.dateparse import parse_datetime
-            start_date = parse_datetime(request.data.get('start_date'))
-            end_date = parse_datetime(request.data.get('end_date'))
-
-            if not start_date or not end_date:
+            # Get offer duration in days
+            offer_duration_days = request.data.get('offer_duration_days')
+            
+            if not offer_duration_days:
                 return Response({
-                    'error': 'Invalid start_date or end_date format. Use ISO format.'
+                    'error': 'offer_duration_days is required (number of days for the offer to be active)'
                 }, status=status.HTTP_400_BAD_REQUEST)
-
-            if start_date >= end_date:
+            
+            try:
+                offer_duration_days = int(offer_duration_days)
+                if offer_duration_days < 1 or offer_duration_days > 30:
+                    return Response({
+                        'error': 'Offer duration must be between 1 and 30 days'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            except ValueError:
                 return Response({
-                    'error': 'End date must be after start date'
+                    'error': 'offer_duration_days must be a valid number'
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             # Create the offer request
@@ -1874,8 +1879,7 @@ def seller_offer_requests(request):
                 product=product,
                 seller=request.user,
                 discount_percentage=request.data.get('discount_percentage'),
-                start_date=start_date,
-                end_date=end_date,
+                offer_duration_days=offer_duration_days,
                 description=request.data.get('description', ''),
                 request_fee=50.00  # Default fee
             )
