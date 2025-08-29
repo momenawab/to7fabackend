@@ -782,3 +782,157 @@ class SubcategorySectionControl(models.Model):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+
+class SellerOfferRequest(models.Model):
+    """Model for seller requests to add products to latest offers (requires payment and admin approval)"""
+    REQUEST_STATUS_CHOICES = [
+        ('pending_payment', 'Pending Payment'),
+        ('payment_completed', 'Payment Completed'),
+        ('under_review', 'Under Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='offer_requests')
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='offer_requests')
+    
+    # Offer details
+    discount_percentage = models.PositiveIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(90)],
+        help_text="Discount percentage (1-90%)"
+    )
+    offer_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    description = models.TextField(blank=True, null=True, help_text="Offer description")
+    
+    # Request management
+    status = models.CharField(max_length=20, choices=REQUEST_STATUS_CHOICES, default='pending_payment')
+    request_fee = models.DecimalField(max_digits=10, decimal_places=2, default=50.00, help_text="Fee to request offer placement")
+    payment_reference = models.CharField(max_length=100, blank=True, null=True, help_text="Payment transaction reference")
+    
+    # Admin review
+    admin_notes = models.TextField(blank=True, null=True, help_text="Admin notes about the request")
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_offer_requests')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _('Seller Offer Request')
+        verbose_name_plural = _('Seller Offer Requests')
+        ordering = ['-created_at']
+        unique_together = ['product', 'seller']  # One active request per product per seller
+    
+    def __str__(self):
+        return f"Offer Request: {self.product.name} by {self.seller.email} - {self.get_status_display()}"
+    
+    def save(self, *args, **kwargs):
+        # Calculate offer price if not provided
+        if not self.offer_price:
+            original_price = self.product.price
+            discount_decimal = Decimal(self.discount_percentage) / Decimal('100')
+            self.offer_price = original_price * (Decimal('1') - discount_decimal)
+        super().save(*args, **kwargs)
+    
+    @property
+    def savings_amount(self):
+        """Calculate savings amount"""
+        return self.product.price - self.offer_price
+    
+    def approve_and_create_offer(self, admin_user):
+        """Create actual ProductOffer when request is approved"""
+        if self.status == 'payment_completed':
+            # Create the actual offer
+            product_offer = ProductOffer.objects.create(
+                product=self.product,
+                discount_percentage=self.discount_percentage,
+                offer_price=self.offer_price,
+                start_date=self.start_date,
+                end_date=self.end_date,
+                description=self.description,
+                is_active=True
+            )
+            
+            # Update request status
+            self.status = 'approved'
+            self.reviewed_by = admin_user
+            self.reviewed_at = timezone.now()
+            self.save()
+            
+            return product_offer
+        return None
+
+
+class SellerFeaturedRequest(models.Model):
+    """Model for seller requests to feature their products (requires payment and admin approval)"""
+    REQUEST_STATUS_CHOICES = [
+        ('pending_payment', 'Pending Payment'),
+        ('payment_completed', 'Payment Completed'),
+        ('under_review', 'Under Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+    
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='featured_requests')
+    seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='featured_requests')
+    
+    # Featured details
+    priority = models.PositiveIntegerField(default=0, help_text="Requested priority (lower numbers appear first)")
+    featured_duration_days = models.PositiveIntegerField(default=30, help_text="How many days to feature the product")
+    reason = models.CharField(max_length=200, blank=True, null=True, help_text="Reason for featuring request")
+    
+    # Request management
+    status = models.CharField(max_length=20, choices=REQUEST_STATUS_CHOICES, default='pending_payment')
+    request_fee = models.DecimalField(max_digits=10, decimal_places=2, default=100.00, help_text="Fee to request featured placement")
+    payment_reference = models.CharField(max_length=100, blank=True, null=True, help_text="Payment transaction reference")
+    
+    # Admin review
+    admin_notes = models.TextField(blank=True, null=True, help_text="Admin notes about the request")
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_featured_requests')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _('Seller Featured Request')
+        verbose_name_plural = _('Seller Featured Requests')
+        ordering = ['-created_at']
+        unique_together = ['product', 'seller']  # One active request per product per seller
+    
+    def __str__(self):
+        return f"Featured Request: {self.product.name} by {self.seller.email} - {self.get_status_display()}"
+    
+    def approve_and_create_featured(self, admin_user):
+        """Create actual FeaturedProduct when request is approved"""
+        if self.status == 'payment_completed':
+            from django.utils import timezone
+            from datetime import timedelta
+            
+            # Calculate featured until date
+            featured_until = timezone.now() + timedelta(days=self.featured_duration_days)
+            
+            # Create the actual featured product
+            featured_product = FeaturedProduct.objects.create(
+                product=self.product,
+                priority=self.priority,
+                featured_until=featured_until,
+                reason=self.reason or f"Seller requested feature for {self.featured_duration_days} days",
+                is_active=True
+            )
+            
+            # Update product's is_featured flag
+            self.product.is_featured = True
+            self.product.save()
+            
+            # Update request status
+            self.status = 'approved'
+            self.reviewed_by = admin_user
+            self.reviewed_at = timezone.now()
+            self.save()
+            
+            return featured_product
+        return None

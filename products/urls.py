@@ -50,4 +50,17 @@ urlpatterns = [
     # Subcategory section control endpoints
     path('categories/<int:category_id>/subcategory-sections/', views.subcategory_sections, name='subcategory_sections'),
     path('subcategory-sections/', views.all_subcategory_sections, name='all_subcategory_sections'),
+    
+    # Seller request endpoints
+    path('seller/offer-requests/', views.seller_offer_requests, name='seller_offer_requests'),
+    path('seller/offer-requests/<int:request_id>/', views.seller_offer_request_detail, name='seller_offer_request_detail'),
+    path('seller/featured-requests/', views.seller_featured_requests, name='seller_featured_requests'),
+    path('seller/featured-requests/<int:request_id>/', views.seller_featured_request_detail, name='seller_featured_request_detail'),
+    
+    # Admin request management endpoints
+    path('admin/seller-requests/', views.manage_seller_requests, name='manage_seller_requests'),
+    path('admin/offer-requests/<int:request_id>/approve/', views.approve_offer_request, name='approve_offer_request'),
+    path('admin/offer-requests/<int:request_id>/reject/', views.reject_offer_request, name='reject_offer_request'),
+    path('admin/featured-requests/<int:request_id>/approve/', views.approve_featured_request, name='approve_featured_request'),
+    path('admin/featured-requests/<int:request_id>/reject/', views.reject_featured_request, name='reject_featured_request'),
 ] 
