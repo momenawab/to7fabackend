@@ -1,6 +1,8 @@
 # Content management models for admin panel
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from custom_auth.models import User
+from products.models import Category
 
 class Advertisement(models.Model):
     """Model for managing ads slider in the app"""
@@ -78,3 +80,134 @@ class ContentSettings(models.Model):
         """Get or create the content settings instance"""
         settings, created = cls.objects.get_or_create(pk=1)
         return settings
+
+
+class AdType(models.Model):
+    """Model for managing different types of ads"""
+    TYPE_CHOICES = (
+        ('home_slider', _('Home Page Slider')),
+        ('category_slider', _('Category Slider')),
+        ('offer_ad', _('Offer Advertisement')),
+        ('featured_product', _('Featured Product')),
+    )
+    
+    name = models.CharField(max_length=50, choices=TYPE_CHOICES, unique=True, verbose_name=_('Ad Type'))
+    name_ar = models.CharField(max_length=100, verbose_name=_('Arabic Name'))
+    description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
+    requires_category = models.BooleanField(default=False, verbose_name=_('Requires Category Selection'))
+    is_active = models.BooleanField(default=True, verbose_name=_('Is Active'))
+    display_order = models.PositiveIntegerField(default=0, verbose_name=_('Display Order'))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _('Ad Type')
+        verbose_name_plural = _('Ad Types')
+        ordering = ['display_order', 'name']
+    
+    def __str__(self):
+        return self.name_ar or self.get_name_display()
+
+
+class AdPricing(models.Model):
+    """Model for managing ad pricing"""
+    DURATION_CHOICES = (
+        ('daily', _('Daily')),
+        ('weekly', _('Weekly')),
+        ('monthly', _('Monthly')),
+    )
+    
+    ad_type = models.ForeignKey(AdType, on_delete=models.CASCADE, related_name='pricing')
+    duration = models.CharField(max_length=20, choices=DURATION_CHOICES, verbose_name=_('Duration'))
+    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name=_('Price (EGP)'))
+    min_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name=_('Minimum Price'))
+    max_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name=_('Maximum Price'))
+    is_active = models.BooleanField(default=True, verbose_name=_('Is Active'))
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = _('Ad Pricing')
+        verbose_name_plural = _('Ad Pricing')
+        unique_together = ['ad_type', 'duration']
+        ordering = ['ad_type', 'duration']
+    
+    def __str__(self):
+        return f"{self.ad_type.name_ar} - {self.get_duration_display()} - {self.price} EGP"
+
+
+class AdBookingRequest(models.Model):
+    """Model for managing ad booking requests from sellers"""
+    STATUS_CHOICES = (
+        ('pending_payment', _('Pending Payment')),
+        ('payment_submitted', _('Payment Submitted')),
+        ('under_review', _('Under Review')),
+        ('approved', _('Approved')),
+        ('active', _('Active')),
+        ('completed', _('Completed')),
+        ('rejected', _('Rejected')),
+        ('cancelled', _('Cancelled')),
+    )
+    
+    PAYMENT_METHOD_CHOICES = (
+        ('instapay', _('Instapay')),
+        ('vodafone_cash', _('Vodafone Cash')),
+        ('visa', _('Visa/Mastercard')),
+    )
+    
+    # Seller information
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ad_requests')
+    
+    # Ad details
+    ad_type = models.ForeignKey(AdType, on_delete=models.CASCADE, verbose_name=_('Ad Type'))
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True, 
+                                verbose_name=_('Category'), help_text=_('Required for Category Slider ads'))
+    duration = models.CharField(max_length=20, choices=AdPricing.DURATION_CHOICES, verbose_name=_('Duration'))
+    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name=_('Price (EGP)'))
+    
+    # Payment information
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, verbose_name=_('Payment Method'))
+    sender_info = models.CharField(max_length=100, blank=True, null=True, verbose_name=_('Sender Info'),
+                                  help_text=_('Phone number or account ID used for payment'))
+    payment_screenshot = models.ImageField(upload_to='ad_payments/', blank=True, null=True, 
+                                         verbose_name=_('Payment Screenshot'))
+    
+    # Ad content (to be filled by seller or admin)
+    ad_title = models.CharField(max_length=200, blank=True, null=True, verbose_name=_('Ad Title'))
+    ad_description = models.TextField(blank=True, null=True, verbose_name=_('Ad Description'))
+    ad_image = models.ImageField(upload_to='ad_content/', blank=True, null=True, verbose_name=_('Ad Image'))
+    ad_link = models.URLField(blank=True, null=True, verbose_name=_('Ad Link'))
+    
+    # Status and tracking
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='payment_submitted', verbose_name=_('Status'))
+    admin_notes = models.TextField(blank=True, null=True, verbose_name=_('Admin Notes'))
+    
+    # Scheduling
+    start_date = models.DateTimeField(null=True, blank=True, verbose_name=_('Start Date'))
+    end_date = models.DateTimeField(null=True, blank=True, verbose_name=_('End Date'))
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name=_('Created At'))
+    updated_at = models.DateTimeField(auto_now=True, verbose_name=_('Updated At'))
+    approved_at = models.DateTimeField(null=True, blank=True, verbose_name=_('Approved At'))
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name=_('Completed At'))
+    
+    class Meta:
+        verbose_name = _('Ad Booking Request')
+        verbose_name_plural = _('Ad Booking Requests')
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.seller.email} - {self.ad_type.name_ar} - {self.get_status_display()}"
+    
+    @property
+    def is_category_required(self):
+        return self.ad_type.requires_category
+    
+    def can_be_approved(self):
+        """Check if request can be approved"""
+        return self.status in ['payment_submitted', 'under_review']
+    
+    def can_be_activated(self):
+        """Check if request can be activated"""
+        return self.status == 'approved'

@@ -18,6 +18,7 @@ from rest_framework import status
 
 from custom_auth.models import User, Artist, Store, SellerApplication
 from products.models import Product, Category, ProductImage
+from .models import AdminActivity, AdminNotification, AdBookingRequest, AdType, AdPricing
 from orders.models import Order
 from .models import AdminActivity, AdminNotification
 from .decorators import admin_required, has_admin_permission
@@ -2657,3 +2658,52 @@ def get_permissions_and_roles(request):
         
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+def ad_bookings_management(request):
+    """Ad bookings management page"""
+    
+    # Get all bookings with related data
+    bookings = AdBookingRequest.objects.select_related(
+        'seller', 'ad_type', 'category'
+    ).order_by('-created_at')
+    
+    # Apply search filter
+    search = request.GET.get('search')
+    if search:
+        bookings = bookings.filter(
+            Q(seller__email__icontains=search) |
+            Q(seller__first_name__icontains=search) |
+            Q(seller__last_name__icontains=search) |
+            Q(ad_type__name_ar__icontains=search) |
+            Q(ad_type__name__icontains=search)
+        )
+    
+    # Get counts for each status
+    all_count = bookings.count()
+    pending_count = bookings.filter(status__in=['payment_submitted', 'under_review']).count()
+    approved_count = bookings.filter(status='approved').count()
+    active_count = bookings.filter(status='active').count()
+    completed_count = bookings.filter(status='completed').count()
+    
+    # Pagination
+    paginator = Paginator(bookings, 25)  # Show 25 bookings per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'bookings': page_obj,
+        'all_count': all_count,
+        'pending_count': pending_count,
+        'approved_count': approved_count,
+        'active_count': active_count,
+        'completed_count': completed_count,
+        'search': search,
+        'page_obj': page_obj,
+        'is_paginated': page_obj.has_other_pages(),
+    }
+    
+    return render(request, 'admin_panel/ad_bookings.html', context)
+

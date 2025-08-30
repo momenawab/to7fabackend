@@ -104,4 +104,16 @@ urlpatterns = [
     path('api/seller-requests/<int:request_id>/mark-payment-and-approve/', api_views.mark_payment_and_auto_approve, name='mark_payment_and_auto_approve'),
     path('api/seller-requests/offer/<int:request_id>/approve/', api_views.approve_offer_request, name='approve_offer_request'),
     path('api/seller-requests/featured/<int:request_id>/approve/', api_views.approve_featured_request, name='approve_featured_request'),
+    
+    # Ad Booking Management
+    path('ad-bookings/', views.ad_bookings_management, name='ad_bookings'),
+    
+    # Ad Booking API endpoints
+    path('api/ad-types/', api_views.get_ad_types, name='get_ad_types'),
+    path('api/ad-bookings/', api_views.create_ad_booking, name='create_ad_booking'),
+    path('api/ad-bookings/<int:booking_id>/', views.ad_booking_details_api, name='ad_booking_details'),
+    path('api/ad-bookings/<int:booking_id>/approve/', views.approve_ad_booking_api, name='approve_ad_booking_api'),
+    path('api/ad-bookings/<int:booking_id>/activate/', views.activate_ad_booking_api, name='activate_ad_booking_api'),
+    path('api/ad-bookings/<int:booking_id>/reject/', views.reject_ad_booking_api, name='reject_ad_booking_api'),
+    path('api/ad-bookings/<int:booking_id>/notes/', views.update_ad_booking_notes_api, name='update_ad_booking_notes'),
 ] 
