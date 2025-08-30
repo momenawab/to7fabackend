@@ -1,0 +1,527 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Ad Bookings Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .ad-status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+    .status-pending { background-color: #fef3c7; color: #92400e; }
+    .status-submitted { background-color: #dbeafe; color: #1e40af; }
+    .status-under-review { background-color: #e0e7ff; color: #3730a3; }
+    .status-approved { background-color: #d1fae5; color: #065f46; }
+    .status-active { background-color: #86efac; color: #14532d; }
+    .status-completed { background-color: #f3f4f6; color: #374151; }
+    .status-rejected { background-color: #fecaca; color: #991b1b; }
+    .status-cancelled { background-color: #fca5a5; color: #7f1d1d; }
+    
+    .ad-image-preview {
+        width: 80px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 2px solid #e5e7eb;
+    }
+    
+    .payment-screenshot {
+        width: 100px;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 8px;
+        cursor: pointer;
+        border: 2px solid #e5e7eb;
+        transition: border-color 0.2s;
+    }
+    
+    .payment-screenshot:hover {
+        border-color: #3b82f6;
+    }
+    
+    .actions-dropdown {
+        position: relative;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title">Ad Booking Requests</h3>
+                    <div class="card-tools">
+                        <div class="input-group input-group-sm" style="width: 300px;">
+                            <input type="text" name="search" class="form-control float-right" placeholder="Search by seller email or ad type..." id="searchInput">
+                            <div class="input-group-append">
+                                <button type="button" class="btn btn-default">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Filter Tabs -->
+                <div class="card-body p-0">
+                    <ul class="nav nav-tabs" id="statusTabs" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="all-tab" data-toggle="tab" href="#all" role="tab">All ({{ all_count }})</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="pending-tab" data-toggle="tab" href="#pending" role="tab">Pending Review ({{ pending_count }})</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="approved-tab" data-toggle="tab" href="#approved" role="tab">Approved ({{ approved_count }})</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="active-tab" data-toggle="tab" href="#active" role="tab">Active ({{ active_count }})</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="completed-tab" data-toggle="tab" href="#completed" role="tab">Completed ({{ completed_count }})</a>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content" id="statusTabsContent">
+                        <div class="tab-pane fade show active" id="all" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0" id="adBookingsTable">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Seller</th>
+                                            <th>Ad Type</th>
+                                            <th>Category</th>
+                                            <th>Duration</th>
+                                            <th>Price</th>
+                                            <th>Payment</th>
+                                            <th>Ad Content</th>
+                                            <th>Status</th>
+                                            <th>Created</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for booking in bookings %}
+                                        <tr data-status="{{ booking.status }}" data-seller="{{ booking.seller.email|lower }}">
+                                            <td>{{ booking.id }}</td>
+                                            <td>
+                                                <div>
+                                                    <strong>{{ booking.seller.get_full_name|default:booking.seller.email }}</strong>
+                                                    <br>
+                                                    <small class="text-muted">{{ booking.seller.email }}</small>
+                                                    {% if booking.sender_info %}
+                                                        <br>
+                                                        <small class="text-info">{{ booking.sender_info }}</small>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="badge badge-info">{{ booking.ad_type.name_ar }}</span>
+                                                <br>
+                                                <small class="text-muted">{{ booking.ad_type.get_name_display }}</small>
+                                            </td>
+                                            <td>
+                                                {% if booking.category %}
+                                                    {{ booking.category.name }}
+                                                {% else %}
+                                                    <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="badge badge-secondary">{{ booking.get_duration_display }}</span>
+                                                <br>
+                                                <small class="text-muted">{{ booking.duration }}</small>
+                                            </td>
+                                            <td>
+                                                <strong class="text-success">{{ booking.price }} EGP</strong>
+                                                <br>
+                                                <small class="text-muted">{{ booking.get_payment_method_display }}</small>
+                                            </td>
+                                            <td class="text-center">
+                                                {% if booking.payment_screenshot %}
+                                                    <img src="{{ booking.payment_screenshot.url }}" 
+                                                         alt="Payment Screenshot" 
+                                                         class="payment-screenshot"
+                                                         onclick="viewImage('{{ booking.payment_screenshot.url }}', 'Payment Screenshot - Booking #{{ booking.id }}')">
+                                                {% else %}
+                                                    <span class="text-danger">No Screenshot</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if booking.ad_image %}
+                                                    <img src="{{ booking.ad_image.url }}" 
+                                                         alt="Ad Image" 
+                                                         class="ad-image-preview"
+                                                         onclick="viewImage('{{ booking.ad_image.url }}', 'Ad Image - Booking #{{ booking.id }}')">
+                                                {% else %}
+                                                    <span class="text-muted">No Image</span>
+                                                {% endif %}
+                                                
+                                                {% if booking.ad_title %}
+                                                    <div class="mt-1">
+                                                        <small><strong>Title:</strong> {{ booking.ad_title|truncatechars:30 }}</small>
+                                                    </div>
+                                                {% endif %}
+                                                
+                                                {% if booking.ad_description %}
+                                                    <div>
+                                                        <small><strong>Desc:</strong> {{ booking.ad_description|truncatechars:40 }}</small>
+                                                    </div>
+                                                {% endif %}
+                                                
+                                                {% if booking.ad_link %}
+                                                    <div>
+                                                        <small><strong>Link:</strong> 
+                                                            <a href="{{ booking.ad_link }}" target="_blank" class="text-primary">
+                                                                {{ booking.ad_link|truncatechars:25 }}
+                                                            </a>
+                                                        </small>
+                                                    </div>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <span class="ad-status-badge status-{{ booking.status }}">
+                                                    {{ booking.get_status_display }}
+                                                </span>
+                                                {% if booking.start_date %}
+                                                    <div class="mt-1">
+                                                        <small class="text-muted">Start: {{ booking.start_date|date:"M d, Y H:i" }}</small>
+                                                    </div>
+                                                {% endif %}
+                                                {% if booking.end_date %}
+                                                    <div>
+                                                        <small class="text-muted">End: {{ booking.end_date|date:"M d, Y H:i" }}</small>
+                                                    </div>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ booking.created_at|date:"M d, Y H:i" }}</small>
+                                                {% if booking.admin_notes %}
+                                                    <div class="mt-1">
+                                                        <small class="text-warning">
+                                                            <i class="fas fa-sticky-note"></i> Has Notes
+                                                        </small>
+                                                    </div>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <div class="btn-group dropleft">
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" 
+                                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                                        Actions
+                                                    </button>
+                                                    <div class="dropdown-menu">
+                                                        <a class="dropdown-item" href="#" onclick="viewBookingDetails({{ booking.id }})">
+                                                            <i class="fas fa-eye"></i> View Details
+                                                        </a>
+                                                        
+                                                        {% if booking.can_be_approved %}
+                                                            <a class="dropdown-item text-success" href="#" onclick="approveBooking({{ booking.id }})">
+                                                                <i class="fas fa-check"></i> Approve
+                                                            </a>
+                                                        {% endif %}
+                                                        
+                                                        {% if booking.can_be_activated %}
+                                                            <a class="dropdown-item text-primary" href="#" onclick="activateBooking({{ booking.id }})">
+                                                                <i class="fas fa-play"></i> Activate
+                                                            </a>
+                                                        {% endif %}
+                                                        
+                                                        {% if booking.status in 'payment_submitted,under_review' %}
+                                                            <a class="dropdown-item text-danger" href="#" onclick="rejectBooking({{ booking.id }})">
+                                                                <i class="fas fa-times"></i> Reject
+                                                            </a>
+                                                        {% endif %}
+                                                        
+                                                        <div class="dropdown-divider"></div>
+                                                        <a class="dropdown-item" href="#" onclick="editNotes({{ booking.id }}, '{{ booking.admin_notes|default:""|escapejs }}')">
+                                                            <i class="fas fa-edit"></i> Edit Notes
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% empty %}
+                                        <tr>
+                                            <td colspan="11" class="text-center text-muted py-4">
+                                                <i class="fas fa-inbox fa-3x mb-3"></i>
+                                                <br>
+                                                No ad booking requests found.
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if is_paginated %}
+                <div class="card-footer">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <small class="text-muted">
+                                Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ paginator.count }} entries
+                            </small>
+                        </div>
+                        <div class="col-md-6">
+                            <nav aria-label="Page navigation">
+                                <ul class="pagination pagination-sm justify-content-end mb-0">
+                                    {% if page_obj.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">&laquo; Previous</a>
+                                        </li>
+                                    {% endif %}
+                                    
+                                    {% for num in page_obj.paginator.page_range %}
+                                        {% if page_obj.number == num %}
+                                            <li class="page-item active">
+                                                <span class="page-link">{{ num }}</span>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+                                            </li>
+                                        {% endif %}
+                                    {% endfor %}
+                                    
+                                    {% if page_obj.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next &raquo;</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image View Modal -->
+<div class="modal fade" id="imageModal" tabindex="-1" role="dialog" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageModalLabel">Image Preview</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="modalImage" src="" class="img-fluid" alt="Image">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Booking Details Modal -->
+<div class="modal fade" id="bookingDetailsModal" tabindex="-1" role="dialog" aria-labelledby="bookingDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bookingDetailsModalLabel">Booking Details</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="bookingDetailsContent">
+                <!-- Content will be loaded dynamically -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notes Edit Modal -->
+<div class="modal fade" id="notesModal" tabindex="-1" role="dialog" aria-labelledby="notesModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="notesModalLabel">Admin Notes</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="notesForm">
+                    <div class="form-group">
+                        <label for="adminNotes">Notes:</label>
+                        <textarea class="form-control" id="adminNotes" rows="4" placeholder="Add admin notes..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveNotes()">Save Notes</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentBookingId = null;
+
+// Search functionality
+$('#searchInput').on('keyup', function() {
+    const searchTerm = $(this).val().toLowerCase();
+    $('#adBookingsTable tbody tr').each(function() {
+        const seller = $(this).data('seller');
+        const text = $(this).text().toLowerCase();
+        if (text.includes(searchTerm) || seller.includes(searchTerm)) {
+            $(this).show();
+        } else {
+            $(this).hide();
+        }
+    });
+});
+
+// Tab filtering
+$('#statusTabs a').on('click', function(e) {
+    e.preventDefault();
+    const status = $(this).attr('href').substring(1);
+    
+    if (status === 'all') {
+        $('#adBookingsTable tbody tr').show();
+    } else {
+        $('#adBookingsTable tbody tr').each(function() {
+            const rowStatus = $(this).data('status');
+            if (status === 'pending' && ['payment_submitted', 'under_review'].includes(rowStatus)) {
+                $(this).show();
+            } else if (rowStatus === status) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+    }
+});
+
+function viewImage(imageUrl, title) {
+    $('#modalImage').attr('src', imageUrl);
+    $('#imageModalLabel').text(title);
+    $('#imageModal').modal('show');
+}
+
+function viewBookingDetails(bookingId) {
+    // Make AJAX call to get booking details
+    $.get(`/admin/api/ad-bookings/${bookingId}/`, function(data) {
+        let content = `
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Seller Information</h6>
+                    <p><strong>Name:</strong> ${data.seller_name}</p>
+                    <p><strong>Email:</strong> ${data.seller_email}</p>
+                    <p><strong>Phone:</strong> ${data.seller_phone || 'N/A'}</p>
+                    
+                    <h6>Ad Details</h6>
+                    <p><strong>Type:</strong> ${data.ad_type_name}</p>
+                    <p><strong>Category:</strong> ${data.category_name || 'N/A'}</p>
+                    <p><strong>Duration:</strong> ${data.duration_display}</p>
+                    <p><strong>Price:</strong> ${data.price} EGP</p>
+                </div>
+                <div class="col-md-6">
+                    <h6>Payment Information</h6>
+                    <p><strong>Method:</strong> ${data.payment_method_display}</p>
+                    <p><strong>Sender Info:</strong> ${data.sender_info || 'N/A'}</p>
+                    
+                    <h6>Status & Dates</h6>
+                    <p><strong>Status:</strong> ${data.status_display}</p>
+                    <p><strong>Created:</strong> ${data.created_at}</p>
+                    <p><strong>Start Date:</strong> ${data.start_date || 'Not set'}</p>
+                    <p><strong>End Date:</strong> ${data.end_date || 'Not set'}</p>
+                </div>
+            </div>
+            
+            ${data.ad_title ? `<div class="mt-3"><h6>Ad Content</h6><p><strong>Title:</strong> ${data.ad_title}</p></div>` : ''}
+            ${data.ad_description ? `<p><strong>Description:</strong> ${data.ad_description}</p>` : ''}
+            ${data.ad_link ? `<p><strong>Link:</strong> <a href="${data.ad_link}" target="_blank">${data.ad_link}</a></p>` : ''}
+            ${data.admin_notes ? `<div class="mt-3"><h6>Admin Notes</h6><p>${data.admin_notes}</p></div>` : ''}
+        `;
+        
+        $('#bookingDetailsContent').html(content);
+        $('#bookingDetailsModal').modal('show');
+    }).fail(function() {
+        alert('Error loading booking details');
+    });
+}
+
+function approveBooking(bookingId) {
+    if (confirm('Are you sure you want to approve this ad booking?')) {
+        $.post(`/admin/api/ad-bookings/${bookingId}/approve/`, {
+            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+        }, function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function activateBooking(bookingId) {
+    if (confirm('Are you sure you want to activate this ad booking?')) {
+        $.post(`/admin/api/ad-bookings/${bookingId}/activate/`, {
+            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+        }, function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function rejectBooking(bookingId) {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (reason && reason.trim()) {
+        $.post(`/admin/api/ad-bookings/${bookingId}/reject/`, {
+            reason: reason,
+            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+        }, function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        });
+    }
+}
+
+function editNotes(bookingId, currentNotes) {
+    currentBookingId = bookingId;
+    $('#adminNotes').val(currentNotes);
+    $('#notesModal').modal('show');
+}
+
+function saveNotes() {
+    const notes = $('#adminNotes').val();
+    $.post(`/admin/api/ad-bookings/${currentBookingId}/notes/`, {
+        notes: notes,
+        csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+    }, function(data) {
+        if (data.success) {
+            $('#notesModal').modal('hide');
+            location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    });
+}
+</script>
+{% endblock %}

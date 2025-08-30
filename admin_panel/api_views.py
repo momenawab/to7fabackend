@@ -3298,3 +3298,334 @@ def mark_payment_and_auto_approve(request, request_id):
         logger = logging.getLogger(__name__)
         logger.error(f"Exception in mark_payment_and_auto_approve: {str(e)}", exc_info=True)
         return Response({'error': f'An error occurred: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ================================
+# AD BOOKING API ENDPOINTS
+# ================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_ad_types(request):
+    """Get all active ad types for booking form"""
+    try:
+        from .content_models import AdType, AdPricing
+        
+        ad_types = AdType.objects.filter(is_active=True).prefetch_related('pricing')
+        
+        data = []
+        for ad_type in ad_types:
+            type_data = {
+                'id': ad_type.id,
+                'type': ad_type.name,
+                'name': ad_type.get_name_display(),
+                'name_ar': ad_type.name_ar,
+                'description': ad_type.description,
+                'requires_category': ad_type.requires_category,
+                'pricing': {}
+            }
+            
+            # Add pricing information
+            for pricing in ad_type.pricing.filter(is_active=True):
+                type_data['pricing'][pricing.duration] = {
+                    'price': float(pricing.price),
+                    'min_price': float(pricing.min_price) if pricing.min_price else None,
+                    'max_price': float(pricing.max_price) if pricing.max_price else None,
+                }
+            
+            data.append(type_data)
+        
+        return Response({
+            'results': data,
+            'count': len(data)
+        })
+    
+    except Exception as e:
+        return Response({'error': f'Error fetching ad types: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_ad_booking(request):
+    """Create a new ad booking request"""
+    try:
+        from .content_models import AdType, AdBookingRequest, AdPricing
+        
+        # Check if user is a seller
+        if not hasattr(request.user, 'seller_profile') or not request.user.is_seller:
+            return Response({
+                'error': 'Only approved sellers can create ad booking requests'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get request data
+        data = request.data
+        ad_type_name = data.get('ad_type')
+        duration = data.get('duration')
+        price = data.get('price')
+        payment_method = data.get('payment_method')
+        sender_info = data.get('sender_info')
+        category_id = data.get('category_id')
+        
+        # Validate required fields
+        if not all([ad_type_name, duration, price, payment_method]):
+            return Response({
+                'error': 'Missing required fields: ad_type, duration, price, payment_method'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate payment method
+        valid_payment_methods = ['instapay', 'vodafone_cash', 'visa']
+        if payment_method not in valid_payment_methods:
+            return Response({
+                'error': f'Invalid payment method. Must be one of: {", ".join(valid_payment_methods)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get ad type
+        try:
+            ad_type = AdType.objects.get(name=ad_type_name, is_active=True)
+        except AdType.DoesNotExist:
+            return Response({
+                'error': f'Invalid ad type: {ad_type_name}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate category if required
+        category = None
+        if ad_type.requires_category:
+            if not category_id:
+                return Response({
+                    'error': 'Category is required for this ad type'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                category = Category.objects.get(id=category_id)
+            except Category.DoesNotExist:
+                return Response({
+                    'error': f'Invalid category ID: {category_id}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate pricing
+        try:
+            pricing = AdPricing.objects.get(ad_type=ad_type, duration=duration, is_active=True)
+            if abs(float(price) - float(pricing.price)) > 0.01:  # Allow small floating point differences
+                return Response({
+                    'error': f'Price mismatch. Expected: {pricing.price}, received: {price}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        except AdPricing.DoesNotExist:
+            return Response({
+                'error': f'No pricing found for {ad_type_name} - {duration}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create the booking request
+        with transaction.atomic():
+            booking = AdBookingRequest.objects.create(
+                seller=request.user,
+                ad_type=ad_type,
+                category=category,
+                duration=duration,
+                price=price,
+                payment_method=payment_method,
+                sender_info=sender_info
+            )
+            
+            # Handle file upload (payment screenshot)
+            if 'screenshot' in request.FILES:
+                booking.payment_screenshot = request.FILES['screenshot']
+                booking.save()
+            
+            # Create admin notification
+            AdminNotification.objects.create(
+                title='New Ad Booking Request',
+                message=f'New ad booking request from {request.user.email} for {ad_type.name_ar}',
+                notification_type='ad_booking',
+                link=f'/admin/ad-bookings/{booking.id}/'
+            )
+        
+        return Response({
+            'message': 'Ad booking request created successfully',
+            'booking_id': booking.id,
+            'status': booking.status,
+            'request_fee': float(booking.price)
+        }, status=status.HTTP_201_CREATED)
+    
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating ad booking: {str(e)}", exc_info=True)
+        return Response({
+            'error': f'An error occurred while creating booking: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def admin_ad_bookings_list(request):
+    """Admin endpoint to list all ad booking requests"""
+    try:
+        from .content_models import AdBookingRequest
+        
+        bookings = AdBookingRequest.objects.select_related(
+            'seller', 'ad_type', 'category'
+        ).order_by('-created_at')
+        
+        # Filter by status if provided
+        status_filter = request.GET.get('status')
+        if status_filter:
+            bookings = bookings.filter(status=status_filter)
+        
+        # Search by seller email
+        search = request.GET.get('search')
+        if search:
+            bookings = bookings.filter(
+                Q(seller__email__icontains=search) |
+                Q(seller__first_name__icontains=search) |
+                Q(seller__last_name__icontains=search)
+            )
+        
+        # Pagination
+        paginator = AdminPagination()
+        page = paginator.paginate_queryset(bookings, request)
+        
+        data = []
+        for booking in page:
+            data.append({
+                'id': booking.id,
+                'seller': {
+                    'email': booking.seller.email,
+                    'name': f"{booking.seller.first_name} {booking.seller.last_name}".strip(),
+                },
+                'ad_type': {
+                    'name': booking.ad_type.name,
+                    'name_ar': booking.ad_type.name_ar,
+                },
+                'category': {
+                    'id': booking.category.id,
+                    'name': booking.category.name,
+                } if booking.category else None,
+                'duration': booking.duration,
+                'price': float(booking.price),
+                'payment_method': booking.payment_method,
+                'sender_info': booking.sender_info,
+                'payment_screenshot': booking.payment_screenshot.url if booking.payment_screenshot else None,
+                'status': booking.status,
+                'admin_notes': booking.admin_notes,
+                'created_at': booking.created_at.isoformat(),
+                'updated_at': booking.updated_at.isoformat(),
+            })
+        
+        return paginator.get_paginated_response(data)
+    
+    except Exception as e:
+        return Response({'error': f'Error fetching ad bookings: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def approve_ad_booking(request, booking_id):
+    """Admin endpoint to approve ad booking and create advertisement"""
+    try:
+        from .content_models import AdBookingRequest
+        from datetime import timedelta
+        
+        booking = get_object_or_404(AdBookingRequest, id=booking_id)
+        
+        if not booking.can_be_approved():
+            return Response({
+                'error': f'Booking cannot be approved. Current status: {booking.get_status_display()}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get admin input data
+        ad_title = request.data.get('ad_title')
+        ad_description = request.data.get('ad_description')
+        start_date = request.data.get('start_date')
+        admin_notes = request.data.get('admin_notes', '')
+        
+        if not ad_title:
+            return Response({
+                'error': 'Ad title is required for approval'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        with transaction.atomic():
+            # Update booking status
+            booking.status = 'approved'
+            booking.ad_title = ad_title
+            booking.ad_description = ad_description
+            booking.admin_notes = admin_notes
+            booking.approved_at = timezone.now()
+            
+            if start_date:
+                booking.start_date = start_date
+                # Calculate end date based on duration
+                if booking.duration == 'daily':
+                    booking.end_date = booking.start_date + timedelta(days=1)
+                elif booking.duration == 'weekly':
+                    booking.end_date = booking.start_date + timedelta(days=7)
+                elif booking.duration == 'monthly':
+                    booking.end_date = booking.start_date + timedelta(days=30)
+            
+            booking.save()
+            
+            # Create the actual advertisement
+            ad = Advertisement.objects.create(
+                title=ad_title,
+                description=ad_description,
+                image=booking.ad_image if booking.ad_image else None,
+                image_url=booking.ad_image.url if booking.ad_image else None,
+                link_url=booking.ad_link,
+                is_active=True,
+                order=0,
+                category_id=booking.category.id if booking.category else None,
+                show_on_main=booking.ad_type.name == 'home_slider'
+            )
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action='approve',
+                description=f'Approved ad booking #{booking_id} and created advertisement #{ad.id}',
+                ip_address=get_client_ip(request)
+            )
+        
+        return Response({
+            'message': 'Ad booking approved successfully',
+            'advertisement_id': ad.id,
+            'booking_status': booking.status
+        })
+    
+    except Exception as e:
+        return Response({'error': f'Error approving ad booking: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def reject_ad_booking(request, booking_id):
+    """Admin endpoint to reject ad booking request"""
+    try:
+        from .content_models import AdBookingRequest
+        
+        booking = get_object_or_404(AdBookingRequest, id=booking_id)
+        
+        if booking.status in ['rejected', 'completed']:
+            return Response({
+                'error': f'Booking cannot be rejected. Current status: {booking.get_status_display()}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        admin_notes = request.data.get('admin_notes', '')
+        
+        booking.status = 'rejected'
+        booking.admin_notes = admin_notes
+        booking.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action='reject',
+            description=f'Rejected ad booking #{booking_id}',
+            ip_address=get_client_ip(request)
+        )
+        
+        return Response({
+            'message': 'Ad booking rejected successfully',
+            'booking_status': booking.status
+        })
+    
+    except Exception as e:
+        return Response({'error': f'Error rejecting ad booking: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
