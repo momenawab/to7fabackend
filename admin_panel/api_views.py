@@ -3309,7 +3309,7 @@ def mark_payment_and_auto_approve(request, request_id):
 def get_ad_types(request):
     """Get all active ad types for booking form"""
     try:
-        from .content_models import AdType, AdPricing
+        from .models import AdType, AdPricing
         
         ad_types = AdType.objects.filter(is_active=True).prefetch_related('pricing')
         
@@ -3349,12 +3349,17 @@ def get_ad_types(request):
 def create_ad_booking(request):
     """Create a new ad booking request"""
     try:
-        from .content_models import AdType, AdBookingRequest, AdPricing
+        from .models import AdType, AdBookingRequest, AdPricing
         
-        # Check if user is a seller
-        if not hasattr(request.user, 'seller_profile') or not request.user.is_seller:
+        # Check if user is a seller (artist or store)
+        is_seller = (
+            request.user.user_type in ['artist', 'store'] and
+            (hasattr(request.user, 'artist_profile') or hasattr(request.user, 'store_profile'))
+        )
+        
+        if not is_seller:
             return Response({
-                'error': 'Only approved sellers can create ad booking requests'
+                'error': 'Only approved sellers (artists/stores) can create ad booking requests'
             }, status=status.HTTP_403_FORBIDDEN)
         
         # Get request data

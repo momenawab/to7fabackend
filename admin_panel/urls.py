@@ -107,6 +107,7 @@ urlpatterns = [
     
     # Ad Booking Management
     path('ad-bookings/', views.ad_bookings_management, name='ad_bookings'),
+    path('ad-pricing/', views.ad_pricing_management, name='ad_pricing'),
     
     # Ad Booking API endpoints
     path('api/ad-types/', api_views.get_ad_types, name='get_ad_types'),
@@ -116,4 +117,10 @@ urlpatterns = [
     path('api/ad-bookings/<int:booking_id>/activate/', views.activate_ad_booking_api, name='activate_ad_booking_api'),
     path('api/ad-bookings/<int:booking_id>/reject/', views.reject_ad_booking_api, name='reject_ad_booking_api'),
     path('api/ad-bookings/<int:booking_id>/notes/', views.update_ad_booking_notes_api, name='update_ad_booking_notes'),
+    
+    # Ad Pricing API endpoints  
+    path('api/ad-pricing/<int:ad_type_id>/update/', views.update_ad_pricing_api, name='update_ad_pricing'),
+    path('api/ad-types/<int:ad_type_id>/toggle/', views.toggle_ad_type_api, name='toggle_ad_type'),
+    path('api/ad-pricing/reset/', views.reset_ad_pricing_api, name='reset_ad_pricing'),
+    path('api/ad-pricing/bulk-update/', views.bulk_update_ad_pricing_api, name='bulk_update_ad_pricing'),
 ] 

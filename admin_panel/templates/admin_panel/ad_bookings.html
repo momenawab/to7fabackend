@@ -124,7 +124,19 @@
                                                 </div>
                                             </td>
                                             <td>
-                                                <span class="badge badge-info">{{ booking.ad_type.name_ar }}</span>
+                                                <span class="badge badge-info">
+                                                    {% if booking.ad_type.name == 'home_slider' %}
+                                                        Home Page Slider
+                                                    {% elif booking.ad_type.name == 'category_slider' %}
+                                                        Category Slider
+                                                    {% elif booking.ad_type.name == 'offer_ad' %}
+                                                        Offer Advertisement
+                                                    {% elif booking.ad_type.name == 'featured_product' %}
+                                                        Featured Product
+                                                    {% else %}
+                                                        {{ booking.ad_type.name|title }}
+                                                    {% endif %}
+                                                </span>
                                                 <br>
                                                 <small class="text-muted">{{ booking.ad_type.get_name_display }}</small>
                                             </td>
