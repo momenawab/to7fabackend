@@ -71,6 +71,8 @@ urlpatterns = [
     # Seller Dashboard APIs (For approved sellers)
     path('seller/dashboard/test-auth/', api_views.test_seller_auth, name='test_seller_auth'),
     path('seller/dashboard/stats/', api_views.seller_dashboard_stats, name='seller_dashboard_stats'),
+    path('seller/dashboard/ad-types/', api_views.get_ad_types, name='seller_ad_types'),
+    path('seller/dashboard/ad-bookings/create/', api_views.create_ad_booking, name='seller_create_ad_booking'),
     path('seller/dashboard/products/', api_views.seller_products, name='seller_products'),
     path('seller/dashboard/products/<int:product_id>/', api_views.seller_product_detail, name='seller_product_detail'),
     path('seller/dashboard/products/create/', api_views.create_product_wizard, name='create_product_wizard'),

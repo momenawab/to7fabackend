@@ -1,0 +1,553 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Ad Pricing Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pricing-card {
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    }
+    
+    .pricing-card:hover {
+        border-color: #3b82f6;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+    }
+    
+    .pricing-header {
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        color: white;
+        padding: 16px;
+        border-radius: 10px 10px 0 0;
+        text-align: center;
+    }
+    
+    .pricing-body {
+        padding: 20px;
+    }
+    
+    .price-input {
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 16px;
+        font-weight: 600;
+        transition: border-color 0.3s ease;
+    }
+    
+    .price-input:focus {
+        border-color: #3b82f6;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    .duration-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+        margin: 4px;
+    }
+    
+    .duration-daily { background-color: #dcfce7; color: #166534; }
+    .duration-weekly { background-color: #fef3c7; color: #92400e; }
+    .duration-monthly { background-color: #e0e7ff; color: #3730a3; }
+    
+    .ad-type-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 12px;
+        font-size: 24px;
+    }
+    
+    .icon-home { background-color: #fef3c7; color: #92400e; }
+    .icon-category { background-color: #e0e7ff; color: #3730a3; }
+    .icon-offer { background-color: #dcfce7; color: #166534; }
+    .icon-featured { background-color: #fce7f3; color: #be185d; }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+    }
+    
+    .save-btn {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border: none;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .save-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.25);
+    }
+    
+    .reset-btn {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        border: none;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .reset-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(239, 68, 68, 0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="card-title mb-1">
+                                <i class="fas fa-tags text-primary me-2"></i>
+                                Ad Pricing Management
+                            </h2>
+                            <p class="text-muted mb-0">Manage pricing for different ad types and durations</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn save-btn" onclick="saveAllPricing()">
+                                <i class="fas fa-save me-2"></i>Save All Changes
+                            </button>
+                            <button type="button" class="btn reset-btn" onclick="resetAllPricing()">
+                                <i class="fas fa-undo me-2"></i>Reset to Defaults
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Row -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <i class="fas fa-bullhorn mb-2" style="font-size: 24px;"></i>
+                <h4 class="mb-1">{{ total_ad_types }}</h4>
+                <p class="mb-0">Ad Types</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card" style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);">
+                <i class="fas fa-clock mb-2" style="font-size: 24px;"></i>
+                <h4 class="mb-1">{{ total_durations }}</h4>
+                <p class="mb-0">Duration Options</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                <i class="fas fa-dollar-sign mb-2" style="font-size: 24px;"></i>
+                <h4 class="mb-1">${{ average_price|floatformat:0 }}</h4>
+                <p class="mb-0">Avg Price</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+                <i class="fas fa-chart-line mb-2" style="font-size: 24px;"></i>
+                <h4 class="mb-1">{{ active_bookings }}</h4>
+                <p class="mb-0">Active Bookings</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pricing Cards -->
+    <div class="row">
+        {% for ad_type in ad_types %}
+        <div class="col-lg-6 col-xl-4 mb-4">
+            <div class="pricing-card">
+                <div class="pricing-header">
+                    <div class="ad-type-icon icon-{{ ad_type.name }}">
+                        {% if ad_type.name == 'home_slider' %}
+                            <i class="fas fa-home"></i>
+                        {% elif ad_type.name == 'category_slider' %}
+                            <i class="fas fa-th-large"></i>
+                        {% elif ad_type.name == 'offer_ad' %}
+                            <i class="fas fa-percent"></i>
+                        {% elif ad_type.name == 'featured_product' %}
+                            <i class="fas fa-star"></i>
+                        {% else %}
+                            <i class="fas fa-bullhorn"></i>
+                        {% endif %}
+                    </div>
+                    <h5 class="mb-1">
+                        {% if ad_type.name == 'home_slider' %}
+                            Home Page Slider
+                        {% elif ad_type.name == 'category_slider' %}
+                            Category Slider
+                        {% elif ad_type.name == 'offer_ad' %}
+                            Offer Advertisement
+                        {% elif ad_type.name == 'featured_product' %}
+                            Featured Product
+                        {% else %}
+                            {{ ad_type.name|title }}
+                        {% endif %}
+                    </h5>
+                    <small>{{ ad_type.description }}</small>
+                </div>
+                
+                <div class="pricing-body">
+                    <form id="pricing-form-{{ ad_type.id }}" data-ad-type="{{ ad_type.id }}">
+                        {% csrf_token %}
+                        
+                        <!-- Duration Pricing -->
+                        {% for pricing in ad_type.pricing.all %}
+                        <div class="row mb-3">
+                            <div class="col-4">
+                                <span class="duration-badge duration-{{ pricing.duration }}">
+                                    {% if pricing.duration == 'daily' %}
+                                        <i class="fas fa-sun me-1"></i>Daily
+                                    {% elif pricing.duration == 'weekly' %}
+                                        <i class="fas fa-calendar-week me-1"></i>Weekly
+                                    {% elif pricing.duration == 'monthly' %}
+                                        <i class="fas fa-calendar me-1"></i>Monthly
+                                    {% endif %}
+                                </span>
+                            </div>
+                            <div class="col-8">
+                                <div class="input-group">
+                                    <span class="input-group-text">EGP</span>
+                                    <input 
+                                        type="number" 
+                                        class="form-control price-input" 
+                                        name="price_{{ pricing.duration }}"
+                                        value="{{ pricing.price }}"
+                                        min="0"
+                                        step="0.01"
+                                        data-original="{{ pricing.price }}"
+                                        onchange="markAsChanged(this)"
+                                    >
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        
+                        <!-- Status Toggle -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="form-check form-switch">
+                                    <input 
+                                        class="form-check-input" 
+                                        type="checkbox" 
+                                        id="active-{{ ad_type.id }}"
+                                        name="is_active"
+                                        {% if ad_type.is_active %}checked{% endif %}
+                                        onchange="toggleAdType({{ ad_type.id }})"
+                                    >
+                                    <label class="form-check-label" for="active-{{ ad_type.id }}">
+                                        Active for Booking
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Individual Save Button -->
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <button 
+                                    type="button" 
+                                    class="btn btn-primary btn-sm w-100" 
+                                    onclick="saveAdTypePricing({{ ad_type.id }})"
+                                    id="save-btn-{{ ad_type.id }}"
+                                    disabled
+                                >
+                                    <i class="fas fa-save me-2"></i>Save Changes
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-tags text-muted mb-3" style="font-size: 48px;"></i>
+                    <h4 class="text-muted">No Ad Types Found</h4>
+                    <p class="text-muted">Create ad types first to manage pricing.</p>
+                    <a href="{% url 'admin_panel:create_ad_type' %}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Create Ad Type
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Bulk Pricing Tools -->
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tools text-primary me-2"></i>
+                        Bulk Pricing Tools
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6>Increase All Prices</h6>
+                            <div class="input-group mb-3">
+                                <input type="number" class="form-control" id="bulk-increase" placeholder="Percentage">
+                                <span class="input-group-text">%</span>
+                                <button class="btn btn-success" onclick="bulkIncrease()">Apply</button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Decrease All Prices</h6>
+                            <div class="input-group mb-3">
+                                <input type="number" class="form-control" id="bulk-decrease" placeholder="Percentage">
+                                <span class="input-group-text">%</span>
+                                <button class="btn btn-warning" onclick="bulkDecrease()">Apply</button>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <h6>Set Base Price</h6>
+                            <div class="input-group mb-3">
+                                <span class="input-group-text">EGP</span>
+                                <input type="number" class="form-control" id="base-price" placeholder="Base Price">
+                                <button class="btn btn-info" onclick="setBasePrice()">Apply</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Changes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message">Are you sure you want to apply these changes?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-action">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let changedForms = new Set();
+
+function markAsChanged(input) {
+    const form = input.closest('form');
+    const adTypeId = form.dataset.adType;
+    const saveBtn = document.getElementById(`save-btn-${adTypeId}`);
+    
+    changedForms.add(adTypeId);
+    saveBtn.disabled = false;
+    saveBtn.classList.remove('btn-primary');
+    saveBtn.classList.add('btn-warning');
+    saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Changes Pending';
+}
+
+function saveAdTypePricing(adTypeId) {
+    const form = document.getElementById(`pricing-form-${adTypeId}`);
+    const formData = new FormData(form);
+    
+    fetch(`/dashboard/api/ad-pricing/${adTypeId}/update/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const saveBtn = document.getElementById(`save-btn-${adTypeId}`);
+            saveBtn.disabled = true;
+            saveBtn.classList.remove('btn-warning');
+            saveBtn.classList.add('btn-success');
+            saveBtn.innerHTML = '<i class="fas fa-check me-2"></i>Saved';
+            
+            changedForms.delete(adTypeId);
+            
+            // Reset button after 2 seconds
+            setTimeout(() => {
+                saveBtn.classList.remove('btn-success');
+                saveBtn.classList.add('btn-primary');
+                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Changes';
+            }, 2000);
+            
+            showToast('Pricing updated successfully!', 'success');
+        } else {
+            showToast('Error updating pricing: ' + data.message, 'error');
+        }
+    })
+    .catch(error => {
+        showToast('Error updating pricing: ' + error.message, 'error');
+    });
+}
+
+function saveAllPricing() {
+    if (changedForms.size === 0) {
+        showToast('No changes to save', 'info');
+        return;
+    }
+    
+    document.getElementById('confirm-message').textContent = 
+        `Are you sure you want to save all changes? (${changedForms.size} forms modified)`;
+    document.getElementById('confirm-action').onclick = () => {
+        changedForms.forEach(adTypeId => saveAdTypePricing(adTypeId));
+        $('#confirmModal').modal('hide');
+    };
+    $('#confirmModal').modal('show');
+}
+
+function resetAllPricing() {
+    document.getElementById('confirm-message').textContent = 
+        'Are you sure you want to reset all pricing to default values? This cannot be undone.';
+    document.getElementById('confirm-action').onclick = () => {
+        fetch('/dashboard/api/ad-pricing/reset/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast('Error resetting pricing: ' + data.message, 'error');
+            }
+        });
+        $('#confirmModal').modal('hide');
+    };
+    $('#confirmModal').modal('show');
+}
+
+function toggleAdType(adTypeId) {
+    const checkbox = document.getElementById(`active-${adTypeId}`);
+    const isActive = checkbox.checked;
+    
+    fetch(`/dashboard/api/ad-types/${adTypeId}/toggle/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({ is_active: isActive })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Ad type ${isActive ? 'activated' : 'deactivated'}`, 'success');
+        } else {
+            checkbox.checked = !isActive; // Revert checkbox
+            showToast('Error updating ad type: ' + data.message, 'error');
+        }
+    });
+}
+
+function bulkIncrease() {
+    const percentage = document.getElementById('bulk-increase').value;
+    if (!percentage) return;
+    
+    applyBulkChange('increase', percentage);
+}
+
+function bulkDecrease() {
+    const percentage = document.getElementById('bulk-decrease').value;
+    if (!percentage) return;
+    
+    applyBulkChange('decrease', percentage);
+}
+
+function setBasePrice() {
+    const basePrice = document.getElementById('base-price').value;
+    if (!basePrice) return;
+    
+    applyBulkChange('base', basePrice);
+}
+
+function applyBulkChange(type, value) {
+    document.getElementById('confirm-message').textContent = 
+        `Apply ${type} of ${value}${type === 'base' ? ' EGP' : '%'} to all prices?`;
+    document.getElementById('confirm-action').onclick = () => {
+        fetch('/dashboard/api/ad-pricing/bulk-update/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({ type: type, value: value })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                showToast('Error applying bulk changes: ' + data.message, 'error');
+            }
+        });
+        $('#confirmModal').modal('hide');
+    };
+    $('#confirmModal').modal('show');
+}
+
+function showToast(message, type) {
+    // Simple toast notification
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
+    toast.style.top = '20px';
+    toast.style.right = '20px';
+    toast.style.zIndex = '9999';
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
+// Auto-save on page unload if there are unsaved changes
+window.addEventListener('beforeunload', function(e) {
+    if (changedForms.size > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+        return 'You have unsaved changes. Are you sure you want to leave?';
+    }
+});
+</script>
+{% endblock %}

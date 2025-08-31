@@ -2707,3 +2707,463 @@ def ad_bookings_management(request):
     
     return render(request, 'admin_panel/ad_bookings.html', context)
 
+
+
+@login_required
+@user_passes_test(is_admin)
+def ad_pricing_management(request):
+    """Ad pricing management page"""
+    from django.db.models import Avg, Count
+    
+    # Get all ad types with their pricing
+    ad_types = AdType.objects.prefetch_related("pricing").filter(is_active=True).order_by("display_order")
+    
+    # Calculate statistics
+    total_ad_types = AdType.objects.count()
+    total_durations = 3  # daily, weekly, monthly
+    average_price = AdPricing.objects.filter(is_active=True).aggregate(
+        avg_price=Avg("price")
+    )["avg_price"] or 0
+    
+    active_bookings = AdBookingRequest.objects.filter(status="active").count()
+    
+    context = {
+        "ad_types": ad_types,
+        "total_ad_types": total_ad_types,
+        "total_durations": total_durations,
+        "average_price": average_price,
+        "active_bookings": active_bookings,
+    }
+    
+    return render(request, "admin_panel/ad_pricing.html", context)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_ad_pricing_api(request, ad_type_id):
+    """Update pricing for a specific ad type"""
+    try:
+        ad_type = get_object_or_404(AdType, id=ad_type_id)
+        
+        # Update pricing for each duration
+        for duration in ["daily", "weekly", "monthly"]:
+            price_key = f"price_{duration}"
+            if price_key in request.POST:
+                price = request.POST[price_key]
+                try:
+                    price = float(price)
+                    if price < 0:
+                        raise ValueError("Price cannot be negative")
+                    
+                    pricing, created = AdPricing.objects.get_or_create(
+                        ad_type=ad_type,
+                        duration=duration,
+                        defaults={"price": price, "is_active": True}
+                    )
+                    if not created:
+                        pricing.price = price
+                        pricing.save()
+                        
+                except (ValueError, TypeError):
+                    return JsonResponse({
+                        "success": False,
+                        "message": f"Invalid price for {duration}"
+                    })
+        
+        # Update ad type active status
+        if "is_active" in request.POST:
+            ad_type.is_active = request.POST["is_active"] == "on"
+            ad_type.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="update",
+            description=f"Updated pricing for ad type {ad_type.get_name_display()}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            "success": True,
+            "message": "Pricing updated successfully"
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def toggle_ad_type_api(request, ad_type_id):
+    """Toggle ad type active status"""
+    try:
+        ad_type = get_object_or_404(AdType, id=ad_type_id)
+        
+        import json
+        data = json.loads(request.body)
+        ad_type.is_active = data.get("is_active", False)
+        ad_type.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="toggle",
+            description=f"{'Activated' if ad_type.is_active else 'Deactivated'} ad type {ad_type.get_name_display()}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            "success": True,
+            "message": f"Ad type {activated if ad_type.is_active else deactivated} successfully"
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def reset_ad_pricing_api(request):
+    """Reset all ad pricing to default values"""
+    try:
+        # Default pricing structure
+        default_pricing = {
+            "home_slider": {"daily": 50.0, "weekly": 300.0, "monthly": 1000.0},
+            "category_slider": {"daily": 30.0, "weekly": 180.0, "monthly": 600.0},
+            "offer_ad": {"daily": 40.0, "weekly": 240.0, "monthly": 800.0},
+            "featured_product": {"daily": 25.0, "weekly": 150.0, "monthly": 500.0},
+        }
+        
+        updated_count = 0
+        for ad_type in AdType.objects.all():
+            if ad_type.name in default_pricing:
+                for duration, price in default_pricing[ad_type.name].items():
+                    pricing, created = AdPricing.objects.get_or_create(
+                        ad_type=ad_type,
+                        duration=duration,
+                        defaults={"price": price, "is_active": True}
+                    )
+                    if not created:
+                        pricing.price = price
+                        pricing.is_active = True
+                        pricing.save()
+                    updated_count += 1
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="reset",
+            description=f"Reset all ad pricing to defaults ({updated_count} pricing rules)",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            "success": True,
+            "message": f"Successfully reset {updated_count} pricing rules to defaults"
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def bulk_update_ad_pricing_api(request):
+    """Apply bulk changes to ad pricing"""
+    try:
+        import json
+        from decimal import Decimal
+        
+        data = json.loads(request.body)
+        change_type = data.get("type")
+        value = float(data.get("value", 0))
+        
+        if change_type == "increase":
+            # Increase all prices by percentage
+            multiplier = 1 + (value / 100)
+            AdPricing.objects.filter(is_active=True).update(
+                price=models.F("price") * multiplier
+            )
+            message = f"Increased all prices by {value}%"
+            
+        elif change_type == "decrease":
+            # Decrease all prices by percentage
+            multiplier = 1 - (value / 100)
+            if multiplier <= 0:
+                raise ValueError("Cannot decrease by 100% or more")
+            AdPricing.objects.filter(is_active=True).update(
+                price=models.F("price") * multiplier
+            )
+            message = f"Decreased all prices by {value}%"
+            
+        elif change_type == "base":
+            # Set base price and calculate others as multiples
+            daily_price = Decimal(str(value))
+            weekly_price = daily_price * 6  # ~15% discount
+            monthly_price = daily_price * 20  # ~30% discount
+            
+            for ad_type in AdType.objects.all():
+                AdPricing.objects.filter(ad_type=ad_type, duration="daily").update(price=daily_price)
+                AdPricing.objects.filter(ad_type=ad_type, duration="weekly").update(price=weekly_price)
+                AdPricing.objects.filter(ad_type=ad_type, duration="monthly").update(price=monthly_price)
+                
+            message = f"Set base daily price to {value} EGP with calculated weekly/monthly rates"
+            
+        else:
+            raise ValueError("Invalid bulk change type")
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="bulk_update",
+            description=f"Applied bulk pricing changes: {message}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            "success": True,
+            "message": message
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)
+
+
+
+@login_required
+@user_passes_test(is_admin)
+def ad_booking_details_api(request, booking_id):
+    """Get detailed information about a specific ad booking"""
+    try:
+        booking = get_object_or_404(
+            AdBookingRequest.objects.select_related('seller', 'ad_type', 'category'),
+            id=booking_id
+        )
+        
+        data = {
+            'id': booking.id,
+            'seller': {
+                'id': booking.seller.id,
+                'name': f"{booking.seller.first_name} {booking.seller.last_name}",
+                'email': booking.seller.email,
+                'phone': getattr(booking.seller, 'phone', ''),
+            },
+            'ad_type': {
+                'id': booking.ad_type.id,
+                'name': booking.ad_type.get_name_display(),
+                'name_en': booking.ad_type.name,
+            },
+            'category': {
+                'id': booking.category.id if booking.category else None,
+                'name': booking.category.name if booking.category else 'Unspecified',
+            },
+            'status': booking.status,
+            'title': booking.title,
+            'description': booking.description,
+            'link': booking.link,
+            'duration': booking.duration,
+            'total_price': str(booking.total_price),
+            'payment_method': booking.payment_method,
+            'payment_screenshot': booking.payment_screenshot.url if booking.payment_screenshot else None,
+            'ad_image': booking.ad_image.url if booking.ad_image else None,
+            'sender_info': booking.sender_info,
+            'admin_notes': booking.admin_notes,
+            'created_at': booking.created_at.isoformat(),
+            'start_date': booking.start_date.isoformat() if booking.start_date else None,
+            'end_date': booking.end_date.isoformat() if booking.end_date else None,
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'data': data
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def approve_ad_booking_api(request, booking_id):
+    """Approve an ad booking request"""
+    try:
+        booking = get_object_or_404(AdBookingRequest, id=booking_id)
+        
+        if booking.status not in ['payment_submitted', 'under_review']:
+            return JsonResponse({
+                'success': False,
+                'message': 'Booking cannot be approved in current status'
+            }, status=400)
+        
+        booking.status = 'approved'
+        booking.approved_by = request.user
+        booking.approved_at = timezone.now()
+        booking.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="approve",
+            description=f"Approved ad booking #{booking.id} for {booking.seller.email}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Ad booking approved successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def activate_ad_booking_api(request, booking_id):
+    """Activate an approved ad booking"""
+    try:
+        booking = get_object_or_404(AdBookingRequest, id=booking_id)
+        
+        if booking.status != 'approved':
+            return JsonResponse({
+                'success': False,
+                'message': 'Only approved bookings can be activated'
+            }, status=400)
+        
+        # Set start and end dates
+        from datetime import timedelta
+        booking.start_date = timezone.now().date()
+        
+        if booking.duration == 'daily':
+            booking.end_date = booking.start_date + timedelta(days=1)
+        elif booking.duration == 'weekly':
+            booking.end_date = booking.start_date + timedelta(weeks=1)
+        elif booking.duration == 'monthly':
+            booking.end_date = booking.start_date + timedelta(days=30)
+        
+        booking.status = 'active'
+        booking.activated_by = request.user
+        booking.activated_at = timezone.now()
+        booking.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="activate",
+            description=f"Activated ad booking #{booking.id} for {booking.seller.email}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Ad booking activated successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def reject_ad_booking_api(request, booking_id):
+    """Reject an ad booking request"""
+    try:
+        booking = get_object_or_404(AdBookingRequest, id=booking_id)
+        
+        if booking.status in ['active', 'completed']:
+            return JsonResponse({
+                'success': False,
+                'message': 'Cannot reject active or completed bookings'
+            }, status=400)
+        
+        import json
+        data = json.loads(request.body)
+        rejection_reason = data.get('reason', '')
+        
+        booking.status = 'rejected'
+        booking.rejection_reason = rejection_reason
+        booking.rejected_by = request.user
+        booking.rejected_at = timezone.now()
+        booking.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="reject",
+            description=f"Rejected ad booking #{booking.id} for {booking.seller.email}. Reason: {rejection_reason}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Ad booking rejected successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def update_ad_booking_notes_api(request, booking_id):
+    """Update admin notes for an ad booking"""
+    try:
+        booking = get_object_or_404(AdBookingRequest, id=booking_id)
+        
+        import json
+        data = json.loads(request.body)
+        notes = data.get('notes', '')
+        
+        booking.admin_notes = notes
+        booking.save()
+        
+        # Log admin activity
+        AdminActivity.objects.create(
+            admin=request.user,
+            action="update",
+            description=f"Updated notes for ad booking #{booking.id}",
+            ip_address=request.META.get("REMOTE_ADDR")
+        )
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Notes updated successfully'
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=500)
