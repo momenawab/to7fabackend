@@ -10,7 +10,7 @@ class PaymentMethod(models.Model):
         ('cash_on_delivery', 'Cash on Delivery'),
         ('bank_transfer', 'Bank Transfer'),
     )
-    
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payment_methods')
     method_type = models.CharField(max_length=20, choices=METHOD_CHOICES)
     is_default = models.BooleanField(default=False)

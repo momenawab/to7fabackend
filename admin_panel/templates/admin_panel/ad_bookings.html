@@ -52,6 +52,8 @@
 
 {% block content %}
 <div class="container-fluid">
+    <!-- CSRF Token for AJAX requests -->
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
     <div class="row">
         <div class="col-12">
             <div class="card">
@@ -154,6 +156,14 @@
                                             </td>
                                             <td>
                                                 <strong class="text-success">{{ booking.price }} EGP</strong>
+                                                {% if booking.total_cost and booking.total_cost != booking.price %}
+                                                    <br>
+                                                    <span class="text-primary"><strong>Total: {{ booking.total_cost }} EGP</strong></span>
+                                                {% endif %}
+                                                {% if booking.duration_value and booking.duration_value > 1 %}
+                                                    <br>
+                                                    <small class="text-info">{{ booking.duration_value }}x duration</small>
+                                                {% endif %}
                                                 <br>
                                                 <small class="text-muted">{{ booking.get_payment_method_display }}</small>
                                             </td>
@@ -175,6 +185,18 @@
                                                          onclick="viewImage('{{ booking.ad_image.url }}', 'Ad Image - Booking #{{ booking.id }}')">
                                                 {% else %}
                                                     <span class="text-muted">No Image</span>
+                                                {% endif %}
+                                                
+                                                {% if booking.product_id %}
+                                                    <div class="mt-1">
+                                                        <small><strong>Product ID:</strong> {{ booking.product_id }}</small>
+                                                    </div>
+                                                {% endif %}
+                                                
+                                                {% if booking.special_offer_percentage %}
+                                                    <div>
+                                                        <small class="text-warning"><strong>Offer:</strong> {{ booking.special_offer_percentage }}% off</small>
+                                                    </div>
                                                 {% endif %}
                                                 
                                                 {% if booking.ad_title %}
@@ -225,39 +247,45 @@
                                                 {% endif %}
                                             </td>
                                             <td>
-                                                <div class="btn-group dropleft">
-                                                    <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" 
-                                                            data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                                        Actions
+                                                <div class="btn-group-vertical btn-group-sm" role="group">
+                                                    <button type="button" class="btn btn-sm btn-outline-info mb-1" 
+                                                            onclick="viewBookingDetails({{ booking.id }})" 
+                                                            title="View Details">
+                                                        <i class="fas fa-eye"></i>
                                                     </button>
-                                                    <div class="dropdown-menu">
-                                                        <a class="dropdown-item" href="#" onclick="viewBookingDetails({{ booking.id }})">
-                                                            <i class="fas fa-eye"></i> View Details
-                                                        </a>
-                                                        
-                                                        {% if booking.can_be_approved %}
-                                                            <a class="dropdown-item text-success" href="#" onclick="approveBooking({{ booking.id }})">
-                                                                <i class="fas fa-check"></i> Approve
-                                                            </a>
-                                                        {% endif %}
-                                                        
-                                                        {% if booking.can_be_activated %}
-                                                            <a class="dropdown-item text-primary" href="#" onclick="activateBooking({{ booking.id }})">
-                                                                <i class="fas fa-play"></i> Activate
-                                                            </a>
-                                                        {% endif %}
-                                                        
-                                                        {% if booking.status in 'payment_submitted,under_review' %}
-                                                            <a class="dropdown-item text-danger" href="#" onclick="rejectBooking({{ booking.id }})">
-                                                                <i class="fas fa-times"></i> Reject
-                                                            </a>
-                                                        {% endif %}
-                                                        
-                                                        <div class="dropdown-divider"></div>
-                                                        <a class="dropdown-item" href="#" onclick="editNotes({{ booking.id }}, '{{ booking.admin_notes|default:""|escapejs }}')">
-                                                            <i class="fas fa-edit"></i> Edit Notes
-                                                        </a>
-                                                    </div>
+                                                    
+                                                    {% if booking.can_be_approved %}
+                                                        <button type="button" class="btn btn-sm btn-success mb-1" 
+                                                                onclick="simpleApproveBooking({{ booking.id }})" 
+                                                                id="approve-btn-{{ booking.id }}" 
+                                                                title="Approve">
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                    {% endif %}
+                                                    
+                                                    {% if booking.can_be_activated %}
+                                                        <button type="button" class="btn btn-sm btn-primary mb-1" 
+                                                                onclick="simpleActivateBooking({{ booking.id }})" 
+                                                                id="activate-btn-{{ booking.id }}" 
+                                                                title="Activate">
+                                                            <i class="fas fa-play"></i>
+                                                        </button>
+                                                    {% endif %}
+                                                    
+                                                    {% if booking.can_be_rejected %}
+                                                        <button type="button" class="btn btn-sm btn-danger mb-1" 
+                                                                onclick="simpleRejectBooking({{ booking.id }})" 
+                                                                id="reject-btn-{{ booking.id }}" 
+                                                                title="Reject">
+                                                            <i class="fas fa-times"></i>
+                                                        </button>
+                                                    {% endif %}
+                                                    
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary" 
+                                                            onclick="editNotes({{ booking.id }}, '{{ booking.admin_notes|default:""|escapejs }}')" 
+                                                            title="Edit Notes">
+                                                        <i class="fas fa-edit"></i>
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -387,6 +415,7 @@
 <script>
 let currentBookingId = null;
 
+
 // Search functionality
 $('#searchInput').on('keyup', function() {
     const searchTerm = $(this).val().toLowerCase();
@@ -429,8 +458,10 @@ function viewImage(imageUrl, title) {
 }
 
 function viewBookingDetails(bookingId) {
+    console.log('Loading booking details for:', bookingId);
     // Make AJAX call to get booking details
-    $.get(`/admin/api/ad-bookings/${bookingId}/`, function(data) {
+    $.get(`/api/admin/ad-bookings/${bookingId}/`, function(data) {
+        console.log('Booking details:', data);
         let content = `
             <div class="row">
                 <div class="col-md-6">
@@ -466,50 +497,272 @@ function viewBookingDetails(bookingId) {
         
         $('#bookingDetailsContent').html(content);
         $('#bookingDetailsModal').modal('show');
-    }).fail(function() {
-        alert('Error loading booking details');
+    }).fail(function(xhr, status, error) {
+        console.error('AJAX Error loading details:', xhr.responseText);
+        alert('Error loading booking details: ' + error + '\nStatus: ' + status);
     });
 }
 
-function approveBooking(bookingId) {
+function approveBooking(bookingId, event) {
     if (confirm('Are you sure you want to approve this ad booking?')) {
-        $.post(`/admin/api/ad-bookings/${bookingId}/approve/`, {
-            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-        }, function(data) {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error: ' + data.message);
+        // Show loading state
+        const button = event.target.closest('.dropdown-item');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        button.style.pointerEvents = 'none';
+        
+        // Get CSRF token from multiple sources
+        let csrfToken = $('[name=csrfmiddlewaretoken]').val() || 
+                       $('meta[name="csrf-token"]').attr('content') ||
+                       document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        
+        console.log('CSRF Token:', csrfToken);
+        console.log('Approving booking:', bookingId);
+        console.log('URL:', `/api/admin/ad-bookings/${bookingId}/approve/`);
+        
+        // Use $.ajax for better control
+        $.ajax({
+            url: `/api/admin/ad-bookings/${bookingId}/approve/`,
+            method: 'POST',
+            data: {
+                csrfmiddlewaretoken: csrfToken
+            },
+            timeout: 30000, // 30 second timeout
+            beforeSend: function(xhr) {
+                xhr.setRequestHeader('X-CSRFToken', csrfToken);
+                console.log('Sending request...');
+            },
+            success: function(data) {
+                console.log('Success Response:', data);
+                if (data.success) {
+                    alert('Booking approved successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error Details:');
+                console.error('Status:', status);
+                console.error('Error:', error);
+                console.error('Response Text:', xhr.responseText);
+                console.error('Status Code:', xhr.status);
+                
+                let errorMsg = 'Request failed: ' + error;
+                if (xhr.status === 0) {
+                    errorMsg = 'Network error - please check your connection';
+                } else if (xhr.status === 403) {
+                    errorMsg = 'Permission denied - please refresh and try again';
+                } else if (xhr.status === 404) {
+                    errorMsg = 'API endpoint not found';
+                } else if (xhr.status === 500) {
+                    errorMsg = 'Server error - please try again';
+                }
+                
+                alert(errorMsg + '\nFull error: ' + xhr.responseText);
+            },
+            complete: function() {
+                // Restore button state
+                button.innerHTML = originalText;
+                button.style.pointerEvents = 'auto';
             }
         });
     }
 }
 
-function activateBooking(bookingId) {
+function activateBooking(bookingId, event) {
     if (confirm('Are you sure you want to activate this ad booking?')) {
-        $.post(`/admin/api/ad-bookings/${bookingId}/activate/`, {
-            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-        }, function(data) {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error: ' + data.message);
+        // Show loading state
+        const button = event.target.closest('.dropdown-item');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        button.style.pointerEvents = 'none';
+        
+        // Get CSRF token from multiple sources
+        let csrfToken = $('[name=csrfmiddlewaretoken]').val() || 
+                       $('meta[name="csrf-token"]').attr('content') ||
+                       document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        
+        console.log('Activating booking:', bookingId);
+        
+        $.ajax({
+            url: `/api/admin/ad-bookings/${bookingId}/activate/`,
+            method: 'POST',
+            data: {
+                csrfmiddlewaretoken: csrfToken
+            },
+            timeout: 30000,
+            beforeSend: function(xhr) {
+                xhr.setRequestHeader('X-CSRFToken', csrfToken);
+            },
+            success: function(data) {
+                console.log('Activate Response:', data);
+                if (data.success) {
+                    alert('Booking activated successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Activate AJAX Error:', xhr.responseText);
+                alert('Activation failed: ' + error + '\nStatus: ' + xhr.status);
+            },
+            complete: function() {
+                button.innerHTML = originalText;
+                button.style.pointerEvents = 'auto';
             }
         });
     }
 }
 
-function rejectBooking(bookingId) {
+function rejectBooking(bookingId, event) {
     const reason = prompt('Please provide a reason for rejection:');
     if (reason && reason.trim()) {
-        $.post(`/admin/api/ad-bookings/${bookingId}/reject/`, {
-            reason: reason,
-            csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-        }, function(data) {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error: ' + data.message);
+        // Show loading state
+        const button = event.target.closest('.dropdown-item');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        button.style.pointerEvents = 'none';
+        
+        // Get CSRF token from multiple sources
+        let csrfToken = $('[name=csrfmiddlewaretoken]').val() || 
+                       $('meta[name="csrf-token"]').attr('content') ||
+                       document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        
+        console.log('Rejecting booking:', bookingId);
+        
+        $.ajax({
+            url: `/api/admin/ad-bookings/${bookingId}/reject/`,
+            method: 'POST',
+            data: {
+                reason: reason,
+                csrfmiddlewaretoken: csrfToken
+            },
+            timeout: 30000,
+            beforeSend: function(xhr) {
+                xhr.setRequestHeader('X-CSRFToken', csrfToken);
+            },
+            success: function(data) {
+                console.log('Reject Response:', data);
+                if (data.success) {
+                    alert('Booking rejected successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown error'));
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Reject AJAX Error:', xhr.responseText);
+                alert('Rejection failed: ' + error + '\nStatus: ' + xhr.status);
+            },
+            complete: function() {
+                button.innerHTML = originalText;
+                button.style.pointerEvents = 'auto';
+            }
+        });
+    }
+}
+
+// Simple action functions without dropdown complexity
+function simpleApproveBooking(bookingId) {
+    if (confirm('Are you sure you want to approve this ad booking?')) {
+        const button = document.getElementById(`approve-btn-${bookingId}`);
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+        
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+        
+        $.ajax({
+            url: `/api/admin/ad-bookings/${bookingId}/approve/`,
+            method: 'POST',
+            data: { csrfmiddlewaretoken: csrfToken },
+            timeout: 30000,
+            success: function(data) {
+                if (data.success) {
+                    alert('Booking approved successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown error'));
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Approval failed: ' + error);
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        });
+    }
+}
+
+function simpleActivateBooking(bookingId) {
+    if (confirm('Are you sure you want to activate this ad booking?')) {
+        const button = document.getElementById(`activate-btn-${bookingId}`);
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+        
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+        
+        $.ajax({
+            url: `/api/admin/ad-bookings/${bookingId}/activate/`,
+            method: 'POST',
+            data: { csrfmiddlewaretoken: csrfToken },
+            timeout: 30000,
+            success: function(data) {
+                if (data.success) {
+                    alert('Booking activated successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown error'));
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Activation failed: ' + error);
+                button.innerHTML = originalHTML;
+                button.disabled = false;
+            }
+        });
+    }
+}
+
+function simpleRejectBooking(bookingId) {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (reason && reason.trim()) {
+        const button = document.getElementById(`reject-btn-${bookingId}`);
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+        
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+        
+        $.ajax({
+            url: `/api/admin/ad-bookings/${bookingId}/reject/`,
+            method: 'POST',
+            data: { 
+                reason: reason,
+                csrfmiddlewaretoken: csrfToken 
+            },
+            timeout: 30000,
+            success: function(data) {
+                if (data.success) {
+                    alert('Booking rejected successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.message || 'Unknown error'));
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
+                }
+            },
+            error: function(xhr, status, error) {
+                alert('Rejection failed: ' + error);
+                button.innerHTML = originalHTML;
+                button.disabled = false;
             }
         });
     }
@@ -523,16 +776,22 @@ function editNotes(bookingId, currentNotes) {
 
 function saveNotes() {
     const notes = $('#adminNotes').val();
-    $.post(`/admin/api/ad-bookings/${currentBookingId}/notes/`, {
+    const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+    
+    $.post(`/api/admin/ad-bookings/${currentBookingId}/notes/`, {
         notes: notes,
-        csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+        csrfmiddlewaretoken: csrfToken
     }, function(data) {
         if (data.success) {
             $('#notesModal').modal('hide');
+            alert('Notes saved successfully!');
             location.reload();
         } else {
             alert('Error: ' + data.message);
         }
+    }).fail(function(xhr, status, error) {
+        console.error('AJAX Error:', xhr.responseText);
+        alert('Request failed: ' + error + '\nStatus: ' + status);
     });
 }
 </script>

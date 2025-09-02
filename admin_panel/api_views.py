@@ -1,14 +1,18 @@
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
 from django.db.models import Count, Sum, Q, F
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.db import transaction
 from django.conf import settings
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 import csv
 
 from custom_auth.models import User, Artist, Store
@@ -3020,9 +3024,10 @@ def seller_product_analytics(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def seller_requests_list(request):
-    """Get all seller requests (offers and featured products)"""
+    """Get all seller requests (offers, featured products, and ad bookings)"""
     try:
         from products.models import SellerOfferRequest, SellerFeaturedRequest
+        from .models import AdBookingRequest
         
         # Get offer requests with related data
         offer_requests = SellerOfferRequest.objects.select_related(
@@ -3032,6 +3037,11 @@ def seller_requests_list(request):
         # Get featured requests with related data
         featured_requests = SellerFeaturedRequest.objects.select_related(
             'product', 'seller', 'reviewed_by'
+        ).order_by('-created_at')
+        
+        # Get ad booking requests with related data
+        ad_booking_requests = AdBookingRequest.objects.select_related(
+            'seller', 'ad_type', 'category'
         ).order_by('-created_at')
         
         # Serialize offer requests
@@ -3086,24 +3096,61 @@ def seller_requests_list(request):
                 'updated_at': req.updated_at.isoformat(),
             })
         
+        # Serialize ad booking requests
+        ad_booking_data = []
+        for req in ad_booking_requests:
+            ad_booking_data.append({
+                'id': req.id,
+                'type': 'ad_booking',
+                'ad_type': req.ad_type.name if req.ad_type else None,
+                'ad_type_display': req.ad_type.name_ar if req.ad_type and req.ad_type.name_ar else (req.ad_type.name if req.ad_type else None),
+                'seller_name': req.seller.email if req.seller else 'Unknown',
+                'seller_type': req.seller.user_type if req.seller else None,
+                'seller_id': req.seller.id if req.seller else None,
+                'category': req.category.name if req.category else None,
+                'duration': req.duration,
+                'price': float(req.price),
+                'total_cost': float(req.total_cost) if req.total_cost else float(req.price),
+                'payment_method': req.payment_method,
+                'sender_info': req.sender_info or '',
+                'ad_title': req.ad_title or '',
+                'ad_description': req.ad_description or '',
+                'product_id': req.product_id or '',
+                'special_offer_percentage': float(req.special_offer_percentage) if req.special_offer_percentage else None,
+                'duration_value': req.duration_value,
+                'status': req.status,
+                'status_display': req.get_status_display(),
+                'payment_screenshot': req.payment_screenshot.url if req.payment_screenshot else None,
+                'ad_image': req.ad_image.url if req.ad_image else None,
+                'admin_notes': req.admin_notes or '',
+                'created_at': req.created_at.isoformat(),
+                'updated_at': req.updated_at.isoformat(),
+            })
+        
         # Calculate statistics
         total_offer_requests = len(offer_data)
         total_featured_requests = len(featured_data)
+        total_ad_booking_requests = len(ad_booking_data)
         pending_offers = sum(1 for r in offer_data if r['status'] == 'payment_completed')
         pending_featured = sum(1 for r in featured_data if r['status'] == 'payment_completed')
+        pending_ad_bookings = sum(1 for r in ad_booking_data if r['status'] == 'payment_submitted')
         
         return Response({
             'status': 'success',
             'offer_requests': offer_data,
             'featured_requests': featured_data,
+            'ad_booking_requests': ad_booking_data,
             'total_offer_requests': total_offer_requests,
             'total_featured_requests': total_featured_requests,
-            'pending_requests': pending_offers + pending_featured,
+            'total_ad_booking_requests': total_ad_booking_requests,
+            'pending_requests': pending_offers + pending_featured + pending_ad_bookings,
             'statistics': {
                 'total_offer_requests': total_offer_requests,
                 'total_featured_requests': total_featured_requests,
+                'total_ad_booking_requests': total_ad_booking_requests,
                 'pending_offers': pending_offers,
                 'pending_featured': pending_featured,
+                'pending_ad_bookings': pending_ad_bookings,
             }
         })
         
@@ -3322,6 +3369,7 @@ def get_ad_types(request):
                 'name_ar': ad_type.name_ar,
                 'description': ad_type.description,
                 'requires_category': ad_type.requires_category,
+                'requirements': ad_type.requirements or {},
                 'pricing': {}
             }
             
@@ -3370,6 +3418,14 @@ def create_ad_booking(request):
         payment_method = data.get('payment_method')
         sender_info = data.get('sender_info')
         category_id = data.get('category_id')
+        
+        # Additional fields for enhanced ad booking
+        ad_title = data.get('ad_title', '')
+        ad_description = data.get('ad_description', '')
+        product_id = data.get('product_id')
+        offer_percentage = data.get('offer_percentage')
+        promotion_duration = data.get('promotion_duration')
+        total_price = data.get('total_price', price)
         
         # Validate required fields
         if not all([ad_type_name, duration, price, payment_method]):
@@ -3428,13 +3484,23 @@ def create_ad_booking(request):
                 duration=duration,
                 price=price,
                 payment_method=payment_method,
-                sender_info=sender_info
+                sender_info=sender_info,
+                ad_title=ad_title,
+                ad_description=ad_description,
+                product_id=product_id,
+                special_offer_percentage=offer_percentage,
+                duration_value=promotion_duration,
+                total_cost=total_price
             )
             
-            # Handle file upload (payment screenshot)
-            if 'screenshot' in request.FILES:
-                booking.payment_screenshot = request.FILES['screenshot']
-                booking.save()
+            # Handle file uploads
+            if 'payment_screenshot' in request.FILES:
+                booking.payment_screenshot = request.FILES['payment_screenshot']
+            
+            if 'ad_image' in request.FILES:
+                booking.ad_image = request.FILES['ad_image']
+            
+            booking.save()
             
             # Create admin notification
             AdminNotification.objects.create(
@@ -3458,6 +3524,96 @@ def create_ad_booking(request):
         return Response({
             'error': f'An error occurred while creating booking: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@require_http_methods(["GET", "POST"])
+@login_required
+def update_ad_type_requirements(request, ad_type_id):
+    """Get or update requirements for a specific ad type"""
+    try:
+        from .models import AdType
+        
+        # Check if user is admin
+        if not request.user.is_staff:
+            return JsonResponse({
+                'success': False,
+                'message': 'Only admins can access ad type requirements'
+            }, status=403)
+        
+        # Get ad type
+        try:
+            ad_type = AdType.objects.get(id=ad_type_id)
+        except AdType.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': f'Ad type with ID {ad_type_id} not found'
+            }, status=404)
+        
+        if request.method == 'GET':
+            # Return current requirements
+            return JsonResponse({
+                'success': True,
+                'ad_type': {
+                    'id': ad_type.id,
+                    'name': ad_type.name,
+                    'name_ar': ad_type.name_ar,
+                    'requirements': ad_type.requirements or {}
+                }
+            })
+        
+        elif request.method == 'POST':
+            # Update requirements
+            import json
+            
+            # Get requirements from POST data
+            requirements_str = request.POST.get('requirements')
+            if not requirements_str:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Requirements data is required'
+                }, status=400)
+            
+            try:
+                requirements = json.loads(requirements_str)
+            except json.JSONDecodeError:
+                return JsonResponse({
+                    'success': False,
+                    'message': 'Invalid JSON format for requirements'
+                }, status=400)
+            
+            # Validate requirements structure
+            valid_fields = ['ad_title', 'ad_description', 'ad_image', 'ad_link', 'category', 'product_id', 'special_offer_percentage']
+            valid_values = ['required', 'optional', 'hidden']
+            
+            for field, value in requirements.items():
+                if field not in valid_fields:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'Invalid field: {field}'
+                    }, status=400)
+                if value not in valid_values:
+                    return JsonResponse({
+                        'success': False,
+                        'message': f'Invalid value for {field}: {value}. Must be one of: {", ".join(valid_values)}'
+                    }, status=400)
+            
+            # Update ad type requirements
+            ad_type.requirements = requirements
+            ad_type.save()
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Requirements updated successfully'
+            })
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error managing ad type requirements: {e}", exc_info=True)
+        return JsonResponse({
+            'success': False,
+            'message': f'Failed to manage requirements: {str(e)}'
+        }, status=500)
 
 
 @api_view(['GET'])
@@ -3634,3 +3790,174 @@ def reject_ad_booking(request, booking_id):
     
     except Exception as e:
         return Response({'error': f'Error rejecting ad booking: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Ad Booking Dashboard API endpoints
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication, TokenAuthentication])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def ad_booking_detail_api(request, booking_id):
+    """Get detailed information about an ad booking"""
+    from .models import AdBookingRequest
+    
+    try:
+        booking = AdBookingRequest.objects.select_related(
+            'seller', 'ad_type', 'category'
+        ).get(id=booking_id)
+        
+        return Response({
+            'id': booking.id,
+            'seller_name': booking.seller.get_full_name() or booking.seller.email,
+            'seller_email': booking.seller.email,
+            'seller_phone': getattr(booking.seller, 'phone', None),
+            'ad_type_name': booking.ad_type.name_ar or booking.ad_type.name,
+            'category_name': booking.category.name if booking.category else None,
+            'duration_display': booking.get_duration_display(),
+            'price': str(booking.price),
+            'total_cost': str(booking.total_cost) if booking.total_cost else str(booking.price),
+            'duration_value': booking.duration_value,
+            'payment_method_display': booking.get_payment_method_display(),
+            'sender_info': booking.sender_info,
+            'ad_title': booking.ad_title,
+            'ad_description': booking.ad_description,
+            'product_id': booking.product_id,
+            'special_offer_percentage': str(booking.special_offer_percentage) if booking.special_offer_percentage else None,
+            'status_display': booking.get_status_display(),
+            'admin_notes': booking.admin_notes,
+            'created_at': booking.created_at.strftime('%b %d, %Y %H:%M'),
+            'start_date': booking.start_date.strftime('%b %d, %Y %H:%M') if getattr(booking, 'start_date', None) else None,
+            'end_date': booking.end_date.strftime('%b %d, %Y %H:%M') if getattr(booking, 'end_date', None) else None,
+        })
+        
+    except AdBookingRequest.DoesNotExist:
+        return Response({'error': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def approve_ad_booking_api(request, booking_id):
+    """Approve an ad booking request"""
+    from .models import AdBookingRequest
+    
+    try:
+        booking = AdBookingRequest.objects.get(id=booking_id)
+        
+        if booking.status not in ['payment_submitted', 'under_review']:
+            return Response({
+                'success': False,
+                'message': 'This booking cannot be approved in its current status'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        booking.status = 'approved'
+        booking.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Ad booking approved successfully'
+        })
+        
+    except AdBookingRequest.DoesNotExist:
+        return Response({'success': False, 'message': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def activate_ad_booking_api(request, booking_id):
+    """Activate an approved ad booking"""
+    from .models import AdBookingRequest
+    
+    try:
+        booking = AdBookingRequest.objects.get(id=booking_id)
+        
+        if booking.status != 'approved':
+            return Response({
+                'success': False,
+                'message': 'Only approved bookings can be activated'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        booking.status = 'active'
+        # Set start and end dates based on duration
+        from datetime import datetime, timedelta
+        from django.utils import timezone
+        now = timezone.now()
+        booking.start_date = now
+        
+        if booking.duration == 'daily':
+            booking.end_date = now + timedelta(days=1)
+        elif booking.duration == 'weekly':
+            booking.end_date = now + timedelta(weeks=1)
+        elif booking.duration == 'monthly':
+            booking.end_date = now + timedelta(days=30)
+            
+        booking.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Ad booking activated successfully'
+        })
+        
+    except AdBookingRequest.DoesNotExist:
+        return Response({'success': False, 'message': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def reject_ad_booking_api(request, booking_id):
+    """Reject an ad booking request"""
+    from .models import AdBookingRequest
+    
+    try:
+        booking = AdBookingRequest.objects.get(id=booking_id)
+        reason = request.data.get('reason', '')
+        
+        if booking.status not in ['payment_submitted', 'under_review']:
+            return Response({
+                'success': False,
+                'message': 'This booking cannot be rejected in its current status'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        booking.status = 'rejected'
+        if reason:
+            current_notes = booking.admin_notes or ''
+            booking.admin_notes = f"{current_notes}\n\nRejection reason: {reason}".strip()
+        booking.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Ad booking rejected successfully'
+        })
+        
+    except AdBookingRequest.DoesNotExist:
+        return Response({'success': False, 'message': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def update_ad_booking_notes_api(request, booking_id):
+    """Update admin notes for an ad booking"""
+    from .models import AdBookingRequest
+    
+    try:
+        booking = AdBookingRequest.objects.get(id=booking_id)
+        notes = request.data.get('notes', '')
+        
+        booking.admin_notes = notes
+        booking.save()
+        
+        return Response({
+            'success': True,
+            'message': 'Notes updated successfully'
+        })
+        
+    except AdBookingRequest.DoesNotExist:
+        return Response({'success': False, 'message': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

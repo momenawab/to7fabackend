@@ -108,6 +108,8 @@ urlpatterns = [
     # Ad Booking Management
     path('ad-bookings/', views.ad_bookings_management, name='ad_bookings'),
     path('ad-pricing/', views.ad_pricing_management, name='ad_pricing'),
+    path('ad-requirements/', views.ad_type_requirements_management, name='ad_requirements'),
+    path('seller-requests/', views.seller_requests_management, name='seller_ad_requests'),
     
     # Ad Booking API endpoints
     path('api/ad-types/', api_views.get_ad_types, name='get_ad_types'),
