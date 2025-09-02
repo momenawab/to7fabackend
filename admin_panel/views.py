@@ -2670,6 +2670,17 @@ def ad_bookings_management(request):
         'seller', 'ad_type', 'category'
     ).order_by('-created_at')
     
+    # Add product information for bookings that have product_id
+    from products.models import Product
+    for booking in bookings:
+        if booking.product_id:
+            try:
+                booking.product = Product.objects.get(id=booking.product_id)
+            except (Product.DoesNotExist, ValueError):
+                booking.product = None
+        else:
+            booking.product = None
+    
     # Apply search filter
     search = request.GET.get('search')
     if search:
@@ -3212,9 +3223,20 @@ def _create_advertisement_from_booking(booking):
         return {"type": "Category Slider Advertisement", "id": ad.id}
     
     elif ad_type == "offer_ad":
-        # Create product offer
+        # Create product offer - if no product specified, create generic advertisement instead
         if not booking.product_id:
-            raise Exception("Product ID is required for offer ads")
+            # Create generic advertisement for offer
+            ad = Advertisement.objects.create(
+                title=booking.ad_title or f"Special Offer - {booking.seller.email}",
+                description=booking.ad_description or f"Special offer advertisement by {booking.seller.email}",
+                image=booking.ad_image,
+                link_url=booking.ad_link,
+                is_active=True,
+                order=0,
+                show_on_main=True,
+                category=booking.category
+            )
+            return {"type": "Generic Offer Advertisement", "id": ad.id}
         
         product = Product.objects.get(id=booking.product_id)
         
@@ -3242,9 +3264,20 @@ def _create_advertisement_from_booking(booking):
         return {"type": "Product Offer", "id": offer.id}
     
     elif ad_type == "featured_product":
-        # Create featured product
+        # Create featured product - if no product specified, create generic advertisement instead
         if not booking.product_id:
-            raise Exception("Product ID is required for featured product ads")
+            # Create generic advertisement for featured product
+            ad = Advertisement.objects.create(
+                title=booking.ad_title or f"Featured Product - {booking.seller.email}",
+                description=booking.ad_description or f"Featured product advertisement by {booking.seller.email}",
+                image=booking.ad_image,
+                link_url=booking.ad_link,
+                is_active=True,
+                order=0,
+                show_on_main=True,
+                category=booking.category
+            )
+            return {"type": "Generic Featured Advertisement", "id": ad.id}
         
         product = Product.objects.get(id=booking.product_id)
         

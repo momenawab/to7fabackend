@@ -3867,8 +3867,9 @@ def approve_ad_booking_api(request, booking_id):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def activate_ad_booking_api(request, booking_id):
-    """Activate an approved ad booking"""
+    """Activate an approved ad booking and create corresponding advertisement"""
     from .models import AdBookingRequest
+    from django.db import transaction
     
     try:
         booking = AdBookingRequest.objects.get(id=booking_id)
@@ -3879,31 +3880,130 @@ def activate_ad_booking_api(request, booking_id):
                 'message': 'Only approved bookings can be activated'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        booking.status = 'active'
-        # Set start and end dates based on duration
-        from datetime import datetime, timedelta
-        from django.utils import timezone
-        now = timezone.now()
-        booking.start_date = now
-        
-        if booking.duration == 'daily':
-            booking.end_date = now + timedelta(days=1)
-        elif booking.duration == 'weekly':
-            booking.end_date = now + timedelta(weeks=1)
-        elif booking.duration == 'monthly':
-            booking.end_date = now + timedelta(days=30)
+        # Use atomic transaction to ensure both operations succeed
+        with transaction.atomic():
+            # Update booking status and dates
+            booking.status = 'active'
+            from datetime import datetime, timedelta
+            from django.utils import timezone
+            now = timezone.now()
+            booking.start_date = now
             
-        booking.save()
-        
-        return Response({
-            'success': True,
-            'message': 'Ad booking activated successfully'
-        })
+            # Calculate duration based on duration_value (multiplier) and duration type
+            duration_value = booking.duration_value or 1
+            
+            if booking.duration == 'daily':
+                booking.end_date = now + timedelta(days=duration_value)
+            elif booking.duration == 'weekly':
+                booking.end_date = now + timedelta(weeks=duration_value)
+            elif booking.duration == 'monthly':
+                booking.end_date = now + timedelta(days=30 * duration_value)
+            else:
+                booking.end_date = now + timedelta(days=duration_value)
+                
+            booking.save()
+            
+            # Auto-create advertisement based on ad type
+            ad_created = _create_advertisement_from_booking(booking)
+            
+            message = 'Ad booking activated successfully'
+            if ad_created:
+                message += f' and {booking.ad_type.name_ar} advertisement created'
+            
+            return Response({
+                'success': True,
+                'message': message,
+                'ad_created': ad_created
+            })
         
     except AdBookingRequest.DoesNotExist:
         return Response({'success': False, 'message': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def _create_advertisement_from_booking(booking):
+    """Helper function to create advertisement based on booking ad type"""
+    try:
+        ad_type = booking.ad_type.name
+        
+        if ad_type == 'home_slider' or ad_type == 'category_slider':
+            # Create Advertisement for sliders
+            from products.models import Advertisement
+            
+            advertisement = Advertisement.objects.create(
+                title=booking.ad_title or f"إعلان {booking.ad_type.name_ar}",
+                description=booking.ad_description or "",
+                image=booking.ad_image,
+                link_url=booking.ad_link or "",
+                is_active=True,
+                order=0
+            )
+            return True
+            
+        elif ad_type == 'offer_ad' and booking.product_id:
+            # Create ProductOffer
+            from products.models import ProductOffer, Product
+            
+            try:
+                product = Product.objects.get(id=booking.product_id)
+                offer_percentage = booking.special_offer_percentage or 10
+                
+                # Calculate duration for offer
+                duration_days = 7  # default
+                duration_value = booking.duration_value or 1
+                
+                if booking.duration == 'daily':
+                    duration_days = duration_value
+                elif booking.duration == 'weekly':
+                    duration_days = duration_value * 7
+                elif booking.duration == 'monthly':
+                    duration_days = duration_value * 30
+                
+                offer = ProductOffer.objects.create(
+                    product=product,
+                    discount_percentage=offer_percentage,
+                    duration_days=duration_days,
+                    is_active=True,
+                    created_by=booking.seller
+                )
+                return True
+            except Product.DoesNotExist:
+                pass
+                
+        elif ad_type == 'featured_product' and booking.product_id:
+            # Create FeaturedProduct
+            from products.models import FeaturedProduct, Product
+            
+            try:
+                product = Product.objects.get(id=booking.product_id)
+                
+                # Calculate duration for featured product
+                duration_days = 7  # default
+                duration_value = booking.duration_value or 1
+                
+                if booking.duration == 'daily':
+                    duration_days = duration_value
+                elif booking.duration == 'weekly':
+                    duration_days = duration_value * 7
+                elif booking.duration == 'monthly':
+                    duration_days = duration_value * 30
+                
+                featured = FeaturedProduct.objects.create(
+                    product=product,
+                    duration_days=duration_days,
+                    is_active=True,
+                    created_by=booking.seller
+                )
+                return True
+            except Product.DoesNotExist:
+                pass
+        
+        return False
+        
+    except Exception as e:
+        print(f"Error creating advertisement from booking: {e}")
+        return False
 
 
 @api_view(['POST'])

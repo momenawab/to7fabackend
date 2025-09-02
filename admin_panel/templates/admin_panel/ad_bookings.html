@@ -101,9 +101,10 @@
                                             <th>Seller</th>
                                             <th>Ad Type</th>
                                             <th>Category</th>
+                                            <th>Product</th>
                                             <th>Duration</th>
                                             <th>Price</th>
-                                            <th>Payment</th>
+                                            <th>Payment Details</th>
                                             <th>Ad Content</th>
                                             <th>Status</th>
                                             <th>Created</th>
@@ -150,6 +151,27 @@
                                                 {% endif %}
                                             </td>
                                             <td>
+                                                {% if booking.product_id %}
+                                                    {% if booking.product %}
+                                                        <div>
+                                                            <strong>{{ booking.product.name|truncatechars:25 }}</strong>
+                                                            <br>
+                                                            <small class="text-muted">ID: {{ booking.product_id }}</small>
+                                                            {% if booking.product.base_price %}
+                                                                <br>
+                                                                <small class="text-success">{{ booking.product.base_price }} EGP</small>
+                                                            {% endif %}
+                                                        </div>
+                                                    {% else %}
+                                                        <span class="text-danger">Product Not Found</span>
+                                                        <br>
+                                                        <small class="text-muted">ID: {{ booking.product_id }}</small>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
                                                 <span class="badge badge-secondary">{{ booking.get_duration_display }}</span>
                                                 <br>
                                                 <small class="text-muted">{{ booking.duration }}</small>
@@ -166,6 +188,10 @@
                                                 {% endif %}
                                                 <br>
                                                 <small class="text-muted">{{ booking.get_payment_method_display }}</small>
+                                                {% if booking.sender_info %}
+                                                    <br>
+                                                    <small class="text-info"><strong>Account:</strong> {{ booking.sender_info }}</small>
+                                                {% endif %}
                                             </td>
                                             <td class="text-center">
                                                 {% if booking.payment_screenshot %}
@@ -189,7 +215,23 @@
                                                 
                                                 {% if booking.product_id %}
                                                     <div class="mt-1">
-                                                        <small><strong>Product ID:</strong> {{ booking.product_id }}</small>
+                                                        {% if booking.product %}
+                                                            <div class="product-info">
+                                                                <small><strong>Product:</strong> {{ booking.product.name }}</small>
+                                                                <br>
+                                                                <small class="text-muted">ID: {{ booking.product_id }}</small>
+                                                                {% if booking.product.base_price %}
+                                                                    <br>
+                                                                    <small class="text-success">Price: {{ booking.product.base_price }} EGP</small>
+                                                                {% endif %}
+                                                                {% if booking.product.description %}
+                                                                    <br>
+                                                                    <small class="text-info">{{ booking.product.description|truncatechars:50 }}</small>
+                                                                {% endif %}
+                                                            </div>
+                                                        {% else %}
+                                                            <small><strong>Product ID:</strong> {{ booking.product_id }} <span class="text-danger">(Not Found)</span></small>
+                                                        {% endif %}
                                                     </div>
                                                 {% endif %}
                                                 
@@ -714,7 +756,11 @@ function simpleActivateBooking(bookingId) {
             timeout: 30000,
             success: function(data) {
                 if (data.success) {
-                    alert('Booking activated successfully!');
+                    let message = data.message || 'Booking activated successfully!';
+                    if (data.ad_created) {
+                        message += '\n✅ Advertisement has been created and is now live!';
+                    }
+                    alert(message);
                     location.reload();
                 } else {
                     alert('Error: ' + (data.message || 'Unknown error'));
