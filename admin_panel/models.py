@@ -236,6 +236,8 @@ class AdType(models.Model):
     name = models.CharField(max_length=50, choices=TYPE_CHOICES, unique=True, verbose_name=_('Ad Type'))
     name_ar = models.CharField(max_length=100, verbose_name=_('Arabic Name'))
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
+    requirements = models.JSONField(blank=True, null=True, verbose_name=_('Requirements'),
+                                   help_text=_('JSON field to store requirements for this ad type'))
     requires_category = models.BooleanField(default=False, verbose_name=_('Requires Category Selection'))
     is_active = models.BooleanField(default=True, verbose_name=_('Is Active'))
     display_order = models.PositiveIntegerField(default=0, verbose_name=_('Display Order'))
@@ -320,6 +322,18 @@ class AdBookingRequest(models.Model):
     ad_image = models.ImageField(upload_to='ad_content/', blank=True, null=True, verbose_name=_('Ad Image'))
     ad_link = models.URLField(blank=True, null=True, verbose_name=_('Ad Link'))
     
+    # Enhanced ad booking fields
+    product_id = models.CharField(max_length=50, blank=True, null=True, verbose_name=_('Product ID'),
+                                  help_text=_('Selected product for offer and featured ads'))
+    special_offer_percentage = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True, 
+                                                  verbose_name=_('Special Offer Percentage'),
+                                                  help_text=_('Discount percentage for special offer ads'))
+    duration_value = models.PositiveIntegerField(blank=True, null=True, verbose_name=_('Duration Value'),
+                                                help_text=_('Duration multiplier for pricing calculation'))
+    total_cost = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, 
+                                    verbose_name=_('Total Cost'), 
+                                    help_text=_('Calculated total cost (base price × duration)'))
+    
     # Status and tracking
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='payment_submitted', verbose_name=_('Status'))
     admin_notes = models.TextField(blank=True, null=True, verbose_name=_('Admin Notes'))
@@ -346,10 +360,17 @@ class AdBookingRequest(models.Model):
     def is_category_required(self):
         return self.ad_type.requires_category
     
+    @property
     def can_be_approved(self):
-        """Check if request can be approved"""
+        """Check if booking can be approved"""
         return self.status in ['payment_submitted', 'under_review']
     
+    @property
     def can_be_activated(self):
-        """Check if request can be activated"""
+        """Check if booking can be activated"""
         return self.status == 'approved'
+    
+    @property 
+    def can_be_rejected(self):
+        """Check if booking can be rejected"""
+        return self.status in ['payment_submitted', 'under_review']

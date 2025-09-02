@@ -111,6 +111,52 @@
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(239, 68, 68, 0.25);
     }
+    
+    /* Requirements Section Styles */
+    .requirements-section {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-left: 4px solid #28a745;
+    }
+    
+    .requirements-section h6 {
+        color: #495057;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .requirement-item {
+        display: flex;
+        align-items: center;
+        padding: 4px 0;
+        font-size: 0.9rem;
+    }
+    
+    .requirement-item span {
+        flex: 1;
+    }
+    
+    .requirements-editor {
+        border: 2px dashed #dee2e6;
+        background-color: #ffffff;
+    }
+    
+    .requirements-editor:focus {
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+    
+    .edit-requirements-btn {
+        transition: all 0.3s ease;
+    }
+    
+    .edit-requirements-btn:hover {
+        background-color: #007bff;
+        color: white;
+        border-color: #007bff;
+    }
 </style>
 {% endblock %}
 
@@ -208,6 +254,48 @@
                         {% endif %}
                     </h5>
                     <small>{{ ad_type.description }}</small>
+                    
+                    <!-- Requirements Section -->
+                    <div class="requirements-section mt-3">
+                        <h6><i class="fas fa-list-check me-2"></i>Requirements</h6>
+                        <div class="requirements-list">
+                            {% if ad_type.requirements %}
+                                {% for req in ad_type.requirements %}
+                                    <div class="requirement-item">
+                                        <i class="fas fa-check-circle text-success me-2"></i>
+                                        <span>{{ req }}</span>
+                                    </div>
+                                {% empty %}
+                                    <div class="requirement-item text-muted">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <span>No specific requirements</span>
+                                    </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="requirement-item text-muted">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <span>No specific requirements</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Edit Requirements -->
+                        <div class="edit-requirements mt-2" style="display: none;">
+                            <textarea class="form-control requirements-editor" data-ad-type="{{ ad_type.id }}" rows="3" placeholder="Enter requirements (one per line)">{% if ad_type.requirements %}{% for req in ad_type.requirements %}{{ req }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}{% endif %}</textarea>
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-sm btn-success save-requirements" data-ad-type="{{ ad_type.id }}">
+                                    <i class="fas fa-save me-1"></i>Save
+                                </button>
+                                <button type="button" class="btn btn-sm btn-secondary cancel-requirements">
+                                    <i class="fas fa-times me-1"></i>Cancel
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <button type="button" class="btn btn-sm btn-outline-primary edit-requirements-btn mt-2">
+                            <i class="fas fa-edit me-1"></i>Edit Requirements
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="pricing-body">
@@ -548,6 +636,68 @@ window.addEventListener('beforeunload', function(e) {
         e.returnValue = '';
         return 'You have unsaved changes. Are you sure you want to leave?';
     }
+});
+
+// Requirements Management Functions
+document.addEventListener('DOMContentLoaded', function() {
+    // Edit requirements buttons
+    document.querySelectorAll('.edit-requirements-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const requirementsSection = this.closest('.requirements-section');
+            const requirementsList = requirementsSection.querySelector('.requirements-list');
+            const editSection = requirementsSection.querySelector('.edit-requirements');
+            
+            requirementsList.style.display = 'none';
+            editSection.style.display = 'block';
+            this.style.display = 'none';
+        });
+    });
+    
+    // Cancel requirements editing
+    document.querySelectorAll('.cancel-requirements').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const requirementsSection = this.closest('.requirements-section');
+            const requirementsList = requirementsSection.querySelector('.requirements-list');
+            const editSection = requirementsSection.querySelector('.edit-requirements');
+            const editBtn = requirementsSection.querySelector('.edit-requirements-btn');
+            
+            requirementsList.style.display = 'block';
+            editSection.style.display = 'none';
+            editBtn.style.display = 'inline-block';
+        });
+    });
+    
+    // Save requirements
+    document.querySelectorAll('.save-requirements').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const adTypeId = this.getAttribute('data-ad-type');
+            const textarea = this.closest('.edit-requirements').querySelector('.requirements-editor');
+            const requirements = textarea.value.split('\n').filter(req => req.trim() !== '');
+            
+            fetch('/dashboard/api/ad-types/' + adTypeId + '/requirements/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                },
+                body: JSON.stringify({ requirements: requirements })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast('Requirements updated successfully!', 'success');
+                    // Reload the page to show updated requirements
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showToast('Failed to update requirements: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showToast('Error updating requirements', 'error');
+                console.error('Error:', error);
+            });
+        });
+    });
 });
 </script>
 {% endblock %}

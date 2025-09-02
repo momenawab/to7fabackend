@@ -3015,22 +3015,28 @@ def approve_ad_booking_api(request, booking_id):
                 'message': 'Booking cannot be approved in current status'
             }, status=400)
         
-        booking.status = 'approved'
-        booking.approved_by = request.user
-        booking.approved_at = timezone.now()
-        booking.save()
+        from django.db import transaction
         
-        # Log admin activity
-        AdminActivity.objects.create(
-            admin=request.user,
-            action="approve",
-            description=f"Approved ad booking #{booking.id} for {booking.seller.email}",
-            ip_address=request.META.get("REMOTE_ADDR")
-        )
+        with transaction.atomic():
+            booking.status = 'approved'
+            booking.approved_by = request.user
+            booking.approved_at = timezone.now()
+            booking.save()
+            
+            # Auto-create advertisement based on ad type
+            ad_created = _create_advertisement_from_booking(booking)
+            
+            # Log admin activity
+            AdminActivity.objects.create(
+                admin=request.user,
+                action="approve",
+                description=f"Approved ad booking #{booking.id} for {booking.seller.email} and created {ad_created['type']} #{ad_created['id']}",
+                ip_address=request.META.get("REMOTE_ADDR")
+            )
         
         return JsonResponse({
             'success': True,
-            'message': 'Ad booking approved successfully'
+            'message': f'Ad booking approved and {ad_created["type"]} created successfully!'
         })
         
     except Exception as e:
@@ -3167,3 +3173,110 @@ def update_ad_booking_notes_api(request, booking_id):
             'success': False,
             'message': str(e)
         }, status=500)
+
+
+
+def _create_advertisement_from_booking(booking):
+    """Helper function to create the appropriate advertisement from ad booking"""
+    from datetime import timedelta
+    from products.models import Advertisement, ProductOffer, FeaturedProduct, Product
+    
+    ad_type = booking.ad_type.name
+    
+    if ad_type == "home_slider":
+        # Create home page slider ad
+        ad = Advertisement.objects.create(
+            title=booking.ad_title or f"Home Slider - {booking.seller.email}",
+            description=booking.ad_description or f"Advertisement by {booking.seller.email}",
+            image=booking.ad_image,
+            link_url=booking.ad_link,
+            is_active=True,
+            order=0,
+            show_on_main=True,
+            category=None  # Home slider doesnt need category
+        )
+        return {"type": "Home Slider Advertisement", "id": ad.id}
+    
+    elif ad_type == "category_slider":
+        # Create category-specific slider ad
+        ad = Advertisement.objects.create(
+            title=booking.ad_title or f"Category Slider - {booking.category.name}",
+            description=booking.ad_description or f"Category advertisement by {booking.seller.email}",
+            image=booking.ad_image,
+            link_url=booking.ad_link,
+            is_active=True,
+            order=0,
+            show_on_main=False,
+            category=booking.category  # Category-specific
+        )
+        return {"type": "Category Slider Advertisement", "id": ad.id}
+    
+    elif ad_type == "offer_ad":
+        # Create product offer
+        if not booking.product_id:
+            raise Exception("Product ID is required for offer ads")
+        
+        product = Product.objects.get(id=booking.product_id)
+        
+        # Calculate duration
+        start_date = timezone.now()
+        if booking.duration_value:
+            end_date = start_date + timedelta(days=booking.duration_value)
+        else:
+            # Default durations based on duration type
+            if booking.duration == "weekly":
+                end_date = start_date + timedelta(days=7)
+            elif booking.duration == "monthly":
+                end_date = start_date + timedelta(days=30)
+            else:
+                end_date = start_date + timedelta(days=7)  # Default
+        
+        offer = ProductOffer.objects.create(
+            product=product,
+            discount_percentage=booking.special_offer_percentage or 10,
+            start_date=start_date,
+            end_date=end_date,
+            description=booking.ad_description or f"Special offer by {booking.seller.email}",
+            is_active=True
+        )
+        return {"type": "Product Offer", "id": offer.id}
+    
+    elif ad_type == "featured_product":
+        # Create featured product
+        if not booking.product_id:
+            raise Exception("Product ID is required for featured product ads")
+        
+        product = Product.objects.get(id=booking.product_id)
+        
+        # Calculate end date if duration is specified
+        featured_until = None
+        if booking.duration_value:
+            featured_until = timezone.now() + timedelta(days=booking.duration_value)
+        
+        featured = FeaturedProduct.objects.create(
+            product=product,
+            priority=0,  # Higher priority (lower number)
+            featured_until=featured_until,
+            reason=booking.ad_description or f"Featured by seller request - {booking.seller.email}",
+            is_active=True
+        )
+        return {"type": "Featured Product", "id": featured.id}
+    
+    else:
+        raise Exception(f"Unknown ad type: {ad_type}")
+
+
+@login_required
+@user_passes_test(is_admin)
+def ad_type_requirements_management(request):
+    """Ad type requirements management page"""
+    
+    # Get all ad types
+    ad_types = AdType.objects.filter(is_active=True).order_by("display_order", "name_ar")
+    
+    context = {
+        "ad_types": ad_types,
+        "active_tab": "ad_requirements"
+    }
+    
+    return render(request, "admin_panel/ad_type_requirements.html", context)

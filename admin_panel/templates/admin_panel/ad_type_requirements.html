@@ -1,0 +1,402 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Ad Type Requirements Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .field-config {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .field-name {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 10px;
+    }
+    .requirement-options {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+    .requirement-option {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .ad-type-card {
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    .ad-type-header {
+        background: linear-gradient(135deg, #ACBAA6, #9BA695);
+        color: white;
+        padding: 15px 20px;
+        font-weight: 600;
+    }
+    .ad-type-body {
+        padding: 20px;
+    }
+    .save-btn {
+        background: linear-gradient(135deg, #ACBAA6, #9BA695);
+        border: none;
+        color: white;
+        padding: 8px 20px;
+        border-radius: 6px;
+        transition: all 0.3s;
+    }
+    .save-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(172, 186, 166, 0.3);
+        color: white;
+    }
+    .field-description {
+        font-size: 0.875rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- CSRF Token for AJAX requests -->
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+    
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title">Ad Type Requirements Management</h3>
+                    <div class="card-tools">
+                        <button type="button" class="btn btn-success btn-sm" onclick="saveAllRequirements()">
+                            <i class="fas fa-save"></i> Save All Changes
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <strong>Field Requirements Configuration:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li><strong>Required:</strong> Field must be filled by user in Flutter app</li>
+                                    <li><strong>Optional:</strong> Field is available but not required</li>
+                                    <li><strong>Hidden:</strong> Field is not shown in Flutter app</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="ad-types-container">
+                        {% for ad_type in ad_types %}
+                        <div class="ad-type-card" data-ad-type-id="{{ ad_type.id }}">
+                            <div class="ad-type-header">
+                                <h5 class="mb-0">
+                                    {{ ad_type.name_ar }} ({{ ad_type.get_name_display }})
+                                </h5>
+                            </div>
+                            <div class="ad-type-body">
+                                <div class="row">
+                                    <!-- Ad Content Fields -->
+                                    <div class="col-md-6">
+                                        <h6 class="text-primary mb-3">
+                                            <i class="fas fa-edit"></i> Content Fields
+                                        </h6>
+                                        
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-heading"></i> Ad Title
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_title_{{ ad_type.id }}" value="required" id="title_req_{{ ad_type.id }}">
+                                                    <label for="title_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_title_{{ ad_type.id }}" value="optional" id="title_opt_{{ ad_type.id }}">
+                                                    <label for="title_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_title_{{ ad_type.id }}" value="hidden" id="title_hid_{{ ad_type.id }}">
+                                                    <label for="title_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">The title/heading for the advertisement</div>
+                                        </div>
+
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-align-left"></i> Ad Description
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_description_{{ ad_type.id }}" value="required" id="desc_req_{{ ad_type.id }}">
+                                                    <label for="desc_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_description_{{ ad_type.id }}" value="optional" id="desc_opt_{{ ad_type.id }}">
+                                                    <label for="desc_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_description_{{ ad_type.id }}" value="hidden" id="desc_hid_{{ ad_type.id }}">
+                                                    <label for="desc_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">Detailed description of the advertisement</div>
+                                        </div>
+
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-image"></i> Ad Image
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_image_{{ ad_type.id }}" value="required" id="image_req_{{ ad_type.id }}">
+                                                    <label for="image_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_image_{{ ad_type.id }}" value="optional" id="image_opt_{{ ad_type.id }}">
+                                                    <label for="image_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_image_{{ ad_type.id }}" value="hidden" id="image_hid_{{ ad_type.id }}">
+                                                    <label for="image_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">Image for the advertisement</div>
+                                        </div>
+
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-link"></i> Ad Link
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_link_{{ ad_type.id }}" value="required" id="link_req_{{ ad_type.id }}">
+                                                    <label for="link_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_link_{{ ad_type.id }}" value="optional" id="link_opt_{{ ad_type.id }}">
+                                                    <label for="link_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="ad_link_{{ ad_type.id }}" value="hidden" id="link_hid_{{ ad_type.id }}">
+                                                    <label for="link_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">URL link when advertisement is clicked</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Configuration Fields -->
+                                    <div class="col-md-6">
+                                        <h6 class="text-success mb-3">
+                                            <i class="fas fa-cog"></i> Configuration Fields
+                                        </h6>
+                                        
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-tags"></i> Category Selection
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="category_{{ ad_type.id }}" value="required" id="cat_req_{{ ad_type.id }}">
+                                                    <label for="cat_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="category_{{ ad_type.id }}" value="optional" id="cat_opt_{{ ad_type.id }}">
+                                                    <label for="cat_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="category_{{ ad_type.id }}" value="hidden" id="cat_hid_{{ ad_type.id }}">
+                                                    <label for="cat_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">Category selection for targeted ads</div>
+                                        </div>
+
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-shopping-cart"></i> Product Selection
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="product_id_{{ ad_type.id }}" value="required" id="prod_req_{{ ad_type.id }}">
+                                                    <label for="prod_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="product_id_{{ ad_type.id }}" value="optional" id="prod_opt_{{ ad_type.id }}">
+                                                    <label for="prod_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="product_id_{{ ad_type.id }}" value="hidden" id="prod_hid_{{ ad_type.id }}">
+                                                    <label for="prod_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">Specific product for featured/offer ads</div>
+                                        </div>
+
+                                        <div class="field-config">
+                                            <div class="field-name">
+                                                <i class="fas fa-percent"></i> Special Offer Percentage
+                                            </div>
+                                            <div class="requirement-options">
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="special_offer_percentage_{{ ad_type.id }}" value="required" id="offer_req_{{ ad_type.id }}">
+                                                    <label for="offer_req_{{ ad_type.id }}">Required</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="special_offer_percentage_{{ ad_type.id }}" value="optional" id="offer_opt_{{ ad_type.id }}">
+                                                    <label for="offer_opt_{{ ad_type.id }}">Optional</label>
+                                                </div>
+                                                <div class="requirement-option">
+                                                    <input type="radio" name="special_offer_percentage_{{ ad_type.id }}" value="hidden" id="offer_hid_{{ ad_type.id }}">
+                                                    <label for="offer_hid_{{ ad_type.id }}">Hidden</label>
+                                                </div>
+                                            </div>
+                                            <div class="field-description">Discount percentage for offer ads</div>
+                                        </div>
+                                        
+                                        <div class="text-end mt-3">
+                                            <button type="button" class="save-btn" onclick="saveAdTypeRequirements({{ ad_type.id }})">
+                                                <i class="fas fa-save"></i> Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Load existing requirements when page loads
+$(document).ready(function() {
+    loadExistingRequirements();
+});
+
+function loadExistingRequirements() {
+    {% for ad_type in ad_types %}
+        loadAdTypeRequirements({{ ad_type.id }});
+    {% endfor %}
+}
+
+function loadAdTypeRequirements(adTypeId) {
+    $.ajax({
+        url: `/api/admin/ad-types/${adTypeId}/requirements/`,
+        method: 'GET',
+        success: function(data) {
+            if (data.requirements) {
+                const requirements = data.requirements;
+                
+                // Set radio button states based on saved requirements
+                const fields = ['ad_title', 'ad_description', 'ad_image', 'ad_link', 'category', 'product_id', 'special_offer_percentage'];
+                
+                fields.forEach(field => {
+                    const requirement = requirements[field] || 'optional';
+                    const radioButton = document.querySelector(`input[name="${field}_${adTypeId}"][value="${requirement}"]`);
+                    if (radioButton) {
+                        radioButton.checked = true;
+                    }
+                });
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Failed to load requirements for ad type:', adTypeId, error);
+        }
+    });
+}
+
+function saveAdTypeRequirements(adTypeId) {
+    const requirements = {};
+    const fields = ['ad_title', 'ad_description', 'ad_image', 'ad_link', 'category', 'product_id', 'special_offer_percentage'];
+    
+    fields.forEach(field => {
+        const selectedOption = document.querySelector(`input[name="${field}_${adTypeId}"]:checked`);
+        if (selectedOption) {
+            requirements[field] = selectedOption.value;
+        } else {
+            requirements[field] = 'optional'; // default
+        }
+    });
+    
+    const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+    
+    $.ajax({
+        url: `/api/admin/ad-types/${adTypeId}/requirements/`,
+        method: 'POST',
+        data: {
+            requirements: JSON.stringify(requirements),
+            csrfmiddlewaretoken: csrfToken
+        },
+        success: function(data) {
+            if (data.success) {
+                alert('Requirements saved successfully!');
+            } else {
+                alert('Error: ' + (data.message || 'Failed to save requirements'));
+            }
+        },
+        error: function(xhr, status, error) {
+            alert('Failed to save requirements: ' + error);
+        }
+    });
+}
+
+function saveAllRequirements() {
+    const adTypes = document.querySelectorAll('[data-ad-type-id]');
+    let savedCount = 0;
+    const totalCount = adTypes.length;
+    
+    adTypes.forEach(adTypeElement => {
+        const adTypeId = parseInt(adTypeElement.dataset.adTypeId);
+        
+        const requirements = {};
+        const fields = ['ad_title', 'ad_description', 'ad_image', 'ad_link', 'category', 'product_id', 'special_offer_percentage'];
+        
+        fields.forEach(field => {
+            const selectedOption = document.querySelector(`input[name="${field}_${adTypeId}"]:checked`);
+            if (selectedOption) {
+                requirements[field] = selectedOption.value;
+            } else {
+                requirements[field] = 'optional';
+            }
+        });
+        
+        const csrfToken = $('[name=csrfmiddlewaretoken]').val();
+        
+        $.ajax({
+            url: `/api/admin/ad-types/${adTypeId}/requirements/`,
+            method: 'POST',
+            data: {
+                requirements: JSON.stringify(requirements),
+                csrfmiddlewaretoken: csrfToken
+            },
+            success: function(data) {
+                savedCount++;
+                if (savedCount === totalCount) {
+                    alert('All requirements saved successfully!');
+                }
+            },
+            error: function(xhr, status, error) {
+                alert(`Failed to save requirements for ad type ${adTypeId}: ${error}`);
+            }
+        });
+    });
+}
+</script>
+{% endblock %}
