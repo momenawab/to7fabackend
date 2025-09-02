@@ -1,7 +1,7 @@
 from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import (
@@ -18,6 +18,7 @@ from django.db.models import Q, Count
 from django.utils import timezone
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, POST requires authentication (handled in view)
 def product_list(request):
     """Get all products or create a new product"""
@@ -50,6 +51,7 @@ def product_list(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET', 'PUT', 'DELETE'])
+@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, PUT/DELETE requires authentication (handled in view)
 def product_detail(request, pk):
     """Get, update or delete a product"""
@@ -82,6 +84,7 @@ def product_detail(request, pk):
         return Response({"message": "Product deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def product_search(request):
     """Search products by name, description, or category"""
@@ -109,6 +112,7 @@ def product_search(request):
     })
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, POST requires authentication (handled in view)
 def product_reviews(request, pk):
     """Get all reviews for a product or add a new review"""
@@ -144,6 +148,7 @@ def product_reviews(request, pk):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET', 'POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, POST requires authentication (handled in view)
 def category_list(request):
     """Get all categories or create a new category"""
@@ -167,6 +172,7 @@ def category_list(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['GET', 'PUT', 'DELETE'])
+@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, PUT/DELETE requires staff permissions (handled in view)
 def category_detail(request, pk):
     """Get category details, update or delete a category"""
@@ -311,6 +317,7 @@ def seller_product_detail(request, pk):
 # New admin-controlled content endpoints
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def latest_offers(request):
     """Get latest products with offers/discounts"""
@@ -365,6 +372,7 @@ def latest_offers(request):
     })
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def featured_products(request):
     """Get featured products"""
@@ -439,6 +447,7 @@ def featured_products(request):
     })
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def top_rated_products(request):
     """Get top rated products"""
@@ -472,6 +481,7 @@ def top_rated_products(request):
     })
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def advertisements(request):
     """Get active advertisements for slider with optional category filtering"""

@@ -1,6 +1,7 @@
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -184,6 +185,7 @@ def submit_seller_application(request):
 # Artist and Store endpoints for admin content management
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def top_artists(request):
     """Get top/featured artists"""
@@ -251,6 +253,7 @@ def featured_artists(request):
     return top_artists(request)
 
 @api_view(['GET'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def top_stores(request):
     """Get top/featured stores"""
