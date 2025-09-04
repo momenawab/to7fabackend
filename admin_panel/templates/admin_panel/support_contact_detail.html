@@ -1,0 +1,298 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Contact #{{ contact.contact_number }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .contact-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .status-badge {
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+    .priority-badge {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .whatsapp-btn {
+        background-color: #25D366;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-size: 14px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .whatsapp-btn:hover {
+        background-color: #128C7E;
+        color: white;
+        text-decoration: none;
+    }
+    .status-new { background-color: #FF5722; color: white; }
+    .status-in_progress { background-color: #FF9800; color: white; }
+    .status-contacted { background-color: #2196F3; color: white; }
+    .status-resolved { background-color: #4CAF50; color: white; }
+    .priority-high { background-color: #f44336; color: white; }
+    .priority-medium { background-color: #ff9800; color: white; }
+    .priority-low { background-color: #4caf50; color: white; }
+    .contact-info-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .note-item {
+        border-left: 4px solid #007bff;
+        background: #f8f9fa;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 0 8px 8px 0;
+    }
+    .update-form {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="contact-header">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                <h2 class="mb-1">📞 Contact Request #{{ contact.contact_number }}</h2>
+                <p class="mb-0 opacity-75">{{ contact.name }} • {{ contact.phone }}</p>
+            </div>
+            <div class="col-md-4 text-end">
+                <a href="{% url 'admin_panel:support_contacts' %}" class="btn btn-outline-light me-2">
+                    <i class="fas fa-arrow-left"></i> Back to List
+                </a>
+                <a href="{{ contact.whatsapp_url }}" target="_blank" class="whatsapp-btn">
+                    <i class="fab fa-whatsapp"></i> Contact on WhatsApp
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Contact Information -->
+        <div class="col-md-8">
+            <!-- Basic Info -->
+            <div class="contact-info-card">
+                <h5 class="mb-3">📋 Contact Information</h5>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Name:</strong> {{ contact.name }}<br>
+                        <strong>Phone:</strong> {{ contact.phone }}<br>
+                        {% if contact.user %}
+                            <strong>User Account:</strong> <span class="badge bg-info">{{ contact.user.email }}</span><br>
+                        {% endif %}
+                        <strong>IP Address:</strong> {{ contact.ip_address }}<br>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Created:</strong> {{ contact.created_at|date:"M d, Y H:i" }}<br>
+                        {% if contact.contacted_at %}
+                            <strong>Contacted:</strong> {{ contact.contacted_at|date:"M d, Y H:i" }}<br>
+                        {% endif %}
+                        {% if contact.resolved_at %}
+                            <strong>Resolved:</strong> {{ contact.resolved_at|date:"M d, Y H:i" }}<br>
+                        {% endif %}
+                        <strong>User Agent:</strong> <small>{{ contact.user_agent|truncatechars:50 }}</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subject & Message -->
+            <div class="contact-info-card">
+                <h5 class="mb-3">💬 Request Details</h5>
+                <div class="mb-3">
+                    <strong>Subject:</strong>
+                    <p class="mt-2 mb-3">{{ contact.subject }}</p>
+                </div>
+                <div>
+                    <strong>Message:</strong>
+                    <div class="mt-2 p-3" style="background: white; border: 1px solid #dee2e6; border-radius: 5px;">
+                        {{ contact.message|linebreaks }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Notes -->
+            <div class="contact-info-card">
+                <h5 class="mb-3">📝 Admin Notes</h5>
+                {% for note in contact.notes.all %}
+                    <div class="note-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>{{ note.admin_user.get_full_name|default:note.admin_user.email }}</strong>
+                                <span class="badge bg-secondary ms-2">{{ note.get_note_type_display }}</span>
+                            </div>
+                            <small class="text-muted">{{ note.created_at|date:"M d, Y H:i" }}</small>
+                        </div>
+                        <p class="mt-2 mb-0">{{ note.note|linebreaks }}</p>
+                    </div>
+                {% empty %}
+                    <p class="text-muted">No admin notes yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Status & Actions -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">🔄 Status & Actions</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Current Status -->
+                    <div class="text-center mb-3">
+                        <span class="status-badge status-{{ contact.status }} d-block mb-2">
+                            {{ contact.get_status_display }}
+                        </span>
+                        <span class="priority-badge priority-{{ contact.priority }}">
+                            {{ contact.get_priority_display }} Priority
+                        </span>
+                    </div>
+
+                    <!-- Response Time -->
+                    <div class="mb-3 text-center">
+                        {% if contact.response_time %}
+                            <small class="text-success">✅ Responded in {{ contact.response_time }}</small>
+                        {% elif contact.is_overdue %}
+                            <small class="text-danger">⚠️ Response Overdue</small>
+                        {% else %}
+                            <small class="text-muted">⏱️ {{ contact.created_at|timesince }} ago</small>
+                        {% endif %}
+                    </div>
+
+                    <!-- Update Form -->
+                    <form method="POST" action="{% url 'admin_panel:update_contact_status' contact.contact_number %}" id="updateForm">
+                        {% csrf_token %}
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Status</label>
+                            <select name="status" class="form-select">
+                                <option value="new" {% if contact.status == 'new' %}selected{% endif %}>New</option>
+                                <option value="in_progress" {% if contact.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                                <option value="contacted" {% if contact.status == 'contacted' %}selected{% endif %}>Contacted</option>
+                                <option value="resolved" {% if contact.status == 'resolved' %}selected{% endif %}>Resolved</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Priority</label>
+                            <select name="priority" class="form-select">
+                                <option value="low" {% if contact.priority == 'low' %}selected{% endif %}>Low</option>
+                                <option value="medium" {% if contact.priority == 'medium' %}selected{% endif %}>Medium</option>
+                                <option value="high" {% if contact.priority == 'high' %}selected{% endif %}>High</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Add Note</label>
+                            <textarea name="note" class="form-control" rows="3" placeholder="Add admin note about this contact..."></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-save"></i> Update Contact
+                        </button>
+                    </form>
+
+                    <hr>
+
+                    <!-- Quick Actions -->
+                    <div class="d-grid gap-2">
+                        <a href="{{ contact.whatsapp_url }}" target="_blank" class="whatsapp-btn text-center">
+                            <i class="fab fa-whatsapp"></i> Open WhatsApp
+                        </a>
+                        
+                        {% if contact.user %}
+                            <a href="{% url 'admin_panel:view_user_profile' contact.user.id %}" class="btn btn-outline-info">
+                                <i class="fas fa-user"></i> View User Profile
+                            </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">📊 Contact Statistics</h6>
+                </div>
+                <div class="card-body">
+                    <small class="text-muted">
+                        <strong>Contact ID:</strong> {{ contact.id }}<br>
+                        <strong>WhatsApp URL Generated:</strong> {{ contact.whatsapp_url|yesno:"Yes,No" }}<br>
+                        <strong>Notes Count:</strong> {{ contact.notes.count }}<br>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('updateForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    fetch(this.action, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show';
+            alert.innerHTML = `
+                ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('.contact-header'));
+            
+            // Reload page after 2 seconds
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            // Show error message
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger alert-dismissible fade show';
+            alert.innerHTML = `
+                Error: ${data.error}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('.contact-header'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the contact.');
+    });
+});
+</script>
+{% endblock %}
