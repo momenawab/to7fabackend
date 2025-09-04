@@ -1,0 +1,509 @@
+{% extends 'admin_panel/base.html' %}
+{% load static %}
+
+{% block title %}Contact Requests Management{% endblock %}
+
+{% block extra_css %}
+<style>
+    .contact-card {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        transition: all 0.3s ease;
+    }
+    .contact-card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .priority-badge {
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: bold;
+    }
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .filter-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .whatsapp-btn {
+        background-color: #25D366;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        padding: 5px 10px;
+        font-size: 12px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .whatsapp-btn:hover {
+        background-color: #128C7E;
+        color: white;
+        text-decoration: none;
+    }
+    .status-new { background-color: #FF5722; color: white; }
+    .status-in_progress { background-color: #FF9800; color: white; }
+    .status-contacted { background-color: #2196F3; color: white; }
+    .status-resolved { background-color: #4CAF50; color: white; }
+    .priority-high { background-color: #f44336; color: white; }
+    .priority-medium { background-color: #ff9800; color: white; }
+    .priority-low { background-color: #4caf50; color: white; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-0">📞 Contact Requests Management</h2>
+                    <small class="text-muted">Manage customer contact requests and WhatsApp communications</small>
+                </div>
+                <div>
+                    <button class="btn btn-outline-primary me-2" onclick="location.reload()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="fas fa-tools"></i> Bulk Actions
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="#" onclick="bulkUpdateStatus('in_progress')">
+                                <i class="fas fa-play text-warning"></i> Mark Selected as In Progress
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="bulkUpdateStatus('contacted')">
+                                <i class="fas fa-phone text-info"></i> Mark Selected as Contacted
+                            </a></li>
+                            <li><a class="dropdown-item" href="#" onclick="bulkUpdateStatus('resolved')">
+                                <i class="fas fa-check text-success"></i> Mark Selected as Resolved
+                            </a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <div class="stats-card text-center">
+                <h3 class="mb-0">{{ stats.total }}</h3>
+                <small>Total Contacts</small>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stats-card text-center" style="background: linear-gradient(135deg, #FF5722 0%, #E64A19 100%);">
+                <h3 class="mb-0">{{ stats.new }}</h3>
+                <small>New</small>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stats-card text-center" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);">
+                <h3 class="mb-0">{{ stats.in_progress }}</h3>
+                <small>In Progress</small>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stats-card text-center" style="background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);">
+                <h3 class="mb-0">{{ stats.contacted }}</h3>
+                <small>Contacted</small>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stats-card text-center" style="background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);">
+                <h3 class="mb-0">{{ stats.resolved }}</h3>
+                <small>Resolved</small>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="stats-card text-center" style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);">
+                <h3 class="mb-0">{{ stats.high_priority }}</h3>
+                <small>High Priority</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-section">
+        <form method="GET" class="row align-items-end">
+            <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All Status</option>
+                    <option value="new" {% if status_filter == 'new' %}selected{% endif %}>New</option>
+                    <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>In Progress</option>
+                    <option value="contacted" {% if status_filter == 'contacted' %}selected{% endif %}>Contacted</option>
+                    <option value="resolved" {% if status_filter == 'resolved' %}selected{% endif %}>Resolved</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Priority</label>
+                <select name="priority" class="form-select">
+                    <option value="all" {% if priority_filter == 'all' %}selected{% endif %}>All Priorities</option>
+                    <option value="high" {% if priority_filter == 'high' %}selected{% endif %}>High</option>
+                    <option value="medium" {% if priority_filter == 'medium' %}selected{% endif %}>Medium</option>
+                    <option value="low" {% if priority_filter == 'low' %}selected{% endif %}>Low</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Search</label>
+                <input type="text" name="q" class="form-control" placeholder="Search by name, phone, subject..." value="{{ search_query }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search"></i> Filter
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Contact List -->
+    <div class="row">
+        <div class="col-12">
+            {% for contact in contacts %}
+            <div class="contact-card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-1">
+                            <div class="text-center">
+                                <input type="checkbox" class="form-check-input contact-checkbox mb-2" value="{{ contact.contact_number }}" onchange="updateBulkActions()">
+                                <br>
+                                <strong class="text-primary">#{{ contact.contact_number }}</strong>
+                                <br>
+                                <small class="text-muted">{{ contact.created_at|date:"M d" }}</small>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <strong>{{ contact.name }}</strong>
+                            <br>
+                            <small class="text-muted">{{ contact.phone }}</small>
+                            {% if contact.user %}
+                                <br><small class="badge bg-info">Registered User</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>{{ contact.subject }}</strong>
+                            <br>
+                            <small class="text-muted">{{ contact.message|truncatechars:80 }}</small>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            <span class="status-badge status-{{ contact.status }}">
+                                {{ contact.get_status_display }}
+                            </span>
+                            <br>
+                            <span class="priority-badge priority-{{ contact.priority }}">
+                                {{ contact.get_priority_display }}
+                            </span>
+                            <br><br>
+                            <!-- Quick Status Change -->
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <i class="fas fa-edit"></i> Change Status
+                                </button>
+                                <ul class="dropdown-menu">
+                                    {% if contact.status != 'new' %}
+                                        <li><a class="dropdown-item" href="#" onclick="changeStatus('{{ contact.contact_number }}', 'new')">
+                                            <span class="badge bg-danger me-2">New</span> Mark as New
+                                        </a></li>
+                                    {% endif %}
+                                    {% if contact.status != 'in_progress' %}
+                                        <li><a class="dropdown-item" href="#" onclick="changeStatus('{{ contact.contact_number }}', 'in_progress')">
+                                            <span class="badge bg-warning me-2">In Progress</span> Mark as In Progress
+                                        </a></li>
+                                    {% endif %}
+                                    {% if contact.status != 'contacted' %}
+                                        <li><a class="dropdown-item" href="#" onclick="changeStatus('{{ contact.contact_number }}', 'contacted')">
+                                            <span class="badge bg-info me-2">Contacted</span> Mark as Contacted
+                                        </a></li>
+                                    {% endif %}
+                                    {% if contact.status != 'resolved' %}
+                                        <li><a class="dropdown-item" href="#" onclick="changeStatus('{{ contact.contact_number }}', 'resolved')">
+                                            <span class="badge bg-success me-2">Resolved</span> Mark as Resolved
+                                        </a></li>
+                                    {% endif %}
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="col-md-2 text-center">
+                            {% if contact.response_time %}
+                                <small class="text-success">Responded in {{ contact.response_time }}</small>
+                            {% elif contact.is_overdue %}
+                                <small class="text-danger">⚠️ Overdue</small>
+                            {% else %}
+                                <small class="text-muted">{{ contact.created_at|timesince }} ago</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <div class="btn-group" role="group">
+                                <a href="{% url 'admin_panel:support_contact_detail' contact.contact_number %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ contact.whatsapp_url }}" target="_blank" class="whatsapp-btn btn-sm">
+                                    <i class="fab fa-whatsapp"></i>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-5">
+                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                <h4 class="text-muted">No contact requests found</h4>
+                <p class="text-muted">No contact requests match your current filters.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    {% if contacts.has_other_pages %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <nav aria-label="Contact pagination">
+                <ul class="pagination justify-content-center">
+                    {% if contacts.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if priority_filter != 'all' %}&priority={{ priority_filter }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">First</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ contacts.previous_page_number }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if priority_filter != 'all' %}&priority={{ priority_filter }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Previous</a>
+                        </li>
+                    {% endif %}
+
+                    <li class="page-item active">
+                        <span class="page-link">{{ contacts.number }} of {{ contacts.paginator.num_pages }}</span>
+                    </li>
+
+                    {% if contacts.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ contacts.next_page_number }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if priority_filter != 'all' %}&priority={{ priority_filter }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Next</a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ contacts.paginator.num_pages }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if priority_filter != 'all' %}&priority={{ priority_filter }}{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}">Last</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function changeStatus(contactNumber, newStatus) {
+    if (!confirm('Are you sure you want to change the status of contact #' + contactNumber + '?')) {
+        return;
+    }
+
+    // Create form data
+    const formData = new FormData();
+    formData.append('status', newStatus);
+    formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+
+    // Show loading indicator
+    const button = event.target.closest('.dropdown').querySelector('button');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    button.disabled = true;
+
+    // Make AJAX request
+    fetch(`/dashboard/support-contacts/${contactNumber}/update/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Show success message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x';
+            alertDiv.style.zIndex = '9999';
+            alertDiv.style.marginTop = '20px';
+            alertDiv.innerHTML = `
+                <i class="fas fa-check-circle"></i> ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            
+            // Auto dismiss after 3 seconds
+            setTimeout(() => {
+                if (alertDiv) {
+                    alertDiv.remove();
+                }
+            }, 3000);
+            
+            // Reload page after 1 second to show updated status
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            // Show error message
+            alert('Error: ' + (data.error || 'Failed to update contact status'));
+            
+            // Restore button
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the contact status.');
+        
+        // Restore button
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function updateBulkActions() {
+    const checkboxes = document.querySelectorAll('.contact-checkbox:checked');
+    const bulkButton = document.querySelector('[data-bs-toggle="dropdown"]');
+    const count = checkboxes.length;
+    
+    if (count > 0) {
+        bulkButton.innerHTML = `<i class="fas fa-tools"></i> Bulk Actions (${count} selected)`;
+        bulkButton.disabled = false;
+    } else {
+        bulkButton.innerHTML = '<i class="fas fa-tools"></i> Bulk Actions';
+        bulkButton.disabled = true;
+    }
+}
+
+function bulkUpdateStatus(newStatus) {
+    const checkboxes = document.querySelectorAll('.contact-checkbox:checked');
+    const contactNumbers = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (contactNumbers.length === 0) {
+        alert('Please select at least one contact request.');
+        return;
+    }
+    
+    const statusName = {
+        'in_progress': 'In Progress',
+        'contacted': 'Contacted', 
+        'resolved': 'Resolved'
+    }[newStatus] || newStatus;
+    
+    if (!confirm(`Are you sure you want to mark ${contactNumbers.length} contact(s) as ${statusName}?`)) {
+        return;
+    }
+    
+    // Show progress
+    const bulkButton = document.querySelector('[data-bs-toggle="dropdown"]');
+    const originalText = bulkButton.innerHTML;
+    bulkButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    bulkButton.disabled = true;
+    
+    // Update each contact
+    let completed = 0;
+    let errors = [];
+    
+    contactNumbers.forEach(contactNumber => {
+        const formData = new FormData();
+        formData.append('status', newStatus);
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+        
+        fetch(`/dashboard/support-contacts/${contactNumber}/update/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            completed++;
+            if (!data.success) {
+                errors.push(`#${contactNumber}: ${data.error}`);
+            }
+            
+            // Check if all requests completed
+            if (completed === contactNumbers.length) {
+                if (errors.length > 0) {
+                    alert('Some updates failed:\\n' + errors.join('\\n'));
+                } else {
+                    // Show success message
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x';
+                    alertDiv.style.zIndex = '9999';
+                    alertDiv.style.marginTop = '20px';
+                    alertDiv.innerHTML = `
+                        <i class="fas fa-check-circle"></i> Successfully updated ${contactNumbers.length} contact(s) to ${statusName}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(alertDiv);
+                    
+                    setTimeout(() => {
+                        if (alertDiv) alertDiv.remove();
+                    }, 4000);
+                }
+                
+                // Reload page
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            }
+        })
+        .catch(error => {
+            completed++;
+            errors.push(`#${contactNumber}: Network error`);
+            
+            if (completed === contactNumbers.length) {
+                alert('Some updates failed due to network errors.');
+                bulkButton.innerHTML = originalText;
+                bulkButton.disabled = false;
+            }
+        });
+    });
+}
+
+// Select/deselect all functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Add select all checkbox to header
+    const headerDiv = document.querySelector('.d-flex.justify-content-between.align-items-center');
+    if (headerDiv) {
+        const selectAllDiv = document.createElement('div');
+        selectAllDiv.className = 'form-check';
+        selectAllDiv.innerHTML = `
+            <input type="checkbox" class="form-check-input" id="selectAll" onchange="toggleSelectAll()">
+            <label class="form-check-label" for="selectAll">Select All</label>
+        `;
+        headerDiv.appendChild(selectAllDiv);
+    }
+});
+
+function toggleSelectAll() {
+    const selectAllCheckbox = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.contact-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAllCheckbox.checked;
+    });
+    
+    updateBulkActions();
+}
+</script>
+{% endblock %}

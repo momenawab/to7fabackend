@@ -1,6 +1,6 @@
 from products.models import Product
 from custom_auth.models import SellerApplication
-from support.models import SupportTicket
+from support.models import ContactRequest
 from .models import AdminUser
 
 def admin_panel_context(request):
@@ -14,8 +14,8 @@ def admin_panel_context(request):
         # Count pending seller applications
         pending_applications = SellerApplication.objects.filter(status='pending').count()
         
-        # Count pending support tickets
-        pending_tickets = SupportTicket.objects.filter(status__in=['open', 'in_progress']).count()
+        # Count pending contact requests
+        pending_tickets = ContactRequest.objects.filter(status__in=['new', 'in_progress']).count()
         
         return {
             'pending_products': pending_products,

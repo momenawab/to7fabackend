@@ -71,11 +71,13 @@ urlpatterns = [
     path('variants/update-priority/', views.update_variant_priority, name='update_variant_priority'),
     path('variants/delete-option/', views.delete_variant_option, name='delete_variant_option'),
     
-    # Support Tickets
+    # Support Contacts
+    path('support-contacts/', views.support_contacts, name='support_contacts'),
+    path('support-contacts/<str:contact_id>/', views.support_contact_detail, name='support_contact_detail'),
+    path('support-contacts/<str:contact_id>/update/', views.update_contact_status, name='update_contact_status'),
+    path('support-contacts/<str:contact_id>/typing/', views.send_typing_indicator, name='send_typing_indicator'),
+    # Legacy support ticket URLs for backward compatibility
     path('support-tickets/', views.support_tickets, name='support_tickets'),
-    path('support-tickets/<str:ticket_id>/', views.support_ticket_detail, name='support_ticket_detail'),
-    path('support-tickets/<str:ticket_id>/update/', views.update_support_ticket, name='update_support_ticket'),
-    path('support-tickets/<str:ticket_id>/typing/', views.send_typing_indicator, name='send_typing_indicator'),
     
     # Admin Management
     path('admin-management/', views.admin_management, name='admin_management'),
