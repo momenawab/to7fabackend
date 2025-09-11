@@ -8,6 +8,7 @@ from .models import (
     CategoryVariantType, CategoryVariantOption, DiscountRequest, ProductVariantOption,
     SubcategorySectionControl, SellerOfferRequest, SellerFeaturedRequest
 )
+from .ar_models import ARFrameAsset, ProductARSettings, ARPreviewSession
 
 # Custom forms for better product management
 class ProductForm(forms.ModelForm):
@@ -910,3 +911,122 @@ class SellerFeaturedRequestAdmin(admin.ModelAdmin):
 # Register Seller Request admins
 admin.site.register(SellerOfferRequest, SellerOfferRequestAdmin)
 admin.site.register(SellerFeaturedRequest, SellerFeaturedRequestAdmin)
+
+
+# AR Models Admin Classes
+class ARFrameAssetAdmin(admin.ModelAdmin):
+    list_display = ('frame_type_variant', 'frame_color_variant', 'frame_material_variant', 'frame_width_cm', 'scale_factor', 'is_active')
+    list_filter = ('is_active', 'frame_type_variant__variant_type', 'frame_color_variant__variant_type', 'frame_material_variant__variant_type')
+    search_fields = ('frame_type_variant__value', 'frame_color_variant__value', 'frame_material_variant__value')
+    list_editable = ('scale_factor', 'is_active')
+    
+    fieldsets = (
+        ('Frame Variant Mapping', {
+            'fields': ('frame_type_variant', 'frame_color_variant', 'frame_material_variant')
+        }),
+        ('3D Assets', {
+            'fields': ('frame_3d_model', 'frame_texture', 'frame_preview_image')
+        }),
+        ('Physical Properties', {
+            'fields': ('frame_width_cm', 'frame_depth_cm')
+        }),
+        ('AR Settings', {
+            'fields': ('scale_factor', 'position_offset_x', 'position_offset_y', 'position_offset_z', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('created_at', 'updated_at')
+
+class ProductARSettingsInline(admin.TabularInline):
+    model = ProductARSettings
+    extra = 0
+    fields = ('ar_enabled', 'artwork_width_cm', 'artwork_height_cm', 'artwork_orientation', 'default_frame_type', 'default_frame_color')
+
+class ProductARSettingsAdmin(admin.ModelAdmin):
+    list_display = ('product', 'ar_enabled', 'artwork_width_cm', 'artwork_height_cm', 'artwork_orientation', 'aspect_ratio')
+    list_filter = ('ar_enabled', 'artwork_orientation', 'product__category')
+    search_fields = ('product__name', 'product__seller__email')
+    list_editable = ('ar_enabled',)
+    
+    fieldsets = (
+        ('AR Settings', {
+            'fields': ('product', 'ar_enabled')
+        }),
+        ('Artwork Properties', {
+            'fields': ('artwork_width_cm', 'artwork_height_cm', 'artwork_orientation')
+        }),
+        ('Default Frame Selection', {
+            'fields': ('default_frame_type', 'default_frame_color'),
+            'description': 'Default frame options for AR preview (optional)'
+        }),
+        ('AR Experience Settings', {
+            'fields': ('min_distance_meters', 'max_distance_meters')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    readonly_fields = ('created_at', 'updated_at')
+    
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        
+        # Filter products to only show لوحات فنية category
+        if 'product' in form.base_fields:
+            form.base_fields['product'].queryset = Product.objects.filter(
+                category__name='لوحات فنية',
+                is_active=True
+            ).select_related('category', 'seller')
+        
+        # Filter frame variants to frame-related options
+        if 'default_frame_type' in form.base_fields:
+            form.base_fields['default_frame_type'].queryset = CategoryVariantOption.objects.filter(
+                variant_type__name__icontains='frame type',
+                is_active=True
+            )
+        
+        if 'default_frame_color' in form.base_fields:
+            form.base_fields['default_frame_color'].queryset = CategoryVariantOption.objects.filter(
+                variant_type__name__icontains='frame color',
+                is_active=True
+            )
+        
+        return form
+
+class ARPreviewSessionAdmin(admin.ModelAdmin):
+    list_display = ('product', 'user_email', 'frame_asset', 'session_duration_seconds', 'photo_saved', 'photo_shared', 'proceeded_to_purchase', 'created_at')
+    list_filter = ('photo_saved', 'photo_shared', 'proceeded_to_purchase', 'platform', 'created_at')
+    search_fields = ('product__name', 'user__email', 'device_model')
+    readonly_fields = ('created_at',)
+    
+    fieldsets = (
+        ('Session Information', {
+            'fields': ('product', 'user', 'frame_asset', 'session_duration_seconds')
+        }),
+        ('Device Information', {
+            'fields': ('device_model', 'platform')
+        }),
+        ('User Actions', {
+            'fields': ('photo_saved', 'photo_shared', 'proceeded_to_purchase')
+        }),
+        ('Timestamp', {
+            'fields': ('created_at',),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def user_email(self, obj):
+        return obj.user.email if obj.user else 'Anonymous'
+    user_email.short_description = 'User'
+    user_email.admin_order_field = 'user__email'
+
+# Register AR models
+admin.site.register(ARFrameAsset, ARFrameAssetAdmin)
+admin.site.register(ProductARSettings, ProductARSettingsAdmin)
+admin.site.register(ARPreviewSession, ARPreviewSessionAdmin)

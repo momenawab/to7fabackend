@@ -18,6 +18,9 @@ import csv
 from custom_auth.models import User, Artist, Store
 from products.models import Product, Category, Advertisement, ContentSettings, Tag, CategoryVariantOption, ProductVariant, ProductVariantOption, DiscountRequest, ProductImage
 from orders.models import Order, OrderItem
+from notifications.models import Notification as UserNotification, Device, PushNotificationLog
+from notifications.serializers import NotificationSerializer
+from notifications.push_utils import send_notification_with_push
 from .models import AdminActivity, AdminNotification
 from custom_auth.models import SellerApplication
 from .serializers import (
@@ -4061,3 +4064,300 @@ def update_ad_booking_notes_api(request, booking_id):
         return Response({'success': False, 'message': 'Ad booking not found'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'success': False, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ========================
+# USER NOTIFICATION MANAGEMENT VIEWS
+# ========================
+
+class UserNotificationListView(generics.ListAPIView):
+    """List all user notifications for admin management"""
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    pagination_class = AdminPagination
+    
+    def get_queryset(self):
+        queryset = UserNotification.objects.all().order_by('-created_at')
+        
+        # Filter by user
+        user_id = self.request.query_params.get('user_id')
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        
+        # Filter by type
+        notification_type = self.request.query_params.get('type')
+        if notification_type:
+            queryset = queryset.filter(notification_type=notification_type)
+        
+        # Filter by read status
+        is_read = self.request.query_params.get('is_read')
+        if is_read is not None:
+            queryset = queryset.filter(is_read=is_read.lower() == 'true')
+        
+        # Filter by push status
+        push_sent = self.request.query_params.get('push_sent')
+        if push_sent is not None:
+            queryset = queryset.filter(push_sent=push_sent.lower() == 'true')
+        
+        return queryset.select_related('user')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def send_user_notification_api(request):
+    """
+    Send notification with push notification via Custom Admin API
+    """
+    try:
+        user_id = request.data.get('user_id')
+        title = request.data.get('title')
+        message = request.data.get('message')
+        notification_type = request.data.get('notification_type', 'system')
+        priority = request.data.get('priority', 'normal')
+        action_url = request.data.get('action_url')
+        image_url = request.data.get('image_url')
+        
+        # Validation
+        if not all([user_id, title, message]):
+            return Response({
+                'success': False,
+                'message': 'user_id, title, and message are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get user
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Create notification with automatic push
+        notification = send_notification_with_push(
+            user=user,
+            title=title,
+            message=message,
+            notification_type=notification_type,
+            action_url=action_url,
+            image_url=image_url,
+            priority=priority
+        )
+        
+        return Response({
+            'success': True,
+            'message': f'✅ Notification sent successfully to {user.email}',
+            'notification': {
+                'id': notification.id,
+                'title': notification.title,
+                'message': notification.message,
+                'user': user.email,
+                'push_sent': notification.push_sent,
+                'created_at': notification.created_at
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error sending notification: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def send_bulk_notification_api(request):
+    """
+    Send notification to multiple users
+    """
+    try:
+        user_ids = request.data.get('user_ids', [])  # List of user IDs
+        send_to_all = request.data.get('send_to_all', False)  # Send to all users
+        target_audience = request.data.get('target_audience')  # Target audience type
+        title = request.data.get('title')
+        message = request.data.get('message')
+        notification_type = request.data.get('notification_type', 'system')
+        priority = request.data.get('priority', 'normal')
+        action_url = request.data.get('action_url')
+        image_url = request.data.get('image_url')
+        
+        # Validation
+        if not all([title, message]):
+            return Response({
+                'success': False,
+                'message': 'title and message are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get target users based on audience type
+        if send_to_all or target_audience == 'all':
+            users = User.objects.filter(is_active=True)
+        elif target_audience == 'active':
+            # Users who have logged in recently (within last 30 days)
+            from datetime import datetime, timedelta
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            users = User.objects.filter(is_active=True, last_login__gte=thirty_days_ago)
+        elif target_audience == 'sellers':
+            # Users who are sellers (have seller applications or user_type is seller)
+            from django.db.models import Q
+            users = User.objects.filter(is_active=True).filter(
+                Q(user_type='seller') | 
+                Q(sellerapplication__isnull=False)
+            ).distinct()
+        elif target_audience == 'customers':
+            # Users who are not sellers
+            from django.db.models import Q
+            users = User.objects.filter(is_active=True).exclude(
+                Q(user_type='seller') | 
+                Q(sellerapplication__isnull=False)
+            )
+        elif user_ids:
+            users = User.objects.filter(id__in=user_ids, is_active=True)
+        else:
+            return Response({
+                'success': False,
+                'message': 'Either user_ids, send_to_all, or target_audience must be provided'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not users.exists():
+            return Response({
+                'success': False,
+                'message': 'No valid users found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Send notifications
+        sent_count = 0
+        failed_count = 0
+        notifications_created = []
+        
+        for user in users:
+            try:
+                notification = send_notification_with_push(
+                    user=user,
+                    title=title,
+                    message=message,
+                    notification_type=notification_type,
+                    action_url=action_url,
+                    image_url=image_url,
+                    priority=priority
+                )
+                notifications_created.append({
+                    'id': notification.id,
+                    'user': user.email,
+                    'push_sent': notification.push_sent
+                })
+                sent_count += 1
+            except Exception as e:
+                failed_count += 1
+                print(f"Failed to send notification to {user.email}: {e}")
+        
+        return Response({
+            'success': True,
+            'message': f'✅ Bulk notification sent to {sent_count} users',
+            'details': {
+                'sent_count': sent_count,
+                'failed_count': failed_count,
+                'total_users': users.count(),
+                'notifications': notifications_created
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error sending bulk notification: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def notification_stats_api(request):
+    """Get notification statistics for admin dashboard"""
+    try:
+        # Basic stats
+        total_notifications = UserNotification.objects.count()
+        total_users_with_notifications = UserNotification.objects.values('user').distinct().count()
+        push_sent_count = UserNotification.objects.filter(push_sent=True).count()
+        
+        # Recent notifications (last 7 days)
+        from datetime import timedelta
+        week_ago = timezone.now() - timedelta(days=7)
+        recent_notifications = UserNotification.objects.filter(created_at__gte=week_ago).count()
+        
+        # Notifications by type
+        notification_types = UserNotification.objects.values('notification_type').annotate(
+            count=Count('id')
+        ).order_by('-count')
+        
+        # Active devices count
+        active_devices = Device.objects.filter(is_active=True, notifications_enabled=True).count()
+        
+        # Push notification logs (last 100)
+        recent_push_logs = PushNotificationLog.objects.select_related(
+            'notification', 'device'
+        ).order_by('-sent_at')[:100]
+        
+        push_log_data = []
+        for log in recent_push_logs:
+            push_log_data.append({
+                'id': log.id,
+                'notification_title': log.notification.title,
+                'user_email': log.device.user.email,
+                'platform': log.device.platform,
+                'status': log.status,
+                'sent_at': log.sent_at,
+                'error_message': log.error_message
+            })
+        
+        return Response({
+            'success': True,
+            'stats': {
+                'total_notifications': total_notifications,
+                'total_users_with_notifications': total_users_with_notifications,
+                'push_sent_count': push_sent_count,
+                'recent_notifications': recent_notifications,
+                'active_devices': active_devices,
+                'notification_types': list(notification_types),
+                'recent_push_logs': push_log_data
+            }
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error getting notification stats: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def users_for_notifications_api(request):
+    """Get list of users for notification targeting"""
+    try:
+        users = User.objects.filter(is_active=True).order_by('email')
+        
+        # Add device info
+        user_data = []
+        for user in users:
+            devices = Device.objects.filter(user=user, is_active=True, notifications_enabled=True)
+            user_data.append({
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'user_type': user.user_type,
+                'device_count': devices.count(),
+                'has_devices': devices.exists(),
+                'platforms': list(devices.values_list('platform', flat=True).distinct())
+            })
+        
+        return Response({
+            'success': True,
+            'users': user_data,
+            'total_users': len(user_data),
+            'users_with_devices': len([u for u in user_data if u['has_devices']])
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'message': f'Error getting users: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

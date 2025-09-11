@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-q2(^inryyn2zv9pky+rr+us=!bn2tph!^m&5bx2hiie)zreg4y
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.96', '192.168.20.219','192.168.88.254','0.0.0.0','200.200.200.29','192.168.1.115']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.96', '192.168.20.219','192.168.88.254','0.0.0.0','200.200.200.29','192.168.1.115','192.168.58.172']
 
 
 # Application definition
@@ -245,3 +245,15 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Push Notification Settings
+FCM_PROJECT_ID = 'to7fa-5c012'
+FCM_SERVER_KEY = None  # Using service account instead
+FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'firebase-service-account.json')
+
+# APNs Settings (iOS) - Add these when you have Apple Developer credentials
+APNS_KEY_ID = ''  # Your APNs Key ID
+APNS_TEAM_ID = ''  # Your Apple Team ID
+APNS_BUNDLE_ID = 'com.to7fa.app'
+APNS_KEY_FILE = ''  # Path to your APNs .p8 key file
+APNS_USE_SANDBOX = True  # False for production

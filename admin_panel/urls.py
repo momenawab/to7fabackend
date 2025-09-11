@@ -127,4 +127,15 @@ urlpatterns = [
     path('api/ad-types/<int:ad_type_id>/toggle/', views.toggle_ad_type_api, name='toggle_ad_type'),
     path('api/ad-pricing/reset/', views.reset_ad_pricing_api, name='reset_ad_pricing'),
     path('api/ad-pricing/bulk-update/', views.bulk_update_ad_pricing_api, name='bulk_update_ad_pricing'),
+    
+    # Notifications Management
+    path('notifications/', views.notifications_management, name='notifications'),
+    path('bulk-notifications/', views.bulk_notifications_management, name='bulk_notifications'),
+    path('notification-users/', views.notification_users_list, name='notification_users'),
+    
+    # Notifications API endpoints
+    path('api/notifications/send-bulk/', views.send_bulk_notification_api, name='send_bulk_notification'),
+    path('api/notifications/bulk/<int:bulk_id>/resend/', views.resend_bulk_notification_api, name='resend_bulk_notification'),
+    path('api/notifications/bulk/<int:bulk_id>/delete/', views.delete_bulk_notification_api, name='delete_bulk_notification'),
+    path('api/notifications/stats/', views.notification_stats_api, name='notification_stats'),
 ] 

@@ -104,4 +104,19 @@ urlpatterns = [
     path('ad-bookings/<int:booking_id>/activate/', api_views.activate_ad_booking_api, name='activate_ad_booking_api'),
     path('ad-bookings/<int:booking_id>/reject/', api_views.reject_ad_booking_api, name='reject_ad_booking_api'),
     path('ad-bookings/<int:booking_id>/notes/', api_views.update_ad_booking_notes_api, name='update_ad_booking_notes_api'),
+    
+    # ========================
+    # USER NOTIFICATION MANAGEMENT API
+    # ========================
+    
+    # List and manage user notifications
+    path('notifications/', api_views.UserNotificationListView.as_view(), name='user_notifications_list'),
+    
+    # Send notifications
+    path('notifications/send/', api_views.send_user_notification_api, name='send_user_notification'),
+    path('notifications/send-bulk/', api_views.send_bulk_notification_api, name='send_bulk_notification'),
+    
+    # Statistics and data
+    path('notifications/stats/', api_views.notification_stats_api, name='notification_stats'),
+    path('notifications/users/', api_views.users_for_notifications_api, name='users_for_notifications'),
 ] 

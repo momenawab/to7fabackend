@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, include
 from . import views
 
 urlpatterns = [
@@ -63,4 +63,7 @@ urlpatterns = [
     path('admin/offer-requests/<int:request_id>/reject/', views.reject_offer_request, name='reject_offer_request'),
     path('admin/featured-requests/<int:request_id>/approve/', views.approve_featured_request, name='approve_featured_request'),
     path('admin/featured-requests/<int:request_id>/reject/', views.reject_featured_request, name='reject_featured_request'),
+    
+    # AR functionality URLs
+    path('ar/', include('products.ar_urls')),
 ] 
