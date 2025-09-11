@@ -22,7 +22,7 @@ from .models import AdminActivity, AdminNotification, AdBookingRequest, AdType, 
 from orders.models import Order
 from .models import AdminActivity, AdminNotification
 from .decorators import admin_required, has_admin_permission
-from notifications.models import Notification
+from notifications.models import Notification, BulkNotification
 from support.models import ContactRequest, ContactNote, ContactStats
 
 # Helper function to check if user is admin
@@ -2793,3 +2793,303 @@ def ad_type_requirements_management(request):
     }
     
     return render(request, "admin_panel/ad_type_requirements.html", context)
+
+
+# ============================================================================
+# Notifications Management
+# ============================================================================
+
+@admin_required()
+def notifications_management(request):
+    """Main notifications management page"""
+    from notifications.models import Notification, BulkNotification
+    
+    # Get recent notifications
+    recent_notifications = Notification.objects.select_related('user').order_by('-created_at')[:10]
+    
+    # Get bulk notifications
+    bulk_notifications = BulkNotification.objects.select_related('created_by').order_by('-created_at')[:10]
+    
+    # Notification stats
+    total_notifications = Notification.objects.count()
+    unread_count = Notification.objects.filter(is_read=False).count()
+    today_count = Notification.objects.filter(created_at__date=timezone.now().date()).count()
+    
+    # Type distribution
+    type_stats = {}
+    for choice_value, choice_display in Notification.TYPE_CHOICES:
+        count = Notification.objects.filter(notification_type=choice_value).count()
+        if count > 0:
+            type_stats[choice_value] = {
+                'display': choice_display,
+                'count': count,
+                'unread': Notification.objects.filter(
+                    notification_type=choice_value, is_read=False
+                ).count()
+            }
+    
+    context = {
+        'recent_notifications': recent_notifications,
+        'bulk_notifications': bulk_notifications,
+        'total_notifications': total_notifications,
+        'unread_count': unread_count,
+        'today_count': today_count,
+        'type_stats': type_stats,
+        'active_tab': 'notifications'
+    }
+    
+    return render(request, 'admin_panel/notifications_management.html', context)
+
+
+@admin_required()
+def bulk_notifications_management(request):
+    """Bulk notifications management"""
+    from notifications.models import BulkNotification
+    
+    # Handle form submission
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'create_bulk':
+            try:
+                title = request.POST.get('title')
+                message = request.POST.get('message')
+                notification_type = request.POST.get('notification_type')
+                target_audience = request.POST.get('target_audience')
+                priority = request.POST.get('priority', 'normal')
+                action_url = request.POST.get('action_url') or None
+                image_url = request.POST.get('image_url') or None
+                
+                bulk_notification = BulkNotification.objects.create(
+                    title=title,
+                    message=message,
+                    notification_type=notification_type,
+                    target_audience=target_audience,
+                    priority=priority,
+                    action_url=action_url,
+                    image_url=image_url,
+                    created_by=request.user
+                )
+                
+                # Send immediately if not scheduled
+                success, msg = bulk_notification.send_notifications()
+                
+                if success:
+                    messages.success(request, f'تم إرسال الإشعار بنجاح إلى {bulk_notification.recipient_count} مستخدم')
+                else:
+                    messages.error(request, f'فشل في إرسال الإشعار: {msg}')
+                
+            except Exception as e:
+                messages.error(request, f'حدث خطأ: {str(e)}')
+        
+        return redirect('admin_panel:bulk_notifications')
+    
+    # Get bulk notifications with pagination
+    bulk_notifications = BulkNotification.objects.select_related('created_by').order_by('-created_at')
+    
+    paginator = Paginator(bulk_notifications, 20)
+    page = request.GET.get('page')
+    try:
+        bulk_notifications = paginator.page(page)
+    except PageNotAnInteger:
+        bulk_notifications = paginator.page(1)
+    except EmptyPage:
+        bulk_notifications = paginator.page(paginator.num_pages)
+    
+    context = {
+        'bulk_notifications': bulk_notifications,
+        'notification_types': Notification.TYPE_CHOICES,
+        'target_choices': BulkNotification.TARGET_CHOICES,
+        'priority_choices': [
+            ('low', 'منخفض'),
+            ('normal', 'عادي'), 
+            ('high', 'مرتفع'),
+            ('urgent', 'عاجل')
+        ],
+        'active_tab': 'bulk_notifications'
+    }
+    
+    return render(request, 'admin_panel/bulk_notifications.html', context)
+
+
+@admin_required()
+def notification_users_list(request):
+    """List all users for notification targeting"""
+    users = User.objects.filter(is_active=True).order_by('-date_joined')
+    
+    # Search functionality
+    search_query = request.GET.get('q', '')
+    if search_query:
+        users = users.filter(
+            Q(email__icontains=search_query) |
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query)
+        )
+    
+    # User type filter
+    user_type = request.GET.get('type', '')
+    if user_type:
+        users = users.filter(user_type=user_type)
+    
+    paginator = Paginator(users, 50)
+    page = request.GET.get('page')
+    try:
+        users = paginator.page(page)
+    except PageNotAnInteger:
+        users = paginator.page(1)
+    except EmptyPage:
+        users = paginator.page(paginator.num_pages)
+    
+    context = {
+        'users': users,
+        'search_query': search_query,
+        'selected_type': user_type,
+        'user_types': [
+            ('buyer', 'مشتري'),
+            ('seller', 'بائع'),
+        ],
+        'active_tab': 'notification_users'
+    }
+    
+    return render(request, 'admin_panel/notification_users.html', context)
+
+
+# ============================================================================ 
+# Notification API Endpoints
+# ============================================================================
+
+@csrf_exempt
+@admin_required()
+def send_bulk_notification_api(request):
+    """API endpoint to send bulk notification"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        import json
+        from notifications.models import BulkNotification
+        
+        data = json.loads(request.body)
+        
+        bulk_notification = BulkNotification.objects.create(
+            title=data.get('title'),
+            message=data.get('message'),
+            notification_type=data.get('notification_type'),
+            target_audience=data.get('target_audience'),
+            priority=data.get('priority', 'normal'),
+            action_url=data.get('action_url'),
+            image_url=data.get('image_url'),
+            created_by=request.user
+        )
+        
+        # Handle specific users if target is specific_users
+        if data.get('target_audience') == 'specific_users' and data.get('user_ids'):
+            users = User.objects.filter(id__in=data.get('user_ids'))
+            bulk_notification.specific_users.set(users)
+        
+        success, message = bulk_notification.send_notifications()
+        
+        return JsonResponse({
+            'success': success,
+            'message': message,
+            'bulk_notification_id': bulk_notification.id,
+            'recipient_count': bulk_notification.recipient_count
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@admin_required  
+def resend_bulk_notification_api(request, bulk_id):
+    """API endpoint to resend bulk notification"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        from notifications.models import BulkNotification
+        
+        bulk_notification = get_object_or_404(BulkNotification, id=bulk_id)
+        
+        # Reset sent status
+        bulk_notification.is_sent = False
+        bulk_notification.sent_at = None
+        bulk_notification.recipient_count = 0
+        bulk_notification.save()
+        
+        success, message = bulk_notification.send_notifications()
+        
+        return JsonResponse({
+            'success': success,
+            'message': message,
+            'recipient_count': bulk_notification.recipient_count
+        })
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@admin_required()
+def notification_stats_api(request):
+    """API endpoint for notification statistics"""
+    from notifications.models import Notification
+    from django.db.models import Count
+    
+    # Basic stats
+    total = Notification.objects.count()
+    unread = Notification.objects.filter(is_read=False).count()
+    today = Notification.objects.filter(created_at__date=timezone.now().date()).count()
+    this_week = Notification.objects.filter(
+        created_at__gte=timezone.now() - timezone.timedelta(days=7)
+    ).count()
+    
+    # Type distribution
+    type_stats = Notification.objects.values('notification_type').annotate(
+        count=Count('id')
+    ).order_by('-count')
+    
+    # Priority distribution  
+    priority_stats = Notification.objects.values('priority').annotate(
+        count=Count('id')
+    ).order_by('-count')
+    
+    # Daily counts for last 30 days
+    daily_counts = []
+    for i in range(30):
+        date = timezone.now().date() - timezone.timedelta(days=i)
+        count = Notification.objects.filter(created_at__date=date).count()
+        daily_counts.append({
+            'date': date.strftime('%Y-%m-%d'),
+            'count': count
+        })
+    
+    return JsonResponse({
+        'stats': {
+            'total': total,
+            'unread': unread,
+            'today': today,
+            'this_week': this_week
+        },
+        'type_distribution': list(type_stats),
+        'priority_distribution': list(priority_stats),
+        'daily_counts': daily_counts
+    })
+
+
+@admin_required()
+def delete_bulk_notification_api(request, bulk_id):
+    """API endpoint to delete bulk notification"""
+    if request.method != 'DELETE':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        from notifications.models import BulkNotification
+        
+        bulk_notification = get_object_or_404(BulkNotification, id=bulk_id)
+        bulk_notification.delete()
+        
+        return JsonResponse({'success': True, 'message': 'تم حذف الإشعار بنجاح'})
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

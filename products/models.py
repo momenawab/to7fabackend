@@ -281,6 +281,20 @@ class Product(models.Model):
         """Check if product has any stock"""
         return self.stock > 0
 
+    @property
+    def supports_ar(self):
+        """Check if product supports AR preview"""
+        # Check if product is in لوحات فنية category and has AR settings
+        if self.category.name == 'لوحات فنية':
+            return hasattr(self, 'ar_settings') and self.ar_settings.ar_enabled
+        return False
+
+    def get_ar_frame_combinations(self):
+        """Get available AR frame combinations for this product"""
+        if not self.supports_ar:
+            return []
+        return self.ar_settings.get_available_frame_combinations()
+
 
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='images')
