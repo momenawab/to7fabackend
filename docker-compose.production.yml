@@ -47,9 +47,8 @@ services:
   # Handles customer-facing APIs
   # ==========================================
   django-public:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: believeer/to7fa-backend:latest
+    container_name: to7fa-django-public
     restart: unless-stopped
     depends_on:
       mysql:
@@ -104,9 +103,8 @@ services:
   # Handles admin panel and admin APIs
   # ==========================================
   django-admin:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: believeer/to7fa-backend:latest
+    container_name: to7fa-django-admin
     restart: unless-stopped
     depends_on:
       mysql:

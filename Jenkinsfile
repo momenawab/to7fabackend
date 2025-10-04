@@ -101,35 +101,33 @@ pipeline {
                             echo 'Pulling latest code...'
                             git pull origin master || true
 
+                            echo 'Setting image tag in .env.production...'
+                            sed -i \"s/DOCKER_IMAGE_TAG=.*/DOCKER_IMAGE_TAG=${BUILD_NUMBER}/\" .env.production || echo \"DOCKER_IMAGE_TAG=${BUILD_NUMBER}\" >> .env.production
+
                             echo 'Pulling latest Docker image...'
                             docker pull ${registry}/${reponame}/${appname}:${BUILD_NUMBER}
+                            docker tag ${registry}/${reponame}/${appname}:${BUILD_NUMBER} ${registry}/${reponame}/${appname}:latest
 
-                            echo 'Stopping old container...'
-                            docker stop ${appname} || true
-                            docker rm ${appname} || true
+                            echo 'Stopping old containers...'
+                            docker-compose -f docker-compose.production.yml down || true
 
-                            echo 'Starting new container with environment file...'
-                            docker run -p 80:8000 -d \
-                                --name ${appname} \
-                                --env-file .env.production \
-                                -v /home/ubuntu/to7fabackend/firebase-service-account.json:/app/firebase-service-account.json:ro \
-                                -v /home/ubuntu/to7fabackend/media:/app/media \
-                                ${registry}/${reponame}/${appname}:${BUILD_NUMBER}
+                            echo 'Starting services with docker-compose...'
+                            docker-compose -f docker-compose.production.yml --env-file .env.production up -d
 
-                            echo 'Waiting for container to start...'
-                            sleep 10
+                            echo 'Waiting for services to be healthy...'
+                            sleep 20
 
-                            echo 'Verifying container is running...'
-                            docker ps --filter name=${appname} --format '{{.Names}} - {{.Status}}'
+                            echo 'Verifying services are running...'
+                            docker-compose -f docker-compose.production.yml ps
 
                             echo 'Running migrations...'
-                            docker exec ${appname} python manage.py migrate --noinput
+                            docker-compose -f docker-compose.production.yml exec -T django-admin python manage.py migrate --noinput
 
                             echo 'Collecting static files...'
-                            docker exec ${appname} python manage.py collectstatic --noinput
+                            docker-compose -f docker-compose.production.yml exec -T django-admin python manage.py collectstatic --noinput
 
                             echo 'Running health check...'
-                            curl -f http://localhost:8000/health/ || exit 1
+                            curl -f http://localhost/health/ || exit 1
 
                             echo '✅ Deployed successfully!'
                         "
