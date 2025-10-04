@@ -8,7 +8,7 @@ pipeline {
         appname = 'to7fa-backend'
 
         // Deployment configuration
-        EC2_HOST = '54.93.200.200'
+        EC2_HOST = '63.178.70.52'
 
         // Environment (dev, staging, prod)
         env = 'prod'  // Change to 'dev' or 'staging' for other environments
