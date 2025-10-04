@@ -73,6 +73,7 @@ services:
     volumes:
       - media-data:/app/media
       - static-data:/app/staticfiles
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     networks:
       - to7fa-network
     command: >
@@ -128,6 +129,7 @@ services:
     volumes:
       - media-data:/app/media
       - static-data:/app/staticfiles
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     networks:
       - to7fa-network
     command: >
