@@ -109,11 +109,10 @@ pipeline {
                             docker tag ${registry}/${reponame}/${appname}:${BUILD_NUMBER} ${registry}/${reponame}/${appname}:latest
 
                             echo 'Stopping old containers...'
-                            docker compose -f docker-compose.production.yml down || true
+                            docker compose -f docker-compose.production.yml --env-file .env.production down || true
 
                             echo 'Starting services with docker compose...'
-                            set -a && source .env.production && set +a
-                            docker compose -f docker-compose.production.yml up -d
+                            docker compose -f docker-compose.production.yml --env-file .env.production up -d
 
                             echo 'Waiting for services to be healthy...'
                             sleep 30
