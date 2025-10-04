@@ -109,22 +109,22 @@ pipeline {
                             docker tag ${registry}/${reponame}/${appname}:${BUILD_NUMBER} ${registry}/${reponame}/${appname}:latest
 
                             echo 'Stopping old containers...'
-                            docker-compose -f docker-compose.production.yml down || true
+                            docker compose -f docker-compose.production.yml down || true
 
-                            echo 'Starting services with docker-compose...'
-                            docker-compose -f docker-compose.production.yml --env-file .env.production up -d
+                            echo 'Starting services with docker compose...'
+                            docker compose -f docker-compose.production.yml --env-file .env.production up -d
 
                             echo 'Waiting for services to be healthy...'
-                            sleep 20
+                            sleep 30
 
                             echo 'Verifying services are running...'
-                            docker-compose -f docker-compose.production.yml ps
+                            docker compose -f docker-compose.production.yml ps
 
                             echo 'Running migrations...'
-                            docker-compose -f docker-compose.production.yml exec -T django-admin python manage.py migrate --noinput
+                            docker compose -f docker-compose.production.yml exec -T django-admin python manage.py migrate --noinput
 
                             echo 'Collecting static files...'
-                            docker-compose -f docker-compose.production.yml exec -T django-admin python manage.py collectstatic --noinput
+                            docker compose -f docker-compose.production.yml exec -T django-admin python manage.py collectstatic --noinput
 
                             echo 'Running health check...'
                             curl -f http://localhost/health/ || exit 1
