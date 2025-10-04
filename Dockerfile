@@ -38,15 +38,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-libmysqlclient-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy Python dependencies from builder stage to /usr/local (accessible to all users)
+COPY --from=builder /root/.local /usr/local
+
+# Make sure scripts in .local are usable
+ENV PATH=/usr/local/bin:$PATH
+
 # Create non-root user for security
 RUN groupadd -r appuser && \
     useradd -r -g appuser -d $APP_HOME -s /sbin/nologin appuser
-
-# Copy Python dependencies from builder stage
-COPY --from=builder /root/.local /root/.local
-
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
 
 # Copy application code
 COPY --chown=appuser:appuser . $APP_HOME/
