@@ -112,7 +112,8 @@ pipeline {
                             docker compose -f docker-compose.production.yml down || true
 
                             echo 'Starting services with docker compose...'
-                            docker compose -f docker-compose.production.yml --env-file .env.production up -d
+                            set -a && source .env.production && set +a
+                            docker compose -f docker-compose.production.yml up -d
 
                             echo 'Waiting for services to be healthy...'
                             sleep 30

@@ -48,7 +48,6 @@ services:
   # ==========================================
   django-public:
     image: believeer/to7fa-backend:latest
-    container_name: to7fa-django-public
     restart: unless-stopped
     depends_on:
       mysql:
@@ -104,7 +103,6 @@ services:
   # ==========================================
   django-admin:
     image: believeer/to7fa-backend:latest
-    container_name: to7fa-django-admin
     restart: unless-stopped
     depends_on:
       mysql:
