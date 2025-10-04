@@ -1,0 +1,202 @@
+version: '3.8'
+
+services:
+  # ==========================================
+  # MySQL Database Service
+  # ==========================================
+  mysql:
+    image: mysql:8.0
+    container_name: to7fa-mysql-prod
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - to7fa-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================
+  # Redis Service (for Django Channels)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: to7fa-redis-prod
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - to7fa-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # Django PUBLIC API Service
+  # Handles customer-facing APIs
+  # ==========================================
+  django-public:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=django.db.backends.mysql
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CORS_ALLOW_ALL_ORIGINS=False
+      - CORS_ALLOW_CREDENTIALS=True
+      - SERVICE_TYPE=public
+    volumes:
+      - media-data:/app/media
+      - static-data:/app/staticfiles
+    networks:
+      - to7fa-network
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        uvicorn to7fabackend.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ==========================================
+  # Django ADMIN Service
+  # Handles admin panel and admin APIs
+  # ==========================================
+  django-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DB_ENGINE=django.db.backends.mysql
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CORS_ALLOW_ALL_ORIGINS=False
+      - CORS_ALLOW_CREDENTIALS=True
+      - SERVICE_TYPE=admin
+    volumes:
+      - media-data:/app/media
+      - static-data:/app/staticfiles
+    networks:
+      - to7fa-network
+    command: >
+      sh -c "
+        uvicorn to7fabackend.asgi:application --host 0.0.0.0 --port 8000 --workers 2
+      "
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ==========================================
+  # Nginx Reverse Proxy Service (Production)
+  # Routes traffic to public or admin containers
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: to7fa-nginx-prod
+    restart: unless-stopped
+    depends_on:
+      - django-public
+      - django-admin
+    volumes:
+      - ./nginx/nginx.production.conf:/etc/nginx/nginx.conf:ro
+      - media-data:/app/media:ro
+      - static-data:/app/staticfiles:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - to7fa-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  to7fa-network:
+    driver: bridge
+
+# ==========================================
+# Volumes (Persistent Storage)
+# ==========================================
+volumes:
+  mysql-data:
+    driver: local
+  redis-data:
+    driver: local
+  media-data:
+    driver: local
+  static-data:
+    driver: local

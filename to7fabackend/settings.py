@@ -13,6 +13,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Force Django to use mysqlclient instead of PyMySQL
 import pymysql
@@ -22,17 +26,30 @@ pymysql.install_as_MySQLdb()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Environment Configuration
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-q2(^inryyn2zv9pky+rr+us=!bn2tph!^m&5bx2hiie)zreg4y'
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    if ENVIRONMENT == 'production':
+        raise ValueError("SECRET_KEY environment variable is required in production!")
+    else:
+        # Only use fallback in development
+        SECRET_KEY = 'django-insecure-dev-only-key-12345678'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.96', '192.168.20.219','192.168.88.254','0.0.0.0','200.200.200.29','192.168.1.115','192.168.58.172']
+# Force DEBUG=False in production
+if ENVIRONMENT == 'production':
+    DEBUG = False
+
+# Parse ALLOWED_HOSTS from environment variable
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -104,18 +121,25 @@ WSGI_APPLICATION = 'to7fabackend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'to7fa_db',
-        'USER': 'django_user',
-        'PASSWORD': 'strongpass',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.mysql'),
+        'NAME': os.getenv('DB_NAME', 'to7fa_db'),
+        'USER': os.getenv('DB_USER', 'django_user'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),  # No default - must be provided!
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '3306'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
         },
     }
 }
+
+# Validate database password is set
+if not DATABASES['default']['PASSWORD']:
+    if ENVIRONMENT == 'production':
+        raise ValueError("DB_PASSWORD environment variable is required in production!")
+    else:
+        DATABASES['default']['PASSWORD'] = 'dev_password_123'
 
 
 
@@ -185,8 +209,8 @@ AUTH_USER_MODEL = 'custom_auth.User'
 LOGIN_URL = '/dashboard/login/'
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only, change in production
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True') == 'True'
+CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'True') == 'True'
 
 # Additional CORS settings for proper UTF-8 handling
 CORS_ALLOW_HEADERS = [
@@ -230,11 +254,11 @@ CSRF_COOKIE_NAME = 'csrftoken'
 CSRF_COOKIE_AGE = 31449600  # 1 year
 CSRF_COOKIE_DOMAIN = None
 CSRF_COOKIE_PATH = '/'
-CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False') == 'True'
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript access
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
-CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000').split(',')
 CSRF_USE_SESSIONS = False
 CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 
@@ -246,19 +270,39 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', '6379')))],
         },
     },
 }
 
 # Push Notification Settings
-FCM_PROJECT_ID = 'to7fa-5c012'
+FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID', '')
 FCM_SERVER_KEY = None  # Using service account instead
-FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'firebase-service-account.json')
+FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, os.getenv('FCM_SERVICE_ACCOUNT_FILE', 'firebase-service-account.json'))
 
 # APNs Settings (iOS) - Add these when you have Apple Developer credentials
-APNS_KEY_ID = ''  # Your APNs Key ID
-APNS_TEAM_ID = ''  # Your Apple Team ID
-APNS_BUNDLE_ID = 'com.to7fa.app'
-APNS_KEY_FILE = ''  # Path to your APNs .p8 key file
-APNS_USE_SANDBOX = True  # False for production
+APNS_KEY_ID = os.getenv('APNS_KEY_ID', '')
+APNS_TEAM_ID = os.getenv('APNS_TEAM_ID', '')
+APNS_BUNDLE_ID = os.getenv('APNS_BUNDLE_ID', 'com.to7fa.app')
+APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')
+APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True') == 'True'
+
+# Production Security Settings
+if ENVIRONMENT == 'production' or not DEBUG:
+    # Force HTTPS
+    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    # HSTS Settings
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+    # Security Headers
+    X_FRAME_OPTIONS = 'DENY'
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+
+    # Proxy configuration (for EC2 behind load balancer)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
