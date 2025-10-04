@@ -92,8 +92,14 @@ pipeline {
                         ssh -i "\$SSH_KEY" -o StrictHostKeyChecking=no \$SSH_USER@${EC2_HOST} "
                             set -euo pipefail
 
+                            # Navigate to project directory
+                            cd /home/ubuntu/to7fabackend
+
                             echo 'Logging into Docker Hub...'
                             echo '${DOCKER_PASS}' | docker login -u '${DOCKER_USER}' --password-stdin docker.io
+
+                            echo 'Pulling latest code...'
+                            git pull origin master || true
 
                             echo 'Pulling latest Docker image...'
                             docker pull ${registry}/${reponame}/${appname}:${BUILD_NUMBER}
@@ -102,14 +108,25 @@ pipeline {
                             docker stop ${appname} || true
                             docker rm ${appname} || true
 
-                            echo 'Starting new container...'
-                            docker run -p 80:80 -d --name ${appname} ${registry}/${reponame}/${appname}:${BUILD_NUMBER}
+                            echo 'Starting new container with environment file...'
+                            docker run -p 80:8000 -d \
+                                --name ${appname} \
+                                --env-file .env.production \
+                                -v /home/ubuntu/to7fabackend/firebase-service-account.json:/app/firebase-service-account.json:ro \
+                                -v /home/ubuntu/to7fabackend/media:/app/media \
+                                ${registry}/${reponame}/${appname}:${BUILD_NUMBER}
 
                             echo 'Waiting for container to start...'
-                            sleep 5
+                            sleep 10
 
                             echo 'Verifying container is running...'
                             docker ps | grep ${appname}
+
+                            echo 'Running migrations...'
+                            docker exec ${appname} python manage.py migrate --noinput || true
+
+                            echo 'Collecting static files...'
+                            docker exec ${appname} python manage.py collectstatic --noinput || true
 
                             echo 'Running health check...'
                             curl -f http://localhost/health/ || exit 1
