@@ -37,7 +37,7 @@ redis==5.2.1
 # Push Notifications
 # ==========================================
 requests==2.32.3
-pyapns2==0.7.2
+firebase-admin==6.5.0
 
 # ==========================================
 # Production Servers
