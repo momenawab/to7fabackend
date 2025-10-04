@@ -120,16 +120,16 @@ pipeline {
                             sleep 10
 
                             echo 'Verifying container is running...'
-                            docker ps | grep ${appname}
+                            docker ps --filter name=${appname} --format '{{.Names}} - {{.Status}}'
 
                             echo 'Running migrations...'
-                            docker exec ${appname} python manage.py migrate --noinput || true
+                            docker exec ${appname} python manage.py migrate --noinput
 
                             echo 'Collecting static files...'
-                            docker exec ${appname} python manage.py collectstatic --noinput || true
+                            docker exec ${appname} python manage.py collectstatic --noinput
 
                             echo 'Running health check...'
-                            curl -f http://localhost/health/ || exit 1
+                            curl -f http://localhost:8000/health/ || exit 1
 
                             echo '✅ Deployed successfully!'
                         "
