@@ -60,6 +60,7 @@ services:
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - SECURE_SSL_REDIRECT=${SECURE_SSL_REDIRECT:-True}
       - DB_ENGINE=django.db.backends.mysql
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
@@ -117,6 +118,7 @@ services:
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - SECURE_SSL_REDIRECT=${SECURE_SSL_REDIRECT:-True}
       - DB_ENGINE=django.db.backends.mysql
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
