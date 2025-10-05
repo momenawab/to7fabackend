@@ -289,8 +289,9 @@ APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True') == 'True'
 
 # Production Security Settings
 if ENVIRONMENT == 'production' or not DEBUG:
-    # Force HTTPS
+    # Force HTTPS (but exempt health check endpoints)
     SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
+    SECURE_REDIRECT_EXEMPT = [r'^health/$', r'^readiness/$', r'^liveness/$']  # Health checks exempt from SSL redirect
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
