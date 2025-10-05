@@ -81,7 +81,7 @@ services:
       sh -c "
         python manage.py migrate &&
         python manage.py collectstatic --noinput &&
-        uvicorn to7fabackend.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+        uvicorn to7fabackend.asgi:application --host 0.0.0.0 --port 8000 --log-level debug
       "
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health/', timeout=5)"]
@@ -136,7 +136,7 @@ services:
       - to7fa-network
     command: >
       sh -c "
-        uvicorn to7fabackend.asgi:application --host 0.0.0.0 --port 8000 --workers 2
+        uvicorn to7fabackend.asgi:application --host 0.0.0.0 --port 8000 --log-level debug
       "
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health/', timeout=5)"]
