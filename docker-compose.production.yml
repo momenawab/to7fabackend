@@ -55,6 +55,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      - DJANGO_SETTINGS_MODULE=to7fabackend.settings
       - ENVIRONMENT=production
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
@@ -111,6 +112,7 @@ services:
       redis:
         condition: service_healthy
     environment:
+      - DJANGO_SETTINGS_MODULE=to7fabackend.settings
       - ENVIRONMENT=production
       - DEBUG=False
       - SECRET_KEY=${SECRET_KEY}
