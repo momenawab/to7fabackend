@@ -1,8 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from rest_framework_simplejwt.tokens import UntypedToken
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 class SupportConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -138,6 +136,8 @@ class SupportConsumer(AsyncWebsocketConsumer):
     def authenticate_user(self, token):
         """Authenticate user using JWT token"""
         from django.contrib.auth.models import AnonymousUser
+        from rest_framework_simplejwt.tokens import UntypedToken
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
         try:
             UntypedToken(token)
