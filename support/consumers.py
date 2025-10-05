@@ -1,13 +1,8 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from django.contrib.auth import get_user_model
-from .models import SupportTicket, SupportMessage
-
-User = get_user_model()
 
 class SupportConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -21,6 +16,8 @@ class SupportConsumer(AsyncWebsocketConsumer):
             token = token[6:]  # Remove 'token=' prefix
             self.user = await self.authenticate_user(token)
         
+        from django.contrib.auth.models import AnonymousUser
+
         if self.user and not isinstance(self.user, AnonymousUser):
             await self.accept()
             
@@ -140,6 +137,8 @@ class SupportConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def authenticate_user(self, token):
         """Authenticate user using JWT token"""
+        from django.contrib.auth.models import AnonymousUser
+
         try:
             UntypedToken(token)
             from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -153,6 +152,8 @@ class SupportConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def check_ticket_access(self, ticket_id):
         """Check if user has access to the ticket"""
+        from .models import SupportTicket
+
         try:
             ticket = SupportTicket.objects.get(ticket_id=ticket_id)
             # User can access their own tickets or admin can access all tickets
