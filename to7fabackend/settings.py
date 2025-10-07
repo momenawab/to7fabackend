@@ -292,8 +292,8 @@ if ENVIRONMENT == 'production' or not DEBUG:
     # Force HTTPS (but exempt health check endpoints)
     SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
     SECURE_REDIRECT_EXEMPT = [r'^health/$', r'^readiness/$', r'^liveness/$']  # Health checks exempt from SSL redirect
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True'
+    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True') == 'True'
 
     # HSTS Settings
     SECURE_HSTS_SECONDS = 31536000  # 1 year
