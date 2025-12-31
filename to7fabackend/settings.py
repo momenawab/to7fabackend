@@ -13,6 +13,11 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,12 +27,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-q2(^inryyn2zv9pky+rr+us=!bn2tph!^m&5bx2hiie)zreg4y'
+# Application will fail fast if SECRET_KEY is not set
+SECRET_KEY = os.getenv('SECRET_KEY')
+if SECRET_KEY is None:
+    raise ImproperlyConfigured(
+        "SECRET_KEY environment variable is required. "
+        "Set it in your .env file or environment."
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG defaults to False for production safety
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '192.168.1.96', '192.168.20.219','192.168.88.254','0.0.0.0','200.200.200.29','192.168.1.115','192.168.58.172']
+# Allowed hosts - comma-separated list from environment variable
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -100,17 +113,30 @@ WSGI_APPLICATION = 'to7fabackend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'to7fa_db',
-        'USER': 'django_user',
-        'PASSWORD': 'strongpass',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
         },
     }
 }
+
+# Validate database configuration
+if not all([
+    DATABASES['default']['NAME'],
+    DATABASES['default']['USER'],
+    DATABASES['default']['PASSWORD'],
+    DATABASES['default']['HOST'],
+    DATABASES['default']['PORT']
+]):
+    raise ImproperlyConfigured(
+        "Database configuration is incomplete. "
+        "Set DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, and DB_PORT in your .env file."
+    )
 
 
 
@@ -179,8 +205,16 @@ AUTH_USER_MODEL = 'custom_auth.User'
 # Login URL
 LOGIN_URL = '/dashboard/login/'
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True  # For development only, change in production
+# CORS settings - Use environment variable for allowed origins
+# Comma-separated list of allowed origins (e.g., https://to7fa.com,https://www.to7fa.com)
+# Application will fail fast if CORS_ALLOWED_ORIGINS is not set
+cors_origins = os.getenv('CORS_ALLOWED_ORIGINS')
+if cors_origins is None:
+    raise ImproperlyConfigured(
+        "CORS_ALLOWED_ORIGINS environment variable is required. "
+        "Set it in your .env file (comma-separated list of allowed origins)."
+    )
+CORS_ALLOWED_ORIGINS = cors_origins.split(',')
 CORS_ALLOW_CREDENTIALS = True
 
 # Additional CORS settings for proper UTF-8 handling
@@ -194,6 +228,16 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+]
+
+# CORS settings for security
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
 ]
 
 # Unicode and encoding settings
@@ -225,11 +269,11 @@ CSRF_COOKIE_NAME = 'csrftoken'
 CSRF_COOKIE_AGE = 31449600  # 1 year
 CSRF_COOKIE_DOMAIN = None
 CSRF_COOKIE_PATH = '/'
-CSRF_COOKIE_SECURE = False  # Set to True in production with HTTPS
+CSRF_COOKIE_SECURE = not DEBUG  # Automatically secure in production (when DEBUG=False)
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript access
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
-CSRF_TRUSTED_ORIGINS = ['http://localhost:8000', 'http://127.0.0.1:8000']
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
 CSRF_USE_SESSIONS = False
 CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 
@@ -246,14 +290,34 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Security Headers - Enable in production (when DEBUG=False)
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+
+# HSTS headers - Only enabled in production (when DEBUG=False)
+# HSTS should NOT be enabled in development as it breaks HTTP access
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+else:
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+
+# These security headers are safe in both development and production
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_X_FRAME_OPTIONS = 'DENY'
+
 # Push Notification Settings
-FCM_PROJECT_ID = 'to7fa-5c012'
+FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID')
 FCM_SERVER_KEY = None  # Using service account instead
 FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'firebase-service-account.json')
 
 # APNs Settings (iOS) - Add these when you have Apple Developer credentials
-APNS_KEY_ID = ''  # Your APNs Key ID
-APNS_TEAM_ID = ''  # Your Apple Team ID
-APNS_BUNDLE_ID = 'com.to7fa.app'
-APNS_KEY_FILE = ''  # Path to your APNs .p8 key file
-APNS_USE_SANDBOX = True  # False for production
+APNS_KEY_ID = os.getenv('APNS_KEY_ID', '')  # Your APNs Key ID
+APNS_TEAM_ID = os.getenv('APNS_TEAM_ID', '')  # Your Apple Team ID
+APNS_BUNDLE_ID = os.getenv('APNS_BUNDLE_ID', 'com.to7fa.app')
+APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')  # Path to your APNs .p8 key file
+APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True').lower() == 'true'  # False for production
