@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+import secrets
+import string
 
 class CustomUserManager(BaseUserManager):
     """Define a model manager for User model with no username field."""
@@ -46,12 +49,19 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     
-    # Blocking related fields
-    blocked_at = models.DateTimeField(blank=True, null=True)
-    blocked_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='blocked_users')
-    block_reason = models.TextField(blank=True, null=True)
-    unblocked_at = models.DateTimeField(blank=True, null=True)
-    unblocked_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='unblocked_users')
+    # Email verification fields
+    email_verified = models.BooleanField(default=False)
+    email_verification_token = models.CharField(max_length=64, blank=True, null=True)
+    email_verification_token_expires = models.DateTimeField(blank=True, null=True)
+    
+    # Password reset fields
+    password_reset_token = models.CharField(max_length=64, blank=True, null=True)
+    password_reset_token_expires = models.DateTimeField(blank=True, null=True)
+    
+    # Failed login attempts (for rate limiting)
+    failed_login_attempts = models.PositiveIntegerField(default=0)
+    last_failed_login = models.DateTimeField(blank=True, null=True)
+    locked_until = models.DateTimeField(blank=True, null=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []

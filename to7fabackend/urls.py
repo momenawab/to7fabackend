@@ -30,7 +30,10 @@ urlpatterns = [
     # Custom Admin Panel
     path('dashboard/', include('admin_panel.urls')),
     
-    # App URLs
+    # API v1 endpoints (standardized response format)
+    path('api/', include('api.urls')),
+    
+    # App URLs (legacy - will be migrated to v1)
     path('api/auth/', include('custom_auth.urls')),
     path('custom_auth/', include('custom_auth.urls')),  # Direct access to custom_auth endpoints
     path('api/products/', include('products.urls')),

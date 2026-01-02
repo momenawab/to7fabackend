@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from api.helpers import api_response, api_error, api_success, api_created
 from .models import (
     Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct,
     ProductAttribute, ProductAttributeOption, CategoryAttribute, Tag, CategoryVariantType,
@@ -37,18 +38,29 @@ def product_list(request):
             products = products.filter(is_featured=True)
 
         serializer = ProductSerializer(products, many=True)
-        return Response(serializer.data)
+        return api_success(request, data=serializer.data)
 
     elif request.method == 'POST':
         # Only authenticated users can create products
         if not request.user.is_authenticated:
-            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+            return api_error(
+                request,
+                code='AUTHENTICATION_FAILED',
+                message='Authentication required',
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
 
         serializer = ProductSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             product = serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return api_created(request, data=serializer.data, message='Product created successfully')
+        return api_error(
+            request,
+            code='VALIDATION_ERROR',
+            message='Validation failed',
+            details=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 @api_view(['GET', 'PUT', 'DELETE'])
 @authentication_classes([])
@@ -58,30 +70,50 @@ def product_detail(request, pk):
     try:
         product = Product.objects.get(pk=pk, is_active=True)
     except Product.DoesNotExist:
-        return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Product not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     if request.method == 'GET':
         serializer = ProductDetailSerializer(product)
-        return Response(serializer.data)
+        return api_success(request, data=serializer.data)
 
     # For PUT and DELETE, check if the user is the seller
     if not request.user.is_authenticated:
-        return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-
+        return api_error(
+            request,
+            code='AUTHENTICATION_FAILED',
+            message='Authentication required',
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+    
     if product.seller != request.user:
-        return Response({"error": "You don't have permission to modify this product"},
-                        status=status.HTTP_403_FORBIDDEN)
-
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="You don't have permission to modify this product",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
     if request.method == 'PUT':
         serializer = ProductSerializer(product, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+            return api_success(request, data=serializer.data)
+        return api_error(
+            request,
+            code='VALIDATION_ERROR',
+            message='Validation failed',
+            details=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    
     elif request.method == 'DELETE':
         product.delete()
-        return Response({"message": "Product deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        return api_success(request, message="Product deleted successfully")
 
 @api_view(['GET'])
 @authentication_classes([])
@@ -90,8 +122,12 @@ def product_search(request):
     """Search products by name, description, or category"""
     query = request.query_params.get('q', '')
     if not query:
-        return Response({"error": "Search query parameter 'q' is required"},
-                        status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='INVALID_REQUEST',
+            message="Search query parameter 'q' is required",
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
     # Search in name and description
     products = Product.objects.filter(
@@ -105,7 +141,7 @@ def product_search(request):
         products = products.filter(category_id=category_id)
 
     serializer = ProductSerializer(products, many=True)
-    return Response({
+    return api_success(request, data={
         "query": query,
         "results_count": products.count(),
         "results": serializer.data
@@ -120,32 +156,52 @@ def product_reviews(request, pk):
     try:
         product = Product.objects.get(pk=pk, is_active=True)
     except Product.DoesNotExist:
-        return Response({"error": "Product not found"}, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Product not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     if request.method == 'GET':
         reviews = Review.objects.filter(product=product).order_by('-created_at')
         serializer = ReviewSerializer(reviews, many=True)
-        return Response(serializer.data)
+        return api_success(request, data=serializer.data)
 
     elif request.method == 'POST':
         # Only authenticated users can add reviews
         if not request.user.is_authenticated:
-            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-
+            return api_error(
+                request,
+                code='AUTHENTICATION_FAILED',
+                message='Authentication required',
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        
         # Check if user has already reviewed this product
         if Review.objects.filter(product=product, user=request.user).exists():
-            return Response({"error": "You have already reviewed this product"},
-                            status=status.HTTP_400_BAD_REQUEST)
-
+            return api_error(
+                request,
+                code='DUPLICATE_REVIEW',
+                message="You have already reviewed this product",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Create review
         data = request.data.copy()
         data['product'] = pk
         serializer = ReviewSerializer(data=data, context={'request': request})
-
+        
         if serializer.is_valid():
             serializer.save(user=request.user, product=product)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return api_created(request, data=serializer.data)
+        return api_error(
+            request,
+            code='VALIDATION_ERROR',
+            message='Validation failed',
+            details=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 @api_view(['GET', 'POST'])
 @authentication_classes([])
@@ -155,21 +211,37 @@ def category_list(request):
     if request.method == 'GET':
         categories = Category.objects.filter(is_active=True)
         serializer = CategorySerializer(categories, many=True)
-        return Response(serializer.data)
+        return api_success(request, data=serializer.data)
 
     elif request.method == 'POST':
         # Only authenticated users with staff permissions can create categories
         if not request.user.is_authenticated:
-            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-
+            return api_error(
+                request,
+                code='AUTHENTICATION_FAILED',
+                message='Authentication required',
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+        
         if not request.user.is_staff:
-            return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-
+            return api_error(
+                request,
+                code='PERMISSION_DENIED',
+                message="Staff permissions required",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
         serializer = CategorySerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return api_created(request, data=serializer.data)
+        return api_error(
+            request,
+            code='VALIDATION_ERROR',
+            message='Validation failed',
+            details=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 @api_view(['GET', 'PUT', 'DELETE'])
 @authentication_classes([])
@@ -179,7 +251,12 @@ def category_detail(request, pk):
     try:
         category = Category.objects.get(pk=pk)
     except Category.DoesNotExist:
-        return Response({"error": "Category not found"}, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message="Category not found",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     if request.method == 'GET':
         serializer = CategorySerializer(category)
@@ -233,35 +310,51 @@ def category_detail(request, pk):
                     'section_priority': section_priority,
                 })
 
-            return Response({
+            return api_success(request, data={
                 "category": serializer.data,
                 "products": product_serializer.data,
                 "subcategories": subcategories_data
             })
         else:
             # For subcategories, no need to include subcategories list
-            return Response({
+            return api_success(request, data={
                 "category": serializer.data,
                 "products": product_serializer.data
             })
 
     # Only staff can update or delete categories
     if not request.user.is_authenticated:
-        return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-
+        return api_error(
+            request,
+            code='AUTHENTICATION_FAILED',
+            message='Authentication required',
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+    
     if not request.user.is_staff:
-        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
-
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Staff permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
     if request.method == 'PUT':
         serializer = CategorySerializer(category, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+            return api_success(request, data=serializer.data)
+        return api_error(
+            request,
+            code='VALIDATION_ERROR',
+            message='Validation failed',
+            details=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    
     elif request.method == 'DELETE':
         category.delete()
-        return Response({"message": "Category deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        return api_success(request, message="Category deleted successfully")
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
@@ -869,10 +962,12 @@ def manage_featured_products(request):
                 'featured_id': featured.id
             }, status=status.HTTP_201_CREATED)
 
-        except Product.DoesNotExist:
-            return Response({
-                'error': 'Product not found'
-            }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Product not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
         except Exception as e:
             return Response({
                 'error': str(e)
@@ -1015,9 +1110,12 @@ def manage_advertisements(request):
                 try:
                     category = Category.objects.get(id=category_id)
                 except Category.DoesNotExist:
-                    return Response({
-                        'error': 'Category not found'
-                    }, status=status.HTTP_404_NOT_FOUND)
+                        return api_error(
+                            request,
+                            code='NOT_FOUND',
+                            message='Category not found',
+                            status_code=status.HTTP_404_NOT_FOUND
+                        )
 
             # Create the advertisement
             ad = Advertisement.objects.create(
@@ -1142,7 +1240,12 @@ def manage_advertisement_detail(request, ad_id):
 def manage_categories(request):
     """Get all categories for admin management with hierarchical structure"""
     if not request.user.is_staff:
-        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Staff permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     # Get all categories
     categories = Category.objects.all().order_by('name')
@@ -1192,7 +1295,12 @@ def manage_categories(request):
 def create_category(request):
     """Create a new category or subcategory"""
     if not request.user.is_staff:
-        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Staff permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     # Debug logging (can be removed in production)
     print(f"Create request data: {request.data}")
@@ -1270,14 +1378,22 @@ def create_category(request):
 def manage_category_detail(request, category_id):
     """Get category details with products and subcategories"""
     if not request.user.is_staff:
-        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Staff permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     try:
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
-        return Response({
-            'error': 'Category not found'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Category not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     # Get subcategories
     subcategories = Category.objects.filter(parent=category).order_by('name')
@@ -1323,7 +1439,12 @@ def manage_category_detail(request, category_id):
 def update_category(request, category_id):
     """Update category details"""
     if not request.user.is_staff:
-        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Staff permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     # Debug logging (can be removed in production)
     print(f"Request data: {request.data}")
@@ -1333,9 +1454,12 @@ def update_category(request, category_id):
     try:
         category = Category.objects.get(id=category_id)
     except Category.DoesNotExist:
-        return Response({
-            'error': 'Category not found'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Category not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     try:
         # Update name if provided
@@ -1427,7 +1551,12 @@ def update_category(request, category_id):
 def delete_category(request, category_id):
     """Delete a category"""
     if not request.user.is_staff:
-        return Response({"error": "Staff permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Staff permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     try:
         category = Category.objects.get(id=category_id)
@@ -1474,7 +1603,12 @@ def get_attribute_options(request, attribute_type):
         serializer = ProductAttributeOptionSerializer(options, many=True)
         return Response(serializer.data)
     except ProductAttribute.DoesNotExist:
-        return Response({'error': 'Attribute not found'}, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Attribute not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
 
 @csrf_exempt
@@ -1491,7 +1625,12 @@ def get_category_attributes(request, category_id):
         serializer = CategoryAttributeSerializer(category_attributes, many=True)
         return Response(serializer.data)
     except Category.DoesNotExist:
-        return Response({'error': 'Category not found'}, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Category not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
 
 @csrf_exempt
@@ -1861,9 +2000,12 @@ def seller_offer_requests(request):
             ).first()
 
             if existing_request:
-                return Response({
-                    'error': f'You already have an active offer request for this product (Status: {existing_request.get_status_display()})'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return api_error(
+                    request,
+                    code='DUPLICATE_REQUEST',
+                    message=f'You already have an active offer request for this product (Status: {existing_request.get_status_display()})',
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
             # Get offer duration in days
             offer_duration_days = request.data.get('offer_duration_days')
@@ -1876,13 +2018,19 @@ def seller_offer_requests(request):
             try:
                 offer_duration_days = int(offer_duration_days)
                 if offer_duration_days < 1 or offer_duration_days > 30:
-                    return Response({
-                        'error': 'Offer duration must be between 1 and 30 days'
-                    }, status=status.HTTP_400_BAD_REQUEST)
+                    return api_error(
+                        request,
+                        code='INVALID_DURATION',
+                        message='Offer duration must be between 1 and 30 days',
+                        status_code=status.HTTP_400_BAD_REQUEST
+                    )
             except ValueError:
-                return Response({
-                    'error': 'offer_duration_days must be a valid number'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return api_error(
+                    request,
+                    code='INVALID_DURATION',
+                    message='offer_duration_days must be a valid number',
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
 
             # Create the offer request
             offer_request = SellerOfferRequest.objects.create(
@@ -1894,22 +2042,26 @@ def seller_offer_requests(request):
                 request_fee=50.00  # Default fee
             )
 
-            return Response({
+            return api_created(request, data={
                 'id': offer_request.id,
-                'message': f'Offer request created successfully! Please pay {offer_request.request_fee} SAR to proceed.',
                 'request_fee': float(offer_request.request_fee),
-                'status': offer_request.status,
-                'payment_instructions': 'Please contact admin to complete payment and activate your offer request.'
-            }, status=status.HTTP_201_CREATED)
+                'status': offer_request.status
+            }, message=f'Offer request created successfully! Please pay {offer_request.request_fee} SAR to proceed.')
 
         except Product.DoesNotExist:
-            return Response({
-                'error': 'Product not found or you do not own this product'
-            }, status=status.HTTP_404_NOT_FOUND)
+            return api_error(
+                request,
+                code='NOT_FOUND',
+                message='Product not found or you do not own this product',
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
-            return Response({
-                'error': f'Failed to create offer request: {str(e)}'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(
+                request,
+                code='INTERNAL_ERROR',
+                message=f'Failed to create offer request: {str(e)}',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
 
 @csrf_exempt
@@ -1920,7 +2072,12 @@ def seller_featured_requests(request):
     from .models import SellerFeaturedRequest
     
     if not request.user.user_type in ['artist', 'store']:
-        return Response({"error": "Only sellers can create featured requests"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Only sellers can create featured requests",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     if request.method == 'GET':
         # Get seller's featured requests
@@ -1945,7 +2102,7 @@ def seller_featured_requests(request):
                 'updated_at': req.updated_at.isoformat(),
             })
         
-        return Response({
+        return api_success(request, data={
             'results': results,
             'count': len(results)
         })
@@ -2006,7 +2163,12 @@ def manage_seller_requests(request):
     from .models import SellerOfferRequest, SellerFeaturedRequest
     
     if not request.user.is_staff:
-        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Admin permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     # Get offer requests
     offer_requests = SellerOfferRequest.objects.all().order_by('-created_at')
@@ -2067,15 +2229,23 @@ def approve_offer_request(request, request_id):
     from .models import SellerOfferRequest
     
     if not request.user.is_staff:
-        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Admin permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     try:
         offer_request = SellerOfferRequest.objects.get(id=request_id)
         
         if offer_request.status != 'payment_completed':
-            return Response({
-                'error': 'Request must have completed payment before approval'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return api_error(
+                request,
+                code='INVALID_STATUS',
+                message='Request must have completed payment before approval',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         # Approve and create the actual offer
         product_offer = offer_request.approve_and_create_offer(request.user)
@@ -2091,9 +2261,12 @@ def approve_offer_request(request, request_id):
             }, status=status.HTTP_400_BAD_REQUEST)
 
     except SellerOfferRequest.DoesNotExist:
-        return Response({
-            'error': 'Offer request not found'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Offer request not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
 
 @csrf_exempt
@@ -2104,7 +2277,12 @@ def approve_featured_request(request, request_id):
     from .models import SellerFeaturedRequest
     
     if not request.user.is_staff:
-        return Response({"error": "Admin permissions required"}, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Admin permissions required",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
 
     try:
         featured_request = SellerFeaturedRequest.objects.get(id=request_id)
@@ -2128,9 +2306,12 @@ def approve_featured_request(request, request_id):
             }, status=status.HTTP_400_BAD_REQUEST)
 
     except SellerFeaturedRequest.DoesNotExist:
-        return Response({
-            'error': 'Featured request not found'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Featured request not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
 
 # =============== ADDITIONAL VIEWS FOR COMPLETENESS ===============
@@ -2145,9 +2326,12 @@ def seller_offer_request_detail(request, request_id):
     try:
         offer_request = SellerOfferRequest.objects.get(id=request_id, seller=request.user)
     except SellerOfferRequest.DoesNotExist:
-        return Response({
-            'error': 'Offer request not found'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Offer request not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     if request.method == 'GET':
         return Response({
@@ -2189,9 +2373,12 @@ def seller_featured_request_detail(request, request_id):
     try:
         featured_request = SellerFeaturedRequest.objects.get(id=request_id, seller=request.user)
     except SellerFeaturedRequest.DoesNotExist:
-        return Response({
-            'error': 'Featured request not found'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='NOT_FOUND',
+            message='Featured request not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
     if request.method == 'GET':
         return Response({

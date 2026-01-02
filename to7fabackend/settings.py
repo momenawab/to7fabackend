@@ -82,6 +82,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'admin_panel.middleware.AdminPanelMiddleware',
     'admin_panel.middleware.AdminActivityMiddleware',
+    'api.middleware.request_id.RequestIDMiddleware',
 ]
 
 ROOT_URLCONF = 'to7fabackend.urls'
@@ -149,6 +150,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -185,18 +189,54 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# API Configuration
+API_VERSION = 'v1'
+API_BASE_URL = '/api'
+
+# Response Format Configuration
+USE_STANDARD_RESPONSE_FORMAT = True  # Feature flag for gradual rollout
+ENABLE_REQUEST_ID_TRACKING = True
+
+# Pagination Configuration
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
+
+# Error Reporting Configuration
+INCLUDE_ERROR_DETAILS = DEBUG  # Only in development
+
 # Rest Framework settings
 REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler',
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
         # SessionAuthentication disabled to avoid CSRF issues with mobile apps
-        'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10
+    'PAGE_SIZE': DEFAULT_PAGE_SIZE,
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+}
+
+# JWT Settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # 1 hour
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),  # 7 days
+    'ROTATE_REFRESH_TOKENS': True,  # Rotate refresh tokens
+    'BLACKLIST_AFTER_ROTATION': True,  # Blacklist old refresh tokens
+    'UPDATE_LAST_LOGIN': True,  # Update last login timestamp
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,  # Use same SECRET_KEY for JWT signing
+    'VERIFYING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
 }
 
 # Custom user model
@@ -244,11 +284,6 @@ CORS_ALLOW_METHODS = [
 DEFAULT_CHARSET = 'utf-8'
 FILE_CHARSET = 'utf-8'
 
-# Ensure proper Unicode handling in responses
-REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
-    'rest_framework.renderers.JSONRenderer',
-]
-
 # JSON encoder settings for proper Arabic text handling
 import json
 from django.core.serializers.json import DjangoJSONEncoder
@@ -259,11 +294,6 @@ class UnicodeJSONEncoder(DjangoJSONEncoder):
         kwargs['ensure_ascii'] = False
         super().__init__(**kwargs)
 
-# Configure JSON rendering to use Unicode
-REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
-    'products.renderers.UnicodeJSONRenderer',
-]
-
 # CSRF Settings for Admin Panel
 CSRF_COOKIE_NAME = 'csrftoken'
 CSRF_COOKIE_AGE = 31449600  # 1 year
@@ -273,7 +303,8 @@ CSRF_COOKIE_SECURE = not DEBUG  # Automatically secure in production (when DEBUG
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript access
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',')
+csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS')
+CSRF_TRUSTED_ORIGINS = csrf_origins.split(',') if csrf_origins else []
 CSRF_USE_SESSIONS = False
 CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 
@@ -288,6 +319,19 @@ CHANNEL_LAYERS = {
             "hosts": [('127.0.0.1', 6379)],
         },
     },
+}
+
+# Cache configuration for rate limiting (DRF throttles require cache backend)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'KEY_PREFIX': 'to7fa_throttle',
+        'TIMEOUT': 300,
+    }
 }
 
 # Security Headers - Enable in production (when DEBUG=False)
@@ -309,6 +353,19 @@ else:
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_X_FRAME_OPTIONS = 'DENY'
+
+# Email Settings
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@to7fa.com')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8000')
+
+# Email Backend Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_TIMEOUT = 30
 
 # Push Notification Settings
 FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID')
