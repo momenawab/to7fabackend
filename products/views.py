@@ -962,12 +962,13 @@ def manage_featured_products(request):
                 'featured_id': featured.id
             }, status=status.HTTP_201_CREATED)
 
-        return api_error(
-            request,
-            code='NOT_FOUND',
-            message='Product not found',
-            status_code=status.HTTP_404_NOT_FOUND
-        )
+        except Product.DoesNotExist:
+            return api_error(
+                request,
+                code='NOT_FOUND',
+                message='Product not found',
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         except Exception as e:
             return Response({
                 'error': str(e)

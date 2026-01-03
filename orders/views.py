@@ -209,12 +209,16 @@ def update_order_status(request, pk):
             status_code=status.HTTP_400_BAD_REQUEST
         )
     
-    # Update order status
-    order.status = new_status
-    order.save()
+    # Update order status with lock to prevent race conditions
+    # Lock order row to ensure only one status update at a time
+    from django.db import transaction
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(id=pk)
+        locked_order.status = new_status
+        locked_order.save()
+        logger.info(f"Order {pk} status updated from {locked_order.status} to {new_status} by seller {request.user.id}")
     
-    logger.info(f"Order {pk} status updated from {order.status} to {new_status} by seller {request.user.id}")
-    return api_success(request, data=OrderDetailSerializer(order, context={'request': request}).data)
+    return api_success(request, data=OrderDetailSerializer(locked_order, context={'request': request}).data)
 
 
 @api_view(['POST'])

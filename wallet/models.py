@@ -173,18 +173,20 @@ class Wallet(models.Model):
         if self.id == target_wallet.id:
             raise ValueError("Cannot transfer to the same wallet")
         
-        # Check for idempotency - prevent duplicate transactions
+        # Lock both wallets to prevent concurrent modifications
+        # Always lock in a consistent order (by ID) to prevent deadlocks
+        wallets_to_lock = sorted([self, target_wallet], key=lambda w: w.id)
+        locked_wallets = list(Wallet.objects.select_for_update().filter(id__in=[w.id for w in wallets_to_lock]))
+        
+        # NOW check for idempotency - AFTER acquiring locks
+        # This prevents race condition where two threads could pass idempotency check
+        # with same key but different target wallets
         if idempotency_key:
             if Transaction.objects.filter(idempotency_key=idempotency_key).exists():
                 existing_tx = Transaction.objects.filter(idempotency_key=idempotency_key)
                 withdrawal_tx = existing_tx.filter(transaction_type='withdrawal').first()
                 deposit_tx = existing_tx.filter(transaction_type='deposit').first()
                 return (withdrawal_tx, deposit_tx)
-        
-        # Lock both wallets to prevent concurrent modifications
-        # Always lock in a consistent order (by ID) to prevent deadlocks
-        wallets_to_lock = sorted([self, target_wallet], key=lambda w: w.id)
-        locked_wallets = list(Wallet.objects.select_for_update().filter(id__in=[w.id for w in wallets_to_lock]))
         
         source_wallet = next(w for w in locked_wallets if w.id == self.id)
         dest_wallet = next(w for w in locked_wallets if w.id == target_wallet.id)

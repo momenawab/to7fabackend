@@ -551,16 +551,77 @@ class AtomicOrderCreator:
         total_amount += shipping_cost
         
         # Step 3: Reserve stock for all items (with locks)
+        # Stock reservation is now done inline to ensure atomicity with order creation
+        # We lock products one by one to prevent deadlocks, but all in same transaction
         for item in validated_items:
-            try:
-                StockLockManager.reserve_stock(
-                    product_id=item['product'].id,
-                    quantity=item['quantity'],
-                    variant_id=item['variant_id']
-                )
-            except ValueError as e:
-                # Stock reservation failed - this will rollback all previous reservations
-                raise ValueError(f"Stock reservation failed: {str(e)}")
+            if item['variant_id']:
+                # Variant product stock reservation (inline, no separate transaction)
+                from products.models import ProductCategoryVariantOption, ProductVariant
+                try:
+                    # Try ProductCategoryVariantOption first
+                    variant = ProductCategoryVariantOption.objects.select_for_update().get(
+                        id=item['variant_id'],
+                        product_id=item['product'].id,
+                        is_active=True
+                    )
+                    
+                    if variant.stock_count < item['quantity']:
+                        raise ValueError(
+                            f"Insufficient stock for variant. Available: {variant.stock_count}, Requested: {item['quantity']}"
+                        )
+                    
+                    # Decrement stock
+                    variant.stock_count -= item['quantity']
+                    variant.save()
+                    
+                    logger.info(f"Reserved {item['quantity']} units of variant {item['variant_id']} for product {item['product'].id}")
+                    
+                except ProductCategoryVariantOption.DoesNotExist:
+                    # Try ProductVariant as fallback
+                    try:
+                        variant = ProductVariant.objects.select_for_update().get(
+                            id=item['variant_id'],
+                            product_id=item['product'].id,
+                            is_active=True
+                        )
+                        
+                        if variant.stock_count < item['quantity']:
+                            raise ValueError(
+                                f"Insufficient stock for variant. Available: {variant.stock_count}, Requested: {item['quantity']}"
+                            )
+                        
+                        variant.stock_count -= item['quantity']
+                        variant.save()
+                        
+                        logger.info(f"Reserved {item['quantity']} units of variant {item['variant_id']} for product {item['product'].id}")
+                        
+                    except ProductVariant.DoesNotExist:
+                        raise ValueError(f"Variant {item['variant_id']} not found for product {item['product'].id}")
+            else:
+                # Non-variant product stock reservation (inline, no separate transaction)
+                try:
+                    product = Product.objects.select_for_update().get(
+                        id=item['product'].id,
+                        is_active=True
+                    )
+                    
+                    # Check stock AFTER acquiring lock
+                    available_stock = product.stock_quantity
+                    
+                    if available_stock < item['quantity']:
+                        raise ValueError(
+                            f"Insufficient stock for product '{item['product'].name}'. "
+                            f"Available: {available_stock}, Requested: {item['quantity']}"
+                        )
+                    
+                    # Decrement stock
+                    product.stock_quantity = available_stock - item['quantity']
+                    product.save()
+                    
+                    logger.info(f"Reserved {item['quantity']} units of product {item['product'].id}")
+                    
+                except Product.DoesNotExist:
+                    raise ValueError(f"Product {item['product'].id} not found")
         
         # Step 4: Create order
         order = Order.objects.create(
