@@ -3,6 +3,8 @@ API URL Configuration
 
 This module defines URL routing for API v1 endpoints.
 Following API Response Standard with /api/v1/ prefix.
+
+This is the PRIMARY API CONTRACT for all public client-facing endpoints.
 """
 
 from django.urls import path, include
@@ -14,6 +16,13 @@ from custom_auth import api_views as auth_api_views
 from custom_auth import address_views
 from custom_auth import jwt_views
 from wallet import views as wallet_views
+from payment import views as payment_views
+from notifications import views as notification_views
+from support import views as support_views
+from support.contact_views import (
+    CreateContactView, ContactListView, ContactDetailView,
+    ContactStatsView, UserContactListView
+)
 from rest_framework_simplejwt.views import TokenRefreshView
 
 # API v1 URL patterns
@@ -147,5 +156,39 @@ urlpatterns = [
         # User management endpoints
         path('users/<int:user_id>/', auth_api_views.get_user_details, name='user-detail'),
         path('users/<int:user_id>/block-unblock/', auth_api_views.block_unblock_user, name='user-block-unblock'),
+        
+        # Payment endpoints
+        path('payments/process/', payment_views.process_payment, name='payment-process'),
+        path('payments/methods/', payment_views.payment_methods, name='payment-methods'),
+        path('payments/methods/<int:pk>/', payment_views.payment_method_detail, name='payment-method-detail'),
+        path('payments/verify/', payment_views.verify_payment, name='payment-verify'),
+        path('payments/refund/', payment_views.refund_payment, name='payment-refund'),
+        
+        # Notifications endpoints
+        path('notifications/', notification_views.NotificationListView.as_view(), name='notification-list'),
+        path('notifications/legacy/', notification_views.notification_list, name='notification-list-legacy'),
+        path('notifications/<int:pk>/', notification_views.NotificationDetailView.as_view(), name='notification-detail'),
+        path('notifications/<int:pk>/read/', notification_views.mark_notification_read, name='notification-mark-read'),
+        path('notifications/<int:pk>/delete/', notification_views.delete_notification, name='notification-delete'),
+        path('notifications/read-all/', notification_views.mark_all_read, name='notification-read-all'),
+        path('notifications/clear-all/', notification_views.clear_all_notifications, name='notification-clear-all'),
+        path('notifications/stats/', notification_views.notification_stats, name='notification-stats'),
+        path('notifications/devices/register/', notification_views.register_device, name='notification-register-device'),
+        path('notifications/devices/', notification_views.list_user_devices, name='notification-list-devices'),
+        path('notifications/devices/<str:device_id>/', notification_views.update_device_settings, name='notification-update-device'),
+        path('notifications/devices/<str:device_id>/unregister/', notification_views.unregister_device, name='notification-unregister-device'),
+        path('notifications/send/', notification_views.send_notification_api, name='notification-send'),
+        path('notifications/push/test/', notification_views.test_push_notification, name='notification-test-push'),
+        
+        # Support endpoints
+        path('support/contact/create/', CreateContactView.as_view(), name='support-contact-create'),
+        path('support/contact/', ContactListView.as_view(), name='support-contact-list'),
+        path('support/contact/<str:contact_number>/', ContactDetailView.as_view(), name='support-contact-detail'),
+        path('support/contact/<str:contact_number>/update/', ContactDetailView.as_view(), name='support-contact-update'),
+        path('support/contact/<str:contact_number>/note/', support_views.add_contact_note, name='support-contact-note'),
+        path('support/contact/<str:contact_number>/whatsapp/', support_views.get_whatsapp_link, name='support-contact-whatsapp'),
+        path('support/contact/stats/', ContactStatsView.as_view(), name='support-contact-stats'),
+        path('support/user/contacts/', UserContactListView.as_view(), name='support-user-contacts'),
+        path('support/tickets/create/', support_views.create_ticket, name='support-ticket-create'),
     ])),
 ]

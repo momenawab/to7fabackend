@@ -20,6 +20,7 @@ from datetime import timedelta
 import secrets
 import logging
 
+from api.helpers import api_success, api_error, api_created
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -87,42 +88,52 @@ def login_view(request):
     
     # Validate input
     if not email or not password:
-        return Response({
-            'error': 'Email and password are required',
-            'code': 'MISSING_FIELDS'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='MISSING_FIELDS',
+            message='Email and password are required',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Check if user exists
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
         # Don't reveal if user exists
-        return Response({
-            'error': 'Invalid email or password',
-            'code': 'INVALID_CREDENTIALS'
-        }, status=status.HTTP_401_UNAUTHORIZED)
+        return api_error(
+            request,
+            code='INVALID_CREDENTIALS',
+            message='Invalid email or password',
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
     
     # Check if account is locked
     if user.locked_until and user.locked_until > timezone.now():
-        return Response({
-            'error': 'Account is temporarily locked. Please try again later.',
-            'code': 'ACCOUNT_LOCKED',
-            'locked_until': user.locked_until.isoformat()
-        }, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='ACCOUNT_LOCKED',
+            message='Account is temporarily locked. Please try again later.',
+            details={'locked_until': user.locked_until.isoformat()},
+            status_code=status.HTTP_403_FORBIDDEN
+        )
     
     # Check if user is blocked
     if not user.is_active:
-        return Response({
-            'error': 'Account is blocked. Please contact support.',
-            'code': 'ACCOUNT_BLOCKED'
-        }, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='ACCOUNT_BLOCKED',
+            message='Account is blocked. Please contact support.',
+            status_code=status.HTTP_403_FORBIDDEN
+        )
     
     # Check if email is verified
     if not user.email_verified:
-        return Response({
-            'error': 'Email not verified. Please verify your email first.',
-            'code': 'EMAIL_NOT_VERIFIED'
-        }, status=status.HTTP_403_FORBIDDEN)
+        return api_error(
+            request,
+            code='EMAIL_NOT_VERIFIED',
+            message='Email not verified. Please verify your email first.',
+            status_code=status.HTTP_403_FORBIDDEN
+        )
     
     # Check password
     if not user.check_password(password):
@@ -136,10 +147,12 @@ def login_view(request):
         
         user.save()
         
-        return Response({
-            'error': 'Invalid email or password',
-            'code': 'INVALID_CREDENTIALS'
-        }, status=status.HTTP_401_UNAUTHORIZED)
+        return api_error(
+            request,
+            code='INVALID_CREDENTIALS',
+            message='Invalid email or password',
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
     
     # Reset failed login attempts on successful login
     user.failed_login_attempts = 0
@@ -151,19 +164,22 @@ def login_view(request):
     from rest_framework_simplejwt.tokens import RefreshToken
     refresh = RefreshToken.for_user(user)
     
-    return Response({
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-        'user': {
-            'id': user.id,
-            'email': user.email,
-            'user_type': user.user_type,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'phone_number': user.phone_number,
-            'address': user.address
+    return api_success(
+        request,
+        data={
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'user_type': user.user_type,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'phone_number': user.phone_number,
+                'address': user.address
+            }
         }
-    }, status=status.HTTP_200_OK)
+    )
 
 
 @api_view(['POST'])
@@ -193,10 +209,12 @@ def request_password_reset(request):
     email = request.data.get('email', '').lower().strip()
     
     if not email:
-        return Response({
-            'error': 'Email is required',
-            'code': 'MISSING_EMAIL'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='MISSING_EMAIL',
+            message='Email is required',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Check if user exists
     try:
@@ -241,10 +259,12 @@ def request_password_reset(request):
         
     except Exception as e:
         logger.error(f"Failed to send password reset email: {str(e)}")
-        return Response({
-            'error': 'Failed to send password reset email',
-            'code': 'EMAIL_SEND_FAILED'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return api_error(
+            request,
+            code='EMAIL_SEND_FAILED',
+            message='Failed to send password reset email',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @api_view(['POST'])
@@ -278,39 +298,49 @@ def confirm_password_reset(request):
     
     # Validate input
     if not token or not password or not confirm_password:
-        return Response({
-            'error': 'Token, password, and confirm password are required',
-            'code': 'MISSING_FIELDS'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='MISSING_FIELDS',
+            message='Token, password, and confirm password are required',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     if password != confirm_password:
-        return Response({
-            'error': 'Passwords do not match',
-            'code': 'PASSWORD_MISMATCH'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='PASSWORD_MISMATCH',
+            message='Passwords do not match',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Find user by reset token
     try:
         user = User.objects.get(password_reset_token=token)
     except User.DoesNotExist:
-        return Response({
-            'error': 'Invalid or expired reset token',
-            'code': 'INVALID_TOKEN'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='INVALID_TOKEN',
+            message='Invalid or expired reset token',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Check if token is expired
     if user.password_reset_token_expires and user.password_reset_token_expires < timezone.now():
-        return Response({
-            'error': 'Reset token has expired',
-            'code': 'TOKEN_EXPIRED'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='TOKEN_EXPIRED',
+            message='Reset token has expired',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Validate password strength
     if len(password) < 8:
-        return Response({
-            'error': 'Password must be at least 8 characters long',
-            'code': 'PASSWORD_TOO_SHORT'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='PASSWORD_TOO_SHORT',
+            message='Password must be at least 8 characters long',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Update password
     user.set_password(password)
@@ -320,10 +350,11 @@ def confirm_password_reset(request):
     
     logger.info(f"Password reset successful for {user.email}")
     
-    return Response({
-        'message': 'Password reset successfully',
-        'code': 'PASSWORD_RESET_SUCCESS'
-    }, status=status.HTTP_200_OK)
+    return api_success(
+        request,
+        message='Password reset successfully',
+        code='PASSWORD_RESET_SUCCESS'
+    )
 
 
 @api_view(['POST'])
@@ -347,26 +378,31 @@ def request_email_verification(request):
     email = request.data.get('email', '').lower().strip()
     
     if not email:
-        return Response({
-            'error': 'Email is required',
-            'code': 'MISSING_EMAIL'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='MISSING_EMAIL',
+            message='Email is required',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Check if user exists
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
-        return Response({
-            'error': 'User not found',
-            'code': 'USER_NOT_FOUND'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return api_error(
+            request,
+            code='USER_NOT_FOUND',
+            message='User not found',
+            status_code=status.HTTP_404_NOT_FOUND
+        )
     
     # Check if already verified
     if user.email_verified:
-        return Response({
-            'message': 'Email already verified',
-            'code': 'EMAIL_ALREADY_VERIFIED'
-        }, status=status.HTTP_200_OK)
+        return api_success(
+            request,
+            message='Email already verified',
+            code='EMAIL_ALREADY_VERIFIED'
+        )
     
     # Generate verification token
     verification_token = secrets.token_urlsafe(64)
@@ -394,17 +430,20 @@ def request_email_verification(request):
         
         logger.info(f"Verification email sent to {email}")
         
-        return Response({
-            'message': 'Verification email sent',
-            'code': 'VERIFICATION_EMAIL_SENT'
-        }, status=status.HTTP_200_OK)
+        return api_success(
+            request,
+            message='Verification email sent',
+            code='VERIFICATION_EMAIL_SENT'
+        )
         
     except Exception as e:
         logger.error(f"Failed to send verification email: {str(e)}")
-        return Response({
-            'error': 'Failed to send verification email',
-            'code': 'EMAIL_SEND_FAILED'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return api_error(
+            request,
+            code='EMAIL_SEND_FAILED',
+            message='Failed to send verification email',
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 @api_view(['POST'])
@@ -427,26 +466,32 @@ def verify_email(request):
     token = request.data.get('token', '')
     
     if not token:
-        return Response({
-            'error': 'Token is required',
-            'code': 'MISSING_TOKEN'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='MISSING_TOKEN',
+            message='Token is required',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Find user by verification token
     try:
         user = User.objects.get(email_verification_token=token)
     except User.DoesNotExist:
-        return Response({
-            'error': 'Invalid verification token',
-            'code': 'INVALID_TOKEN'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='INVALID_TOKEN',
+            message='Invalid verification token',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Check if token is expired
     if user.email_verification_token_expires and user.email_verification_token_expires < timezone.now():
-        return Response({
-            'error': 'Verification token has expired',
-            'code': 'TOKEN_EXPIRED'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='TOKEN_EXPIRED',
+            message='Verification token has expired',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # Mark email as verified
     user.email_verified = True
@@ -456,10 +501,11 @@ def verify_email(request):
     
     logger.info(f"Email verified for {user.email}")
     
-    return Response({
-        'message': 'Email verified successfully',
-        'code': 'EMAIL_VERIFIED'
-    }, status=status.HTTP_200_OK)
+    return api_success(
+        request,
+        message='Email verified successfully',
+        code='EMAIL_VERIFIED'
+    )
 
 
 @api_view(['POST'])
@@ -482,10 +528,11 @@ def logout_view(request):
     
     logger.info(f"User {request.user.email} logged out")
     
-    return Response({
-        'message': 'Successfully logged out',
-        'code': 'LOGOUT_SUCCESS'
-    }, status=status.HTTP_200_OK)
+    return api_success(
+        request,
+        message='Successfully logged out',
+        code='LOGOUT_SUCCESS'
+    )
 
 
 @api_view(['POST'])
@@ -508,10 +555,12 @@ def refresh_token_view(request):
     refresh_token = request.data.get('refresh', '')
     
     if not refresh_token:
-        return Response({
-            'error': 'Refresh token is required',
-            'code': 'MISSING_REFRESH_TOKEN'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return api_error(
+            request,
+            code='MISSING_REFRESH_TOKEN',
+            message='Refresh token is required',
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
     
     # SimpleJWT handles token validation and refresh automatically
     from rest_framework_simplejwt.views import TokenRefreshView

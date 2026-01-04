@@ -13,6 +13,12 @@ Class-based views
 Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+
+API Versioning Strategy (Phase 6):
+- PRIMARY API CONTRACT: /api/v1/ - All public client-facing endpoints
+- BACKWARD COMPATIBILITY: Legacy routes maintained for existing clients
+- ADMIN PANEL: /dashboard/ - Unchanged, admin-only interface
+- DJANGO ADMIN: /admin/ - Unchanged, Django's built-in admin
 """
 from django.contrib import admin
 from django.urls import path, include
@@ -27,30 +33,40 @@ urlpatterns = [
     # Django admin
     path('admin/', admin.site.urls),
     
-    # Custom Admin Panel
+    # Custom Admin Panel (unchanged - admin-only interface)
     path('dashboard/', include('admin_panel.urls')),
     
-    # API v1 endpoints (standardized response format)
-    path('api/', include('api.urls')),
+    # ============================================================================
+    # PRIMARY API CONTRACT - Version 1
+    # All public client-facing endpoints are under /api/v1/
+    # This is the recommended API contract for all clients
+    # ============================================================================
+    path('api/v1/', include('api.urls')),
     
-    # App URLs (legacy - will be migrated to v1)
+    # ============================================================================
+    # BACKWARD COMPATIBILITY - Legacy Routes
+    # These routes are maintained for existing clients
+    # They will continue to work but are deprecated for new integrations
+    # ============================================================================
+    
+    # Legacy authentication endpoints (deprecated - use /api/v1/auth/ instead)
     path('api/auth/', include('custom_auth.urls')),
-    path('custom_auth/', include('custom_auth.urls')),  # Direct access to custom_auth endpoints
+    path('custom_auth/', include('custom_auth.urls')),
+    
+    # Legacy app-specific endpoints (deprecated - use /api/v1/ instead)
     path('api/products/', include('products.urls')),
     path('api/orders/', include('orders.urls')),
     path('api/wallet/', include('wallet.urls')),
     path('api/payments/', include('payment.urls')),
     path('api/notifications/', include('notifications.urls')),
     path('api/cart/', include('cart.urls')),
-    path('api/support/', include('support.urls')),  # Customer Support
-    path('api/', include('custom_auth.address_urls')),  # Address management
-    
-    # Admin API endpoints
-    path('api/admin/', include('admin_panel.api_urls')),
-    
-    # Direct access to artists and stores endpoints
+    path('api/support/', include('support.urls')),
+    path('api/', include('custom_auth.address_urls')),
     path('api/artists/', include('custom_auth.artist_store_urls')),
     path('api/stores/', include('custom_auth.store_urls')),
+    
+    # Admin API endpoints (deprecated - use /api/v1/admin/ instead)
+    path('api/admin/', include('admin_panel.api_urls')),
 ]
 
 # Serve media files in development
