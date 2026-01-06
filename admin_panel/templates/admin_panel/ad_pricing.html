@@ -11,13 +11,13 @@
         transition: all 0.3s ease;
         background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
     }
-    
+
     .pricing-card:hover {
         border-color: #3b82f6;
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
     }
-    
+
     .pricing-header {
         background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
         color: white;
@@ -25,11 +25,11 @@
         border-radius: 10px 10px 0 0;
         text-align: center;
     }
-    
+
     .pricing-body {
         padding: 20px;
     }
-    
+
     .price-input {
         border: 2px solid #e5e7eb;
         border-radius: 8px;
@@ -38,13 +38,13 @@
         font-weight: 600;
         transition: border-color 0.3s ease;
     }
-    
+
     .price-input:focus {
         border-color: #3b82f6;
         outline: none;
         box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
     }
-    
+
     .duration-badge {
         display: inline-block;
         padding: 6px 12px;
@@ -53,11 +53,22 @@
         font-weight: bold;
         margin: 4px;
     }
-    
-    .duration-daily { background-color: #dcfce7; color: #166534; }
-    .duration-weekly { background-color: #fef3c7; color: #92400e; }
-    .duration-monthly { background-color: #e0e7ff; color: #3730a3; }
-    
+
+    .duration-daily {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    .duration-weekly {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+
+    .duration-monthly {
+        background-color: #e0e7ff;
+        color: #3730a3;
+    }
+
     .ad-type-icon {
         width: 48px;
         height: 48px;
@@ -68,12 +79,27 @@
         margin: 0 auto 12px;
         font-size: 24px;
     }
-    
-    .icon-home { background-color: #fef3c7; color: #92400e; }
-    .icon-category { background-color: #e0e7ff; color: #3730a3; }
-    .icon-offer { background-color: #dcfce7; color: #166534; }
-    .icon-featured { background-color: #fce7f3; color: #be185d; }
-    
+
+    .icon-home {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+
+    .icon-category {
+        background-color: #e0e7ff;
+        color: #3730a3;
+    }
+
+    .icon-offer {
+        background-color: #dcfce7;
+        color: #166534;
+    }
+
+    .icon-featured {
+        background-color: #fce7f3;
+        color: #be185d;
+    }
+
     .stats-card {
         background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
@@ -81,7 +107,7 @@
         padding: 20px;
         text-align: center;
     }
-    
+
     .save-btn {
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         border: none;
@@ -91,12 +117,12 @@
         font-weight: 600;
         transition: all 0.3s ease;
     }
-    
+
     .save-btn:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(16, 185, 129, 0.25);
     }
-    
+
     .reset-btn {
         background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         border: none;
@@ -106,12 +132,12 @@
         font-weight: 600;
         transition: all 0.3s ease;
     }
-    
+
     .reset-btn:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(239, 68, 68, 0.25);
     }
-    
+
     /* Requirements Section Styles */
     .requirements-section {
         background-color: #f8f9fa;
@@ -120,38 +146,38 @@
         margin-bottom: 15px;
         border-left: 4px solid #28a745;
     }
-    
+
     .requirements-section h6 {
         color: #495057;
         font-weight: 600;
         margin-bottom: 10px;
     }
-    
+
     .requirement-item {
         display: flex;
         align-items: center;
         padding: 4px 0;
         font-size: 0.9rem;
     }
-    
+
     .requirement-item span {
         flex: 1;
     }
-    
+
     .requirements-editor {
         border: 2px dashed #dee2e6;
         background-color: #ffffff;
     }
-    
+
     .requirements-editor:focus {
         border-color: #80bdff;
         box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
     }
-    
+
     .edit-requirements-btn {
         transition: all 0.3s ease;
     }
-    
+
     .edit-requirements-btn:hover {
         background-color: #007bff;
         color: white;
@@ -208,7 +234,7 @@
         <div class="col-md-3">
             <div class="stats-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
                 <i class="fas fa-dollar-sign mb-2" style="font-size: 24px;"></i>
-                <h4 class="mb-1">${{ average_price|floatformat:0 }}</h4>
+                <h4 class="mb-1">{{ average_price|floatformat:0 }}</h4>
                 <p class="mb-0">Avg Price</p>
             </div>
         </div>
@@ -229,61 +255,63 @@
                 <div class="pricing-header">
                     <div class="ad-type-icon icon-{{ ad_type.name }}">
                         {% if ad_type.name == 'home_slider' %}
-                            <i class="fas fa-home"></i>
+                        <i class="fas fa-home"></i>
                         {% elif ad_type.name == 'category_slider' %}
-                            <i class="fas fa-th-large"></i>
+                        <i class="fas fa-th-large"></i>
                         {% elif ad_type.name == 'offer_ad' %}
-                            <i class="fas fa-percent"></i>
+                        <i class="fas fa-percent"></i>
                         {% elif ad_type.name == 'featured_product' %}
-                            <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
                         {% else %}
-                            <i class="fas fa-bullhorn"></i>
+                        <i class="fas fa-bullhorn"></i>
                         {% endif %}
                     </div>
                     <h5 class="mb-1">
                         {% if ad_type.name == 'home_slider' %}
-                            Home Page Slider
+                        Home Page Slider
                         {% elif ad_type.name == 'category_slider' %}
-                            Category Slider
+                        Category Slider
                         {% elif ad_type.name == 'offer_ad' %}
-                            Offer Advertisement
+                        Offer Advertisement
                         {% elif ad_type.name == 'featured_product' %}
-                            Featured Product
+                        Featured Product
                         {% else %}
-                            {{ ad_type.name|title }}
+                        {{ ad_type.name|title }}
                         {% endif %}
                     </h5>
                     <small>{{ ad_type.description }}</small>
-                    
+
                     <!-- Requirements Section -->
                     <div class="requirements-section mt-3">
                         <h6><i class="fas fa-list-check me-2"></i>Requirements</h6>
                         <div class="requirements-list">
                             {% if ad_type.requirements %}
-                                {% for req in ad_type.requirements %}
-                                    <div class="requirement-item">
-                                        <i class="fas fa-check-circle text-success me-2"></i>
-                                        <span>{{ req }}</span>
-                                    </div>
-                                {% empty %}
-                                    <div class="requirement-item text-muted">
-                                        <i class="fas fa-info-circle me-2"></i>
-                                        <span>No specific requirements</span>
-                                    </div>
-                                {% endfor %}
+                            {% for req in ad_type.requirements %}
+                            <div class="requirement-item">
+                                <i class="fas fa-check-circle text-success me-2"></i>
+                                <span>{{ req }}</span>
+                            </div>
+                            {% empty %}
+                            <div class="requirement-item text-muted">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <span>No specific requirements</span>
+                            </div>
+                            {% endfor %}
                             {% else %}
-                                <div class="requirement-item text-muted">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    <span>No specific requirements</span>
-                                </div>
+                            <div class="requirement-item text-muted">
+                                <i class="fas fa-info-circle me-2"></i>
+                                <span>No specific requirements</span>
+                            </div>
                             {% endif %}
                         </div>
-                        
+
                         <!-- Edit Requirements -->
                         <div class="edit-requirements mt-2" style="display: none;">
-                            <textarea class="form-control requirements-editor" data-ad-type="{{ ad_type.id }}" rows="3" placeholder="Enter requirements (one per line)">{% if ad_type.requirements %}{% for req in ad_type.requirements %}{{ req }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}{% endif %}</textarea>
+                            <textarea class="form-control requirements-editor" data-ad-type="{{ ad_type.id }}" rows="3"
+                                placeholder="Enter requirements (one per line)">{% if ad_type.requirements %}{% for req in ad_type.requirements %}{{ req }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}{% endif %}</textarea>
                             <div class="mt-2">
-                                <button type="button" class="btn btn-sm btn-success save-requirements" data-ad-type="{{ ad_type.id }}">
+                                <button type="button" class="btn btn-sm btn-success save-requirements"
+                                    data-ad-type="{{ ad_type.id }}">
                                     <i class="fas fa-save me-1"></i>Save
                                 </button>
                                 <button type="button" class="btn btn-sm btn-secondary cancel-requirements">
@@ -291,78 +319,61 @@
                                 </button>
                             </div>
                         </div>
-                        
+
                         <button type="button" class="btn btn-sm btn-outline-primary edit-requirements-btn mt-2">
                             <i class="fas fa-edit me-1"></i>Edit Requirements
                         </button>
                     </div>
                 </div>
-                
+
                 <div class="pricing-body">
                     <form id="pricing-form-{{ ad_type.id }}" data-ad-type="{{ ad_type.id }}">
                         {% csrf_token %}
-                        
+
                         <!-- Duration Pricing -->
                         {% for pricing in ad_type.pricing.all %}
                         <div class="row mb-3">
                             <div class="col-4">
                                 <span class="duration-badge duration-{{ pricing.duration }}">
                                     {% if pricing.duration == 'daily' %}
-                                        <i class="fas fa-sun me-1"></i>Daily
+                                    <i class="fas fa-sun me-1"></i>Daily
                                     {% elif pricing.duration == 'weekly' %}
-                                        <i class="fas fa-calendar-week me-1"></i>Weekly
+                                    <i class="fas fa-calendar-week me-1"></i>Weekly
                                     {% elif pricing.duration == 'monthly' %}
-                                        <i class="fas fa-calendar me-1"></i>Monthly
+                                    <i class="fas fa-calendar me-1"></i>Monthly
                                     {% endif %}
                                 </span>
                             </div>
                             <div class="col-8">
                                 <div class="input-group">
                                     <span class="input-group-text">EGP</span>
-                                    <input 
-                                        type="number" 
-                                        class="form-control price-input" 
-                                        name="price_{{ pricing.duration }}"
-                                        value="{{ pricing.price }}"
-                                        min="0"
-                                        step="0.01"
-                                        data-original="{{ pricing.price }}"
-                                        onchange="markAsChanged(this)"
-                                    >
+                                    <input type="number" class="form-control price-input"
+                                        name="price_{{ pricing.duration }}" value="{{ pricing.price }}" min="0"
+                                        step="0.01" data-original="{{ pricing.price }}" onchange="markAsChanged(this)">
                                 </div>
                             </div>
                         </div>
                         {% endfor %}
-                        
+
                         <!-- Status Toggle -->
                         <div class="row mt-4">
                             <div class="col-12">
                                 <div class="form-check form-switch">
-                                    <input 
-                                        class="form-check-input" 
-                                        type="checkbox" 
-                                        id="active-{{ ad_type.id }}"
-                                        name="is_active"
-                                        {% if ad_type.is_active %}checked{% endif %}
-                                        onchange="toggleAdType({{ ad_type.id }})"
-                                    >
+                                    <input class="form-check-input" type="checkbox" id="active-{{ ad_type.id }}"
+                                        name="is_active" {% if ad_type.is_active %}checked{% endif %}
+                                        data-ad-type-id="{{ ad_type.id }}" class="ad-type-toggle">
                                     <label class="form-check-label" for="active-{{ ad_type.id }}">
                                         Active for Booking
                                     </label>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- Individual Save Button -->
                         <div class="row mt-3">
                             <div class="col-12">
-                                <button 
-                                    type="button" 
-                                    class="btn btn-primary btn-sm w-100" 
-                                    onclick="saveAdTypePricing({{ ad_type.id }})"
-                                    id="save-btn-{{ ad_type.id }}"
-                                    disabled
-                                >
+                                <button type="button" class="btn btn-primary btn-sm w-100 save-ad-type-btn"
+                                    data-ad-type-id="{{ ad_type.id }}" id="save-btn-{{ ad_type.id }}" disabled>
                                     <i class="fas fa-save me-2"></i>Save Changes
                                 </button>
                             </div>
@@ -377,16 +388,16 @@
                 <div class="card-body text-center py-5">
                     <i class="fas fa-tags text-muted mb-3" style="font-size: 48px;"></i>
                     <h4 class="text-muted">No Ad Types Found</h4>
-                    <p class="text-muted">Create ad types first to manage pricing.</p>
-                    <a href="{% url 'admin_panel:create_ad_type' %}" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>Create Ad Type
+                    <p class="text-muted">Ad types need to be created via Django admin or database migrations.</p>
+                    <a href="{% url 'admin_panel:ad_requirements' %}" class="btn btn-primary">
+                        <i class="fas fa-cog me-2"></i>Manage Ad Requirements
                     </a>
                 </div>
             </div>
         </div>
         {% endfor %}
     </div>
-    
+
     <!-- Bulk Pricing Tools -->
     <div class="row mt-5">
         <div class="col-12">
@@ -453,251 +464,270 @@
 
 {% block extra_js %}
 <script>
-let changedForms = new Set();
+    let changedForms = new Set();
 
-function markAsChanged(input) {
-    const form = input.closest('form');
-    const adTypeId = form.dataset.adType;
-    const saveBtn = document.getElementById(`save-btn-${adTypeId}`);
-    
-    changedForms.add(adTypeId);
-    saveBtn.disabled = false;
-    saveBtn.classList.remove('btn-primary');
-    saveBtn.classList.add('btn-warning');
-    saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Changes Pending';
-}
+    function markAsChanged(input) {
+        const form = input.closest('form');
+        const adTypeId = form.dataset.adType;
+        const saveBtn = document.getElementById(`save-btn-${adTypeId}`);
 
-function saveAdTypePricing(adTypeId) {
-    const form = document.getElementById(`pricing-form-${adTypeId}`);
-    const formData = new FormData(form);
-    
-    fetch(`/dashboard/api/ad-pricing/${adTypeId}/update/`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const saveBtn = document.getElementById(`save-btn-${adTypeId}`);
-            saveBtn.disabled = true;
-            saveBtn.classList.remove('btn-warning');
-            saveBtn.classList.add('btn-success');
-            saveBtn.innerHTML = '<i class="fas fa-check me-2"></i>Saved';
-            
-            changedForms.delete(adTypeId);
-            
-            // Reset button after 2 seconds
-            setTimeout(() => {
-                saveBtn.classList.remove('btn-success');
-                saveBtn.classList.add('btn-primary');
-                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Changes';
-            }, 2000);
-            
-            showToast('Pricing updated successfully!', 'success');
-        } else {
-            showToast('Error updating pricing: ' + data.message, 'error');
-        }
-    })
-    .catch(error => {
-        showToast('Error updating pricing: ' + error.message, 'error');
-    });
-}
-
-function saveAllPricing() {
-    if (changedForms.size === 0) {
-        showToast('No changes to save', 'info');
-        return;
+        changedForms.add(adTypeId);
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('btn-primary');
+        saveBtn.classList.add('btn-warning');
+        saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Changes Pending';
     }
-    
-    document.getElementById('confirm-message').textContent = 
-        `Are you sure you want to save all changes? (${changedForms.size} forms modified)`;
-    document.getElementById('confirm-action').onclick = () => {
-        changedForms.forEach(adTypeId => saveAdTypePricing(adTypeId));
-        $('#confirmModal').modal('hide');
-    };
-    $('#confirmModal').modal('show');
-}
 
-function resetAllPricing() {
-    document.getElementById('confirm-message').textContent = 
-        'Are you sure you want to reset all pricing to default values? This cannot be undone.';
-    document.getElementById('confirm-action').onclick = () => {
-        fetch('/dashboard/api/ad-pricing/reset/', {
+    function saveAdTypePricing(adTypeId) {
+        const form = document.getElementById(`pricing-form-${adTypeId}`);
+        const formData = new FormData(form);
+
+        fetch(`/dashboard/api/ad-pricing/${adTypeId}/update/`, {
             method: 'POST',
+            body: formData,
             headers: {
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             }
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                showToast('Error resetting pricing: ' + data.message, 'error');
-            }
-        });
-        $('#confirmModal').modal('hide');
-    };
-    $('#confirmModal').modal('show');
-}
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const saveBtn = document.getElementById(`save-btn-${adTypeId}`);
+                    saveBtn.disabled = true;
+                    saveBtn.classList.remove('btn-warning');
+                    saveBtn.classList.add('btn-success');
+                    saveBtn.innerHTML = '<i class="fas fa-check me-2"></i>Saved';
 
-function toggleAdType(adTypeId) {
-    const checkbox = document.getElementById(`active-${adTypeId}`);
-    const isActive = checkbox.checked;
-    
-    fetch(`/dashboard/api/ad-types/${adTypeId}/toggle/`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        },
-        body: JSON.stringify({ is_active: isActive })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showToast(`Ad type ${isActive ? 'activated' : 'deactivated'}`, 'success');
-        } else {
-            checkbox.checked = !isActive; // Revert checkbox
-            showToast('Error updating ad type: ' + data.message, 'error');
+                    changedForms.delete(adTypeId);
+
+                    // Reset button after 2 seconds
+                    setTimeout(() => {
+                        saveBtn.classList.remove('btn-success');
+                        saveBtn.classList.add('btn-primary');
+                        saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Save Changes';
+                    }, 2000);
+
+                    showToast('Pricing updated successfully!', 'success');
+                } else {
+                    showToast('Error updating pricing: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                showToast('Error updating pricing: ' + error.message, 'error');
+            });
+    }
+
+    function saveAllPricing() {
+        if (changedForms.size === 0) {
+            showToast('No changes to save', 'info');
+            return;
         }
-    });
-}
 
-function bulkIncrease() {
-    const percentage = document.getElementById('bulk-increase').value;
-    if (!percentage) return;
-    
-    applyBulkChange('increase', percentage);
-}
+        document.getElementById('confirm-message').textContent =
+            `Are you sure you want to save all changes? (${changedForms.size} forms modified)`;
+        document.getElementById('confirm-action').onclick = () => {
+            changedForms.forEach(adTypeId => saveAdTypePricing(adTypeId));
+            $('#confirmModal').modal('hide');
+        };
+        $('#confirmModal').modal('show');
+    }
 
-function bulkDecrease() {
-    const percentage = document.getElementById('bulk-decrease').value;
-    if (!percentage) return;
-    
-    applyBulkChange('decrease', percentage);
-}
+    function resetAllPricing() {
+        document.getElementById('confirm-message').textContent =
+            'Are you sure you want to reset all pricing to default values? This cannot be undone.';
+        document.getElementById('confirm-action').onclick = () => {
+            fetch('/dashboard/api/ad-pricing/reset/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        showToast('Error resetting pricing: ' + data.message, 'error');
+                    }
+                });
+            $('#confirmModal').modal('hide');
+        };
+        $('#confirmModal').modal('show');
+    }
 
-function setBasePrice() {
-    const basePrice = document.getElementById('base-price').value;
-    if (!basePrice) return;
-    
-    applyBulkChange('base', basePrice);
-}
+    function toggleAdType(adTypeId) {
+        const checkbox = document.getElementById(`active-${adTypeId}`);
+        const isActive = checkbox.checked;
 
-function applyBulkChange(type, value) {
-    document.getElementById('confirm-message').textContent = 
-        `Apply ${type} of ${value}${type === 'base' ? ' EGP' : '%'} to all prices?`;
-    document.getElementById('confirm-action').onclick = () => {
-        fetch('/dashboard/api/ad-pricing/bulk-update/', {
+        fetch(`/dashboard/api/ad-types/${adTypeId}/toggle/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
-            body: JSON.stringify({ type: type, value: value })
+            body: JSON.stringify({ is_active: isActive })
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                showToast('Error applying bulk changes: ' + data.message, 'error');
-            }
-        });
-        $('#confirmModal').modal('hide');
-    };
-    $('#confirmModal').modal('show');
-}
-
-function showToast(message, type) {
-    // Simple toast notification
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
-    toast.style.top = '20px';
-    toast.style.right = '20px';
-    toast.style.zIndex = '9999';
-    toast.textContent = message;
-    
-    document.body.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.remove();
-    }, 3000);
-}
-
-// Auto-save on page unload if there are unsaved changes
-window.addEventListener('beforeunload', function(e) {
-    if (changedForms.size > 0) {
-        e.preventDefault();
-        e.returnValue = '';
-        return 'You have unsaved changes. Are you sure you want to leave?';
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast(`Ad type ${isActive ? 'activated' : 'deactivated'}`, 'success');
+                } else {
+                    checkbox.checked = !isActive; // Revert checkbox
+                    showToast('Error updating ad type: ' + data.message, 'error');
+                }
+            });
     }
-});
 
-// Requirements Management Functions
-document.addEventListener('DOMContentLoaded', function() {
-    // Edit requirements buttons
-    document.querySelectorAll('.edit-requirements-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const requirementsSection = this.closest('.requirements-section');
-            const requirementsList = requirementsSection.querySelector('.requirements-list');
-            const editSection = requirementsSection.querySelector('.edit-requirements');
-            
-            requirementsList.style.display = 'none';
-            editSection.style.display = 'block';
-            this.style.display = 'none';
-        });
-    });
-    
-    // Cancel requirements editing
-    document.querySelectorAll('.cancel-requirements').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const requirementsSection = this.closest('.requirements-section');
-            const requirementsList = requirementsSection.querySelector('.requirements-list');
-            const editSection = requirementsSection.querySelector('.edit-requirements');
-            const editBtn = requirementsSection.querySelector('.edit-requirements-btn');
-            
-            requirementsList.style.display = 'block';
-            editSection.style.display = 'none';
-            editBtn.style.display = 'inline-block';
-        });
-    });
-    
-    // Save requirements
-    document.querySelectorAll('.save-requirements').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const adTypeId = this.getAttribute('data-ad-type');
-            const textarea = this.closest('.edit-requirements').querySelector('.requirements-editor');
-            const requirements = textarea.value.split('\n').filter(req => req.trim() !== '');
-            
-            fetch('/dashboard/api/ad-types/' + adTypeId + '/requirements/', {
+    function bulkIncrease() {
+        const percentage = document.getElementById('bulk-increase').value;
+        if (!percentage) return;
+
+        applyBulkChange('increase', percentage);
+    }
+
+    function bulkDecrease() {
+        const percentage = document.getElementById('bulk-decrease').value;
+        if (!percentage) return;
+
+        applyBulkChange('decrease', percentage);
+    }
+
+    function setBasePrice() {
+        const basePrice = document.getElementById('base-price').value;
+        if (!basePrice) return;
+
+        applyBulkChange('base', basePrice);
+    }
+
+    function applyBulkChange(type, value) {
+        document.getElementById('confirm-message').textContent =
+            `Apply ${type} of ${value}${type === 'base' ? ' EGP' : '%'} to all prices?`;
+        document.getElementById('confirm-action').onclick = () => {
+            fetch('/dashboard/api/ad-pricing/bulk-update/', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                 },
-                body: JSON.stringify({ requirements: requirements })
+                body: JSON.stringify({ type: type, value: value })
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showToast('Requirements updated successfully!', 'success');
-                    // Reload the page to show updated requirements
-                    setTimeout(() => location.reload(), 1000);
-                } else {
-                    showToast('Failed to update requirements: ' + data.message, 'error');
-                }
-            })
-            .catch(error => {
-                showToast('Error updating requirements', 'error');
-                console.error('Error:', error);
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload();
+                    } else {
+                        showToast('Error applying bulk changes: ' + data.message, 'error');
+                    }
+                });
+            $('#confirmModal').modal('hide');
+        };
+        $('#confirmModal').modal('show');
+    }
+
+    function showToast(message, type) {
+        // Simple toast notification
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} position-fixed`;
+        toast.style.top = '20px';
+        toast.style.right = '20px';
+        toast.style.zIndex = '9999';
+        toast.textContent = message;
+
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.remove();
+        }, 3000);
+    }
+
+    // Auto-save on page unload if there are unsaved changes
+    window.addEventListener('beforeunload', function (e) {
+        if (changedForms.size > 0) {
+            e.preventDefault();
+            e.returnValue = '';
+            return 'You have unsaved changes. Are you sure you want to leave?';
+        }
+    });
+
+    // Ad Type Toggle Event Listeners
+    document.addEventListener('DOMContentLoaded', function () {
+        // Handle ad type toggle checkboxes
+        document.querySelectorAll('.ad-type-toggle').forEach(checkbox => {
+            checkbox.addEventListener('change', function () {
+                const adTypeId = this.getAttribute('data-ad-type-id');
+                toggleAdType(adTypeId);
+            });
+        });
+
+        // Handle save ad type buttons
+        document.querySelectorAll('.save-ad-type-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const adTypeId = this.getAttribute('data-ad-type-id');
+                saveAdTypePricing(adTypeId);
             });
         });
     });
-});
+
+    // Requirements Management Functions
+    document.addEventListener('DOMContentLoaded', function () {
+        // Edit requirements buttons
+        document.querySelectorAll('.edit-requirements-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const requirementsSection = this.closest('.requirements-section');
+                const requirementsList = requirementsSection.querySelector('.requirements-list');
+                const editSection = requirementsSection.querySelector('.edit-requirements');
+
+                requirementsList.style.display = 'none';
+                editSection.style.display = 'block';
+                this.style.display = 'none';
+            });
+        });
+
+        // Cancel requirements editing
+        document.querySelectorAll('.cancel-requirements').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const requirementsSection = this.closest('.requirements-section');
+                const requirementsList = requirementsSection.querySelector('.requirements-list');
+                const editSection = requirementsSection.querySelector('.edit-requirements');
+                const editBtn = requirementsSection.querySelector('.edit-requirements-btn');
+
+                requirementsList.style.display = 'block';
+                editSection.style.display = 'none';
+                editBtn.style.display = 'inline-block';
+            });
+        });
+
+        // Save requirements
+        document.querySelectorAll('.save-requirements').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const adTypeId = this.getAttribute('data-ad-type');
+                const textarea = this.closest('.edit-requirements').querySelector('.requirements-editor');
+                const requirements = textarea.value.split('\n').filter(req => req.trim() !== '');
+
+                fetch('/dashboard/api/ad-types/' + adTypeId + '/requirements/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                    },
+                    body: JSON.stringify({ requirements: requirements })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            showToast('Requirements updated successfully!', 'success');
+                            // Reload page to show updated requirements
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showToast('Failed to update requirements: ' + data.message, 'error');
+                        }
+                    })
+                    .catch(error => {
+                        showToast('Error updating requirements', 'error');
+                        console.error('Error:', error);
+                    });
+            });
+        });
+    });
 </script>
 {% endblock %}

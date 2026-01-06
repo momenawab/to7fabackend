@@ -56,17 +56,22 @@ def custom_exception_handler(exc, context):
         # Otherwise fall back to str(exc)
         error_message = getattr(exc, 'detail', str(exc))
         
-        # Build standard error response
-        standard_response = StandardResponse.error(
-            code=error_code,
-            message=error_message,
-            details=response.data if hasattr(response, 'data') else None,
-            status_code=response.status_code,
-            request_id=request_id
-        )
+        # Build standard error data structure
+        error_data = {
+            "success": False,
+            "error": {
+                "code": error_code,
+                "message": error_message,
+                "details": response.data if hasattr(response, 'data') else None
+            },
+            "request_id": request_id or str(__import__('uuid').uuid4())
+        }
         
-        # Update response with standard format
-        response.data = standard_response.data
-        response.status_code = standard_response.status_code
+        # Return DRF Response with standard format
+        from rest_framework.response import Response
+        return Response(
+            error_data,
+            status=response.status_code
+        )
     
     return response
