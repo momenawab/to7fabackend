@@ -17,10 +17,11 @@ from .serializers import (
 )
 from django.db.models import Q, Count
 from django.utils import timezone
+from custom_auth.services.lock_block import capability_required, CapabilityCode
 
 @api_view(['GET', 'POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])  # GET is public, POST requires authentication (handled in view)
+@permission_classes([AllowAny])  # GET is public, POST checked via capability_required decorator
+@capability_required(CapabilityCode.SELL)  # Apply block enforcement for product creation
 def product_list(request):
     """Get all products or create a new product"""
     if request.method == 'GET':
@@ -358,6 +359,7 @@ def category_detail(request, pk):
 
 @api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
+@capability_required(CapabilityCode.SELL)  # Apply block enforcement for product creation
 def seller_products(request):
     """Get all products for the authenticated seller or create a new product"""
     # Check if the user is a seller (artist or store)

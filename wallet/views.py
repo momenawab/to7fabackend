@@ -14,6 +14,7 @@ from .serializers import (
 )
 from decimal import Decimal
 import uuid
+from custom_auth.services.lock_block import capability_required, CapabilityCode
 
 
 def get_client_info(request):
@@ -135,6 +136,7 @@ def deposit_funds(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsAdminUser])
+@capability_required(CapabilityCode.WITHDRAW)  # Apply block enforcement for withdrawals
 def withdraw_funds(request):
     """
     Withdraw funds from wallet (admin only).

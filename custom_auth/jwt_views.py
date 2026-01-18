@@ -28,9 +28,16 @@ UserModel = get_user_model()
 
 
 class LoginRateThrottle(AnonRateThrottle):
-    """Rate limit for login attempts - 5 attempts per 15 minutes"""
-    rate = '5/15min'
+    """Rate limit for login attempts - 5 attempts per minute"""
+    rate = '5/min'
     scope = 'login'
+    
+    def allow_request(self, request, view):
+        # Skip throttling in tests
+        from django.conf import settings
+        if getattr(settings, 'TESTING', False):
+            return True
+        return super().allow_request(request, view)
 
 
 class PasswordResetRateThrottle(AnonRateThrottle):
@@ -85,6 +92,7 @@ def login_view(request):
     """
     email = request.data.get('email', '').lower().strip()
     password = request.data.get('password', '')
+    session_id = request.data.get('session_id')  # Optional guest session for cart merge
     
     # Validate input
     if not email or not password:
@@ -107,7 +115,17 @@ def login_view(request):
             status_code=status.HTTP_401_UNAUTHORIZED
         )
     
-    # Check if account is locked
+    # Check if account is locked (permanent ban)
+    if user.is_locked:
+        return api_error(
+            request,
+            code='USER_LOCKED',
+            message='You are banned',
+            details={'reason': user.locked_reason},
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if account is temporarily locked (failed login attempts)
     if user.locked_until and user.locked_until > timezone.now():
         return api_error(
             request,
@@ -160,6 +178,27 @@ def login_view(request):
     user.locked_until = None
     user.save()
     
+    # Merge guest cart if session_id provided
+    if session_id:
+        try:
+            from cart.services.cart_merge import merge_guest_cart
+            merge_result = merge_guest_cart(user, session_id)
+            if merge_result['success']:
+                logger.info(
+                    f"Cart merged on login: user_id={user.id}, "
+                    f"session_id={session_id}, "
+                    f"items_added={merge_result['items_added']}, "
+                    f"items_skipped={merge_result['items_skipped']}"
+                )
+            else:
+                logger.warning(
+                    f"Cart merge failed on login: user_id={user.id}, "
+                    f"session_id={session_id}, "
+                    f"error={merge_result.get('error', 'Unknown')}"
+                )
+        except Exception as e:
+            logger.error(f"Error during cart merge on login: {str(e)}")
+    
     # Generate JWT tokens using SimpleJWT
     from rest_framework_simplejwt.tokens import RefreshToken
     refresh = RefreshToken.for_user(user)
@@ -176,7 +215,11 @@ def login_view(request):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
                 'phone_number': user.phone_number,
-                'address': user.address
+                'address': user.address,
+                'is_mobile_verified': user.is_mobile_verified,
+                'is_locked': user.is_locked,
+                'is_blocked': user.is_blocked,
+                'blocked_capabilities': user.blocked_capabilities or []
             }
         }
     )

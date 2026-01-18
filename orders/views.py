@@ -16,6 +16,7 @@ from django.db import transaction
 from django.db.models import Q
 from decimal import Decimal
 import logging
+from custom_auth.services.verification import verification_required
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def order_detail(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@verification_required
 def create_order(request):
     """
     Create a new order atomically.
