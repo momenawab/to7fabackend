@@ -377,3 +377,12 @@ APNS_TEAM_ID = os.getenv('APNS_TEAM_ID', '')  # Your Apple Team ID
 APNS_BUNDLE_ID = os.getenv('APNS_BUNDLE_ID', 'com.to7fa.app')
 APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')  # Path to your APNs .p8 key file
 APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True').lower() == 'true'  # False for production
+
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/2')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/2')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Africa/Cairo'
+CELERY_ENABLE_UTC = True

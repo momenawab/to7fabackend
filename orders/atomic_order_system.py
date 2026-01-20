@@ -28,62 +28,120 @@ logger = logging.getLogger(__name__)
 class OrderStateMachine:
     """
     Enforces strict order state transitions.
-    
-    VALID TRANSITIONS:
-    - PENDING -> PAID (payment captured)
-    - PENDING -> CANCELLED (user cancelled, payment timeout)
-    - PAID -> SHIPPED (seller shipped)
-    - PAID -> CANCELLED (refund required)
-    - SHIPPED -> COMPLETED (delivery confirmed)
-    - CANCELLED -> (no transitions allowed)
-    - COMPLETED -> (no transitions allowed)
+
+    VALID TRANSITIONS (Extended):
+    - pending_payment -> paid (payment captured)
+    - pending_payment -> cancelled (user cancelled, payment timeout)
+    - pending_payment -> failed (payment failed)
+    - cod_pending -> processing (seller acknowledged)
+    - cod_pending -> cancelled (user cancelled)
+    - paid -> processing (seller acknowledged)
+    - paid -> cancelled (refund required)
+    - paid -> refunded (refund processed)
+    - processing -> shipped (order dispatched)
+    - processing -> cancelled (refund required)
+    - processing -> refunded (refund processed)
+    - shipped -> delivered (delivery confirmed)
+    - shipped -> refunded (return/dispute refund)
+    - delivered -> completed (order fulfilled)
+    - delivered -> refunded (return/dispute refund)
+    - Terminal states (no transitions): completed, cancelled, refunded, failed
     """
-    
+
     VALID_TRANSITIONS = {
-        'pending': ['paid', 'cancelled'],
-        'paid': ['shipped', 'cancelled'],
-        'shipped': ['completed'],
+        'pending_payment': ['paid', 'cancelled', 'failed'],
+        'cod_pending': ['processing', 'cancelled'],
+        'paid': ['processing', 'cancelled', 'refunded'],
+        'processing': ['shipped', 'cancelled', 'refunded'],
+        'shipped': ['delivered', 'refunded'],
+        'delivered': ['completed', 'refunded'],
         'cancelled': [],
         'completed': [],
+        'refunded': [],
+        'failed': [],
     }
-    
+
     @classmethod
     def validate_transition(cls, current_status: str, new_status: str) -> bool:
         """
         Validate if a state transition is allowed.
-        
+
         Args:
             current_status: Current order status
             new_status: Desired new status
-            
+
         Returns:
             True if transition is valid, False otherwise
-            
+
         Raises:
             ValueError: If transition is invalid
         """
         if current_status == new_status:
             return True  # No-op transition is allowed
-            
+
         valid_next_states = cls.VALID_TRANSITIONS.get(current_status, [])
-        
+
         if new_status not in valid_next_states:
             raise ValueError(
                 f"Invalid state transition from '{current_status}' to '{new_status}'. "
                 f"Valid transitions: {valid_next_states}"
             )
-        
+
         return True
-    
+
+    @classmethod
+    def is_terminal(cls, status: str) -> bool:
+        """
+        Check if a state is terminal (cannot transition further).
+
+        Args:
+            status: Order status to check
+
+        Returns:
+            True if status is terminal, False otherwise
+        """
+        return status in ['completed', 'cancelled', 'refunded', 'failed']
+
+    @classmethod
+    def get_initial_state(cls, payment_method: str) -> str:
+        """
+        Get the initial order state based on payment method.
+
+        Args:
+            payment_method: Payment method (cod, wallet, instapay, credit_card)
+
+        Returns:
+            Initial order status string
+        """
+        if payment_method == 'cod':
+            return 'cod_pending'
+        return 'pending_payment'
+
     @classmethod
     def can_cancel(cls, status: str) -> bool:
-        """Check if order can be cancelled"""
-        return status in ['pending', 'paid']
-    
+        """
+        Check if order can be cancelled.
+
+        Args:
+            status: Current order status
+
+        Returns:
+            True if order can be cancelled, False otherwise
+        """
+        return status in ['pending_payment', 'cod_pending', 'paid', 'processing']
+
     @classmethod
     def requires_refund(cls, status: str) -> bool:
-        """Check if cancelling this status requires refund"""
-        return status == 'paid'
+        """
+        Check if cancelling this status requires refund.
+
+        Args:
+            status: Current order status
+
+        Returns:
+            True if refund is required, False otherwise
+        """
+        return status in ['paid', 'processing', 'shipped', 'delivered']
 
 
 class StockLockManager:
@@ -472,9 +530,12 @@ class AtomicOrderCreator:
         2. Locks all products involved
         3. Checks stock availability AFTER locks
         4. Reserves stock atomically
-        5. Creates order with PENDING status
-        6. Optionally reserves wallet payment
-        7. All-or-nothing: rolls back on any failure
+        5. Determines initial state based on payment method
+        6. Calculates payment timeout for non-COD orders
+        7. Creates order with appropriate initial status
+        8. Creates order items
+        9. Optionally reserves wallet payment
+        10. All-or-nothing: rolls back on any failure
         
         Args:
             user: User object
@@ -623,19 +684,30 @@ class AtomicOrderCreator:
                 except Product.DoesNotExist:
                     raise ValueError(f"Product {item['product'].id} not found")
         
-        # Step 4: Create order
+        # Step 4: Determine initial state based on payment method
+        initial_status = OrderStateMachine.get_initial_state(payment_method)
+        
+        # Step 5: Calculate payment timeout for non-COD orders
+        payment_timeout_at = None
+        if payment_method != 'cod':
+            from django.utils import timezone
+            from datetime import timedelta
+            payment_timeout_at = timezone.now() + timedelta(minutes=15)
+        
+        # Step 6: Create order
         order = Order.objects.create(
             user=user,
             total_amount=total_amount,
             shipping_address=shipping_address,
             shipping_cost=shipping_cost,
             payment_method=payment_method,
-            status='pending',
+            status=initial_status,
             payment_status=False,
-            idempotency_key=idempotency_key
+            idempotency_key=idempotency_key,
+            payment_timeout_at=payment_timeout_at
         )
         
-        # Step 5: Create order items
+        # Step 7: Create order items
         for item in validated_items:
             OrderItem.objects.create(
                 order=order,
@@ -645,7 +717,7 @@ class AtomicOrderCreator:
                 seller=item['product'].seller
             )
         
-        # Step 6: Reserve wallet payment if requested
+        # Step 8: Reserve wallet payment if requested
         payment_tx = None
         if use_wallet_payment:
             try:
@@ -679,7 +751,7 @@ class AtomicOrderCreator:
         1. Validates order belongs to user
         2. Validates order can be cancelled
         3. Releases all reserved stock
-        4. Refunds payment if applicable
+        4. Refunds payment if order was paid (not for COD orders)
         5. Updates order status to CANCELLED
         6. All-or-nothing: rolls back on any failure
         
@@ -708,10 +780,8 @@ class AtomicOrderCreator:
         
         # Release stock for all items
         for item in order.items.all():
-            # Determine variant_id from item
-            variant_id = None
-            # Note: You'll need to add variant_id field to OrderItem model
-            # For now, we'll use product stock only
+            # Get variant_id from OrderItem
+            variant_id = item.variant_id
             
             StockLockManager.release_stock(
                 product_id=item.product.id,
@@ -719,7 +789,7 @@ class AtomicOrderCreator:
                 variant_id=variant_id
             )
         
-        # Refund payment if order was paid
+        # Refund payment if order was paid (not COD orders)
         if order.status == 'paid':
             success, refund_tx, error = WalletOrderCoordinator.release_payment(
                 order_id=order_id,
@@ -730,10 +800,54 @@ class AtomicOrderCreator:
             if not success:
                 # This shouldn't happen, but log it
                 logger.error(f"Failed to refund payment for order {order_id}: {error}")
+        elif order.payment_method == 'cod':
+            # COD orders don't require refund - no payment was made
+            logger.info(f"COD order {order_id} cancelled - no refund needed")
         
         # Update order status
         order.status = 'cancelled'
         order.save()
         
         logger.info(f"Cancelled order {order_id} by user {user.id}")
+        return (True, order, None)
+    
+    @staticmethod
+    @transaction.atomic
+    def confirm_cod_delivery(order_id: int) -> Tuple:
+        """
+        Confirm COD order delivery and mark as paid.
+        
+        For COD orders, delivery confirms payment collection.
+        This method:
+        1. Validates order is a COD order in 'delivered' status
+        2. Sets payment_status to True
+        3. Transitions order to 'completed'
+        
+        Args:
+            order_id: Order ID to confirm delivery for
+            
+        Returns:
+            Tuple of (success: bool, order: Order, error: str)
+        """
+        from .models import Order
+        
+        # Get order with lock
+        try:
+            order = Order.objects.select_for_update().get(id=order_id)
+        except Order.DoesNotExist:
+            return (False, None, f"Order {order_id} not found")
+        
+        # Validate order is COD and in delivered status
+        if order.payment_method != 'cod':
+            return (False, None, f"Order {order_id} is not a COD order")
+        
+        if order.status != 'delivered':
+            return (False, None, f"Order {order_id} must be in 'delivered' status to confirm payment")
+        
+        # Mark as paid
+        order.payment_status = True
+        order.status = 'completed'
+        order.save()
+        
+        logger.info(f"Confirmed COD delivery for order {order_id}, marked as paid and completed")
         return (True, order, None)
