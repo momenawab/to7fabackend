@@ -21,14 +21,7 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 # Load task modules from all registered Django apps.
 app.autodiscover_tasks()
 
-# Celery beat schedule for periodic tasks
-app.conf.beat_schedule = {
-    # Check for payment timeouts every minute
-    'check-payment-timeouts': {
-        'task': 'orders.tasks.check_payment_timeouts',
-        'schedule': 60.0,  # Run every 60 seconds
-    },
-}
+# Celery beat schedule is configured in settings.py via CELERY_BEAT_SCHEDULE
 
 # Celery configuration options
 app.conf.update(

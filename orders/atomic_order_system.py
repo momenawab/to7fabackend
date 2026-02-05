@@ -303,6 +303,39 @@ class StockLockManager:
             except Product.DoesNotExist:
                 logger.error(f"Product {product_id} not found")
                 return False
+    
+    @staticmethod
+    @transaction.atomic
+    def commit_stock(order_id: int) -> bool:
+        """
+        Commit reserved stock for an order (mark as permanently decremented).
+        
+        This method:
+        1. Updates reservation_status to 'committed' for all order items
+        2. No stock quantity changes (stock already decremented during reservation)
+        
+        Args:
+            order_id: ID of the order to commit stock for
+            
+        Returns:
+            True if stock was successfully committed
+        """
+        from .models import OrderItem
+        
+        try:
+            # Get all order items and update their reservation status
+            order_items = OrderItem.objects.filter(order_id=order_id)
+            
+            for item in order_items:
+                item.reservation_status = 'committed'
+                item.save()
+            
+            logger.info(f"Committed stock for order {order_id} - {order_items.count()} items marked as committed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to commit stock for order {order_id}: {e}")
+            return False
 
 
 class WalletOrderCoordinator:
@@ -497,6 +530,116 @@ class WalletOrderCoordinator:
         order.save()
         
         logger.info(f"Refunded {payment_tx.amount} to wallet {wallet.id} for order {order_id}")
+        return (True, refund_tx, None)
+
+    @staticmethod
+    @transaction.atomic
+    def refund_payment(
+        order_id: int,
+        idempotency_key: str,
+        refund_reason: str = None
+    ) -> Tuple:
+        """
+        Process refund for paid orders (return/dispute scenario).
+        
+        Creates a refund transaction, credits wallet, releases stock,
+        and marks original payment as refunded.
+        
+        This is used for refunds (return/dispute), not for cancellations.
+        
+        Args:
+            order_id: Order ID
+            idempotency_key: Unique key for idempotency
+            refund_reason: Optional reason for refund
+            
+        Returns:
+            Tuple of (success: bool, refund_tx: Transaction, error: str)
+        """
+        from wallet.models import Wallet, Transaction
+        from .models import Order, OrderItem
+        
+        # Get order
+        try:
+            order = Order.objects.select_for_update().get(id=order_id)
+        except Order.DoesNotExist:
+            return (False, None, f"Order {order_id} not found")
+        
+        # Validate order has been paid (not COD or pending)
+        if order.payment_method == 'cod':
+            return (False, None, f"Cannot refund COD order {order_id} - no payment was made")
+        
+        # Get completed payment transaction
+        try:
+            payment_tx = Transaction.objects.select_for_update().get(
+                reference_id=str(order_id),
+                transaction_type='payment',
+                status='completed'
+            )
+        except Transaction.DoesNotExist:
+            return (False, None, f"No completed payment found for order {order_id}")
+        
+        # Check idempotency for refund
+        if Transaction.objects.filter(
+            reference_id=str(order_id),
+            transaction_type='refund',
+            idempotency_key=idempotency_key
+        ).exists():
+            existing_refund = Transaction.objects.get(
+                reference_id=str(order_id),
+                transaction_type='refund',
+                idempotency_key=idempotency_key
+            )
+            return (True, existing_refund, None)
+        
+        # Get wallet
+        wallet = Wallet.objects.select_for_update().get(id=payment_tx.wallet.id)
+        
+        # Mark original payment as refunded
+        payment_tx.status = 'refunded'
+        payment_tx.save()
+        
+        # Create refund transaction
+        refund_tx = Transaction.objects.create(
+            wallet=wallet,
+            amount=payment_tx.amount,
+            transaction_type='refund',
+            reference_id=str(order_id),
+            description=refund_reason or f"Refund for order #{order_id}",
+            status='completed',
+            balance_before=wallet.balance,
+            balance_after=wallet.balance + payment_tx.amount,
+            idempotency_key=idempotency_key
+        )
+        
+        # Update wallet balance
+        wallet.balance += payment_tx.amount
+        wallet.save()
+        
+        # Release stock for all items and update reservation_status
+        for item in OrderItem.objects.filter(order_id=order_id):
+            # Get variant_id from OrderItem
+            variant_id = item.variant_id
+            
+            # Release stock
+            StockLockManager.release_stock(
+                product_id=item.product.id,
+                quantity=item.quantity,
+                variant_id=variant_id
+            )
+            
+            # Update reservation status to released
+            item.reservation_status = 'released'
+            item.save()
+        
+        # Update order status to 'refunded'
+        order.status = 'refunded'
+        order.save()
+        
+        logger.info(
+            f"Refunded {payment_tx.amount} to wallet {wallet.id} for order {order_id}. "
+            f"Reason: {refund_reason or 'Not specified'}. "
+            f"Stock released for {OrderItem.objects.filter(order_id=order_id).count()} items."
+        )
         return (True, refund_tx, None)
 
 
@@ -714,7 +857,8 @@ class AtomicOrderCreator:
                 product=item['product'],
                 quantity=item['quantity'],
                 price=item['price'],
-                seller=item['product'].seller
+                seller=item['product'].seller,
+                reservation_status='reserved'
             )
         
         # Step 8: Reserve wallet payment if requested
@@ -743,12 +887,12 @@ class AtomicOrderCreator:
     
     @staticmethod
     @transaction.atomic
-    def cancel_order(order_id: int, user) -> Tuple:
+    def cancel_order(order_id: int, user=None, reason: str = None) -> Tuple:
         """
         Cancel an order atomically with proper rollback.
         
         This method:
-        1. Validates order belongs to user
+        1. Validates order belongs to user (if user provided)
         2. Validates order can be cancelled
         3. Releases all reserved stock
         4. Refunds payment if order was paid (not for COD orders)
@@ -757,7 +901,8 @@ class AtomicOrderCreator:
         
         Args:
             order_id: Order ID to cancel
-            user: User requesting cancellation
+            user: User requesting cancellation (None for system-initiated)
+            reason: Optional reason for cancellation
             
         Returns:
             Tuple of (success: bool, order: Order, error: str)
@@ -770,31 +915,37 @@ class AtomicOrderCreator:
         except Order.DoesNotExist:
             return (False, None, f"Order {order_id} not found")
         
-        # Validate ownership
-        if order.user != user:
+        # Validate ownership (skip for system-initiated cancellations)
+        if user is not None and order.user != user:
             return (False, None, "You don't have permission to cancel this order")
         
         # Validate state
         if not OrderStateMachine.can_cancel(order.status):
             return (False, None, f"Cannot cancel order with status '{order.status}'")
         
-        # Release stock for all items
+        # Release stock for all items and update reservation_status
         for item in order.items.all():
             # Get variant_id from OrderItem
             variant_id = item.variant_id
             
+            # Release stock
             StockLockManager.release_stock(
                 product_id=item.product.id,
                 quantity=item.quantity,
                 variant_id=variant_id
             )
+            
+            # Update reservation status to released
+            item.reservation_status = 'released'
+            item.save()
         
         # Refund payment if order was paid (not COD orders)
         if order.status == 'paid':
+            refund_reason = reason or f"Order #{order_id} cancelled by user"
             success, refund_tx, error = WalletOrderCoordinator.release_payment(
                 order_id=order_id,
                 idempotency_key=order.idempotency_key or f"cancel_{order.id}",
-                refund_reason=f"Order #{order_id} cancelled by user"
+                refund_reason=refund_reason
             )
             
             if not success:
@@ -808,7 +959,12 @@ class AtomicOrderCreator:
         order.status = 'cancelled'
         order.save()
         
-        logger.info(f"Cancelled order {order_id} by user {user.id}")
+        log_message = f"Cancelled order {order_id}"
+        if user is not None:
+            log_message += f" by user {user.id}"
+        if reason:
+            log_message += f". Reason: {reason}"
+        logger.info(log_message)
         return (True, order, None)
     
     @staticmethod
@@ -820,8 +976,9 @@ class AtomicOrderCreator:
         For COD orders, delivery confirms payment collection.
         This method:
         1. Validates order is a COD order in 'delivered' status
-        2. Sets payment_status to True
-        3. Transitions order to 'completed'
+        2. Commits stock (marks reservation_status as 'committed')
+        3. Sets payment_status to True
+        4. Transitions order to 'completed'
         
         Args:
             order_id: Order ID to confirm delivery for
@@ -844,6 +1001,9 @@ class AtomicOrderCreator:
         if order.status != 'delivered':
             return (False, None, f"Order {order_id} must be in 'delivered' status to confirm payment")
         
+        # Commit stock (mark reservation_status as 'committed')
+        StockLockManager.commit_stock(order_id=order_id)
+        
         # Mark as paid
         order.payment_status = True
         order.status = 'completed'
@@ -851,3 +1011,54 @@ class AtomicOrderCreator:
         
         logger.info(f"Confirmed COD delivery for order {order_id}, marked as paid and completed")
         return (True, order, None)
+
+    @staticmethod
+    @transaction.atomic
+    def update_order_status_from_items(order_id: int) -> Tuple:
+        """
+        Update order status based on aggregated item statuses.
+
+        This method:
+        1. Gets the order with lock
+        2. Aggregates status from all item statuses
+        3. Validates the transition is allowed
+        4. Updates the order status
+
+        Args:
+            order_id: Order ID to update
+
+        Returns:
+            Tuple of (success: bool, order: Order, error: str)
+        """
+        from .models import Order
+        from .services.multi_seller import aggregate_order_status
+
+        try:
+            # Get order with lock
+            order = Order.objects.select_for_update().get(id=order_id)
+
+            # Get aggregated status from items
+            new_status = aggregate_order_status(order)
+
+            # Validate transition
+            OrderStateMachine.validate_transition(order.status, new_status)
+
+            # Update order status
+            order.status = new_status
+            order.save()
+
+            logger.info(
+                f"Updated order {order_id} status from '{order.status}' to '{new_status}' "
+                f"based on item aggregation"
+            )
+
+            return (True, order, None)
+
+        except Order.DoesNotExist:
+            return (False, None, f"Order {order_id} not found")
+        except ValueError as e:
+            # Invalid state transition
+            return (False, None, str(e))
+        except Exception as e:
+            logger.error(f"Failed to update order {order_id} status from items: {e}")
+            return (False, None, f"Failed to update order status: {str(e)}")

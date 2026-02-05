@@ -386,3 +386,11 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Africa/Cairo'
 CELERY_ENABLE_UTC = True
+
+# Celery Beat Schedule for periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    'check-payment-timeouts': {
+        'task': 'orders.tasks.check_payment_timeouts',
+        'schedule': 60.0,  # Every 60 seconds (1 minute)
+    },
+}
