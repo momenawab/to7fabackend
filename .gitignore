@@ -123,3 +123,12 @@ setup_database.sql
 .worktrees/
 .security-key
 logs/security/
+.claude/commands/speckit.analyze.md
+.claude/commands/speckit.checklist.md
+.claude/commands/speckit.clarify.md
+.claude/commands/speckit.constitution.md
+.claude/commands/speckit.implement.md
+.claude/commands/speckit.plan.md
+.claude/commands/speckit.specify.md
+.claude/commands/speckit.tasks.md
+.claude/commands/speckit.taskstoissues.md
