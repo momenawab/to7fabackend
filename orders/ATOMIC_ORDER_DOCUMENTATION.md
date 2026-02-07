@@ -39,51 +39,81 @@ This document describes a robust, atomic order system that prevents:
 │                        ORDER LIFECYCLE                               │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-    ┌──────────┐
-    │  PENDING  │  ← Stock reserved, awaiting payment
-    └─────┬────┘
-          │
-    ┌─────┴─────┐
+    ┌──────────────────┐
+    │ PENDING_PAYMENT  │  ← Stock reserved, awaiting online payment (15 min timeout)
+    └──────┬──────────┘
+           │
+    ┌──────┴──────┐
     │             │
     ▼             ▼
-┌─────────┐  ┌──────────┐
-│   PAID   │  │ CANCELLED │  ← Stock refunded, payment refunded
-└────┬────┘  └──────────┘
+┌──────────┐  ┌──────────────┐
+│   PAID   │  │ COD_PENDING  │  ← COD order awaiting seller acknowledgment
+└────┬─────┘  └──────┬───────┘
+     │               │
+     ▼               ▼
+┌─────────────┐  ┌─────────────┐
+│ PROCESSING  │  │   FAILED    │  ← Payment timeout or failure
+└──────┬──────┘  └─────────────┘
+       │
+       ▼
+┌──────────┐
+│  SHIPPED │  ← Order dispatched
+└────┬─────┘
      │
-     ├───────────┐
-     │           │
-     ▼           ▼
-┌──────────┐  ┌───────────┐
-│  SHIPPED │  │ CANCELLED │  ← Refund required
-└─────┬────┘  └───────────┘
-      │
-      ▼
-┌────────────┐
-│ COMPLETED  │  ← Order delivered and confirmed
-└────────────┘
+     ▼
+┌──────────┐
+│ DELIVERED │  ← Order received by customer
+└────┬─────┘
+     │
+     ▼
+┌──────────┐
+│ COMPLETED │  ← Order fulfilled, stock committed
+└──────────┘
+
+┌──────────┐  ┌──────────┐
+│ CANCELLED │  │ REFUNDED  │  ← Stock refunded, wallet credited
+└──────────┘  └──────────┘
 ```
 
 ### Valid State Transitions
 
 | From State | To State | Condition | Notes |
 |------------|-------------|------------|--------|
-| PENDING | PAID | Payment captured | Wallet debited |
-| PENDING | CANCELLED | User cancelled | Stock refunded |
-| PAID | SHIPPED | Seller shipped | Ready for delivery |
+| PENDING_PAYMENT | PAID | Payment captured | Wallet debited |
+| PENDING_PAYMENT | CANCELLED | User cancelled | Stock refunded |
+| PENDING_PAYMENT | FAILED | Payment timeout (15 min) | Auto-cancelled by Celery task |
+| COD_PENDING | PROCESSING | Seller acknowledged | Order being prepared |
+| COD_PENDING | CANCELLED | User cancelled | Stock refunded |
+| PAID | PROCESSING | Seller acknowledged | Order being prepared |
 | PAID | CANCELLED | User cancelled | Refund required |
-| SHIPPED | COMPLETED | Delivery confirmed | Order complete |
+| PAID | REFUNDED | Admin refund | Wallet credited |
+| PROCESSING | SHIPPED | Seller shipped | Tracking number added |
+| PROCESSING | CANCELLED | User cancelled | Refund required |
+| PROCESSING | REFUNDED | Admin refund | Wallet credited |
+| SHIPPED | DELIVERED | Delivery confirmed | Customer received order |
+| SHIPPED | CANCELLED | User cancelled | Refund required |
+| SHIPPED | REFUNDED | Admin refund | Wallet credited |
+| DELIVERED | COMPLETED | Customer confirmed | Stock committed permanently |
+| DELIVERED | REFUNDED | Admin refund | Wallet credited |
+| COMPLETED | REFUNDED | Admin refund | Wallet credited |
 | CANCELLED | - | No transitions | Terminal state |
-| COMPLETED | - | No transitions | Terminal state |
+| REFUNDED | - | No transitions | Terminal state |
+| FAILED | - | No transitions | Terminal state |
 
 ### State Machine Rules
 
 ```python
 VALID_TRANSITIONS = {
-    'pending': ['paid', 'cancelled'],
-    'paid': ['shipped', 'cancelled'],
-    'shipped': ['completed'],
+    'pending_payment': ['paid', 'cancelled', 'failed'],
+    'cod_pending': ['processing', 'cancelled'],
+    'paid': ['processing', 'cancelled', 'refunded'],
+    'processing': ['shipped', 'cancelled', 'refunded'],
+    'shipped': ['delivered', 'cancelled', 'refunded'],
+    'delivered': ['completed', 'refunded'],
+    'completed': ['refunded'],
     'cancelled': [],
-    'completed': [],
+    'refunded': [],
+    'failed': [],
 }
 ```
 
@@ -727,7 +757,10 @@ Final State:
 
 Create migration for new fields:
 - `Order.idempotency_key` (unique, indexed)
+- `Order.payment_timeout_at` (indexed)
 - `OrderItem.variant_id` (indexed)
+- `OrderItem.item_status` (indexed)
+- `OrderItem.reservation_status` (indexed)
 
 ### 2. Model Updates
 
@@ -735,7 +768,11 @@ Create migration for new fields:
 
 Changes:
 - Add `idempotency_key` field to `Order` model
+- Add `payment_timeout_at` field to `Order` model
 - Add `variant_id` field to `OrderItem` model
+- Add `item_status` field to `OrderItem` model
+- Add `reservation_status` field to `OrderItem` model
+- Update `STATUS_CHOICES` with 10 states
 - Add indexes for performance
 
 ### 3. New Module
@@ -743,7 +780,7 @@ Changes:
 **File**: `orders/atomic_order_system.py` (NEW)
 
 Contains:
-- `OrderStateMachine` - State transition validation
+- `OrderStateMachine` - State transition validation with 10 states
 - `StockLockManager` - Stock locking and reservation
 - `WalletOrderCoordinator` - Wallet-order coordination
 - `AtomicOrderCreator` - Main order creation logic
@@ -754,7 +791,10 @@ Contains:
 
 Changes:
 - Add `variant_id` field to `OrderItemSerializer`
+- Add `item_status` field to `OrderItemSerializer`
+- Add `reservation_status` field to `OrderItemSerializer`
 - Add `idempotency_key` field to `OrderSerializer`
+- Add `payment_timeout_at` field to `OrderSerializer`
 - Add `use_wallet_payment` field to `OrderSerializer`
 - Replace `create()` method to use `AtomicOrderCreator`
 
@@ -766,6 +806,11 @@ Changes:
 - Import atomic order system components
 - Update `create_order` to handle new fields
 - Update `cancel_order` to use atomic rollback
+- Add `acknowledge_order` endpoint (NEW)
+- Add `ship_order` endpoint (NEW)
+- Add `deliver_order` endpoint (NEW)
+- Add `complete_order` endpoint (NEW)
+- Add `refund_order` endpoint (NEW)
 - Add `capture_payment` endpoint (NEW)
 - Add `release_payment` endpoint (NEW)
 - Add `admin_complete_order` endpoint (NEW)
@@ -776,10 +821,29 @@ Changes:
 **File**: `orders/urls.py`
 
 Add new routes:
+- `/<int:pk>/acknowledge/`
+- `/<int:pk>/ship/`
+- `/<int:pk>/deliver/`
+- `/<int:pk>/complete/`
+- `/<int:pk>/refund/`
 - `/<int:pk>/capture-payment/`
 - `/<int:pk>/release-payment/`
 - `/states/`
 - `/<int:pk>/admin-complete/`
+
+### 7. Celery Task
+
+**File**: `orders/tasks.py`
+
+Add:
+- `check_payment_timeouts` Celery task for auto-cancelling expired orders
+
+### 8. Celery Beat Configuration
+
+**File**: `to7fabackend/settings.py`
+
+Add:
+- Celery beat schedule for `check_payment_timeouts` task
 
 ---
 
@@ -818,15 +882,101 @@ Response (201 Created):
     "id": 1001,
     "user": 1,
     "total_amount": 115.50,
-    "status": "pending",
+    "status": "pending_payment",
     "shipping_address": "123 Main St, City, Country",
     "shipping_cost": "15.50",
     "payment_method": "wallet",
     "payment_status": false,
+    "payment_timeout_at": "2025-12-31T23:15:00Z",
     "idempotency_key": "order_12345_abcde",
     "created_at": "2025-12-31T23:00:00Z",
     "updated_at": "2025-12-31T23:00:00Z",
     "items": [...]
+}
+```
+
+### Seller Acknowledge Order
+
+**POST** `/api/orders/<int:pk>/acknowledge/`
+
+Request Body: Empty
+
+Response (200 OK):
+```json
+{
+    "id": 1001,
+    "status": "processing",
+    ...
+}
+```
+
+### Seller Ship Order
+
+**POST** `/api/orders/<int:pk>/ship/`
+
+Request Body:
+```json
+{
+    "tracking_number": "TRK123456789"
+}
+```
+
+Response (200 OK):
+```json
+{
+    "id": 1001,
+    "status": "shipped",
+    ...
+}
+```
+
+### Confirm Delivery
+
+**POST** `/api/orders/<int:pk>/deliver/`
+
+Request Body: Empty
+
+Response (200 OK):
+```json
+{
+    "id": 1001,
+    "status": "delivered",
+    ...
+}
+```
+
+### Complete Order
+
+**POST** `/api/orders/<int:pk>/complete/`
+
+Request Body: Empty
+
+Response (200 OK):
+```json
+{
+    "id": 1001,
+    "status": "completed",
+    ...
+}
+```
+
+### Admin Refund Order
+
+**POST** `/api/orders/<int:pk>/refund/`
+
+Request Body:
+```json
+{
+    "reason": "Customer requested refund"
+}
+```
+
+Response (200 OK):
+```json
+{
+    "id": 1001,
+    "status": "refunded",
+    ...
 }
 ```
 
@@ -893,21 +1043,31 @@ Response (200 OK):
 ```json
 {
     "states": [
-        {"value": "pending", "label": "Pending"},
+        {"value": "pending_payment", "label": "Pending Payment"},
+        {"value": "cod_pending", "label": "COD Pending"},
         {"value": "paid", "label": "Paid"},
+        {"value": "processing", "label": "Processing"},
         {"value": "shipped", "label": "Shipped"},
+        {"value": "delivered", "label": "Delivered"},
         {"value": "completed", "label": "Completed"},
-        {"value": "cancelled", "label": "Cancelled"}
+        {"value": "cancelled", "label": "Cancelled"},
+        {"value": "refunded", "label": "Refunded"},
+        {"value": "failed", "label": "Failed"}
     ],
     "valid_transitions": {
-        "pending": ["paid", "cancelled"],
-        "paid": ["shipped", "cancelled"],
-        "shipped": ["completed"],
+        "pending_payment": ["paid", "cancelled", "failed"],
+        "cod_pending": ["processing", "cancelled"],
+        "paid": ["processing", "cancelled", "refunded"],
+        "processing": ["shipped", "cancelled", "refunded"],
+        "shipped": ["delivered", "cancelled", "refunded"],
+        "delivered": ["completed", "refunded"],
+        "completed": ["refunded"],
         "cancelled": [],
-        "completed": []
+        "refunded": [],
+        "failed": []
     },
-    "cancellable_states": ["pending", "paid"],
-    "refund_required_states": ["paid"]
+    "cancellable_states": ["pending_payment", "cod_pending", "paid", "processing", "shipped", "delivered"],
+    "refund_required_states": ["paid", "processing", "shipped", "delivered", "completed"]
 }
 ```
 
@@ -940,12 +1100,29 @@ Response (200 OK):
    - Payment refunded if order cancelled
    - No partial state commits
 
-5. **State Machine Validation**
-   - Explicit state transitions
+5. **Extended State Machine (10 States)**
+   - Explicit state transitions for all order lifecycles
+   - COD flow with `cod_pending` state
+   - Payment timeout with `failed` state
+   - Refund flow with `refunded` state
    - Prevents invalid state changes
-   - Clear rollback rules
 
-6. **No Silent Failures**
+6. **Stock Reservation Tracking**
+   - `reservation_status` field tracks stock lifecycle
+   - Transitions: `reserved` → `released`/`committed`
+   - Complete audit trail for stock movements
+
+7. **Multi-Seller Order Support**
+   - Per-item `item_status` tracking
+   - Order status aggregation across sellers
+   - Seller isolation for updates
+
+8. **Payment Timeout Automation**
+   - Celery task auto-cancels expired orders
+   - 15-minute timeout for pending payment orders
+   - Automatic stock and wallet release
+
+9. **No Silent Failures**
    - All errors explicit and logged
    - Client receives clear error messages
    - Audit trail in database
@@ -964,11 +1141,16 @@ Response (200 OK):
    - Insufficient balance
    - Network retries (idempotency)
    - Order cancellation with refund
+   - COD order flow
+   - Payment timeout handling
+   - Multi-seller order fulfillment
 
 3. **Monitoring**
    - Monitor transaction timeouts
    - Track rollback frequency
    - Alert on high lock contention
+   - Monitor Celery task execution
+   - Track payment timeout cancellations
 
 4. **Performance Considerations**
    - Keep transaction duration short
@@ -984,6 +1166,8 @@ Response (200 OK):
 | Lock contention | Medium | Short transactions, minimal locks |
 | Database load | Low | Proper indexing, connection pooling |
 | Idempotency collision | Very Low | UUID-based keys, unique constraint |
+| Payment timeout drift | Low | Celery beat scheduling with proper timezone handling |
+| Multi-seller race conditions | Low | Row-level locks on order and items |
 
 ---
 
@@ -995,7 +1179,11 @@ The atomic order system provides:
 ✅ **Duplicate Order Prevention** - Idempotency keys prevent retries creating duplicates
 ✅ **Financial Consistency** - Wallet-order atomicity ensures money ↔ order consistency
 ✅ **Complete Rollback** - Any failure triggers automatic rollback of all changes
-✅ **State Machine Validation** - Explicit transitions prevent invalid state changes
+✅ **Extended State Machine (10 States)** - Explicit transitions prevent invalid state changes
+✅ **Stock Reservation Tracking** - Complete audit trail with reservation_status
+✅ **Multi-Seller Order Support** - Per-item status tracking with aggregation
+✅ **Payment Timeout Automation** - Celery task auto-cancels expired orders
+✅ **COD Flow Support** - Distinct lifecycle for cash-on-delivery orders
 ✅ **No Silent Failures** - All errors explicit, logged, and communicated
 
 **Verdict: GO - Production Ready** ✅

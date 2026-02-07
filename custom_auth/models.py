@@ -13,6 +13,12 @@ class CustomUserManager(BaseUserManager):
         if not email:
             raise ValueError('The Email field must be set')
         email = self.normalize_email(email)
+
+        # Support both 'mobile' and 'phone_number' parameters
+        # 'mobile' is the spec-preferred name, 'phone_number' is the db field
+        if 'mobile' in extra_fields:
+            extra_fields['phone_number'] = extra_fields.pop('mobile')
+
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)

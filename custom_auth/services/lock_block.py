@@ -183,5 +183,50 @@ def get_blocked_capabilities(user):
     
     if user.is_blocked:
         return user.blocked_capabilities
-    
+
     return []
+
+
+def can_perform_action(user, action):
+    """
+    Check if a user can perform a specific action based on their state and capabilities.
+
+    Args:
+        user: User instance or None (for unauthenticated/guest)
+        action: str - Action/capability to check (e.g., 'BROWSE', 'SELL', 'CHECKOUT')
+
+    Returns:
+        dict: {
+            'allowed': bool,
+            'reason': str (if not allowed)
+        }
+
+    Logic per Spec 001:
+    - Locked user → cannot perform ANY action (reason: 'BANNED')
+    - Guest user → allowed only for specific actions (BROWSE, VIEW_PRODUCT, ADD_TO_CART)
+    - Unverified user → blocked from CHECKOUT, PAY, CREATE_ORDER (reason: 'VERIFICATION_REQUIRED')
+    - Blocked capability → deny ONLY that capability (reason: 'CAPABILITY_BLOCKED')
+    - All other cases → allowed
+    """
+    # Handle guest/unauthenticated users
+    if user is None or not user.is_authenticated:
+        guest_allowed_actions = ['BROWSE', 'VIEW_PRODUCT', 'ADD_TO_CART']
+        if action in guest_allowed_actions:
+            return {'allowed': True}
+        return {'allowed': False, 'reason': 'LOGIN_REQUIRED'}
+
+    # Check if user is locked (banned)
+    if user.is_locked:
+        return {'allowed': False, 'reason': 'BANNED'}
+
+    # Check mobile verification for restricted actions
+    restricted_actions = ['CHECKOUT', 'PAY', 'CREATE_ORDER']
+    if not user.is_mobile_verified and action in restricted_actions:
+        return {'allowed': False, 'reason': 'VERIFICATION_REQUIRED'}
+
+    # Check capability-based blocks
+    if user.is_blocked and action in user.blocked_capabilities:
+        return {'allowed': False, 'reason': 'CAPABILITY_BLOCKED'}
+
+    # Action is allowed
+    return {'allowed': True}

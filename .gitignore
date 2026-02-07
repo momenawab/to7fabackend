@@ -112,3 +112,23 @@ firebase-service-account.json
 *.bak
 *.swp
 setup_database.sql
+
+# Auto Claude data directory
+.auto-claude/
+
+# Auto Claude generated files
+.auto-claude-security.json
+.auto-claude-status
+.claude_settings.json
+.worktrees/
+.security-key
+logs/security/
+.claude/commands/speckit.analyze.md
+.claude/commands/speckit.checklist.md
+.claude/commands/speckit.clarify.md
+.claude/commands/speckit.constitution.md
+.claude/commands/speckit.implement.md
+.claude/commands/speckit.plan.md
+.claude/commands/speckit.specify.md
+.claude/commands/speckit.tasks.md
+.claude/commands/speckit.taskstoissues.md
