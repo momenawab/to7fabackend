@@ -22,6 +22,8 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Environment Configuration
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -318,7 +320,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [(os.getenv('REDIS_HOST', '127.0.0.1'), int(os.getenv('REDIS_PORT', '6379')))],
         },
     },
 }
@@ -369,7 +371,7 @@ EMAIL_TIMEOUT = 30
 # Push Notification Settings
 FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID')
 FCM_SERVER_KEY = None  # Using service account instead
-FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'firebase-service-account.json')
+FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, os.getenv('FCM_SERVICE_ACCOUNT_FILE', 'firebase-service-account.json'))
 
 # APNs Settings (iOS) - Add these when you have Apple Developer credentials
 APNS_KEY_ID = os.getenv('APNS_KEY_ID', '')  # Your APNs Key ID
