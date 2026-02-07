@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from api.helpers import api_response, api_error, api_success, api_created
 from .models import User, Customer, Artist, Store
 from .serializers import UserRegistrationSerializer, UserProfileSerializer, CustomerProfileSerializer, ArtistRegistrationSerializer, StoreRegistrationSerializer
 from django.db import IntegrityError, transaction
@@ -44,7 +45,6 @@ def register_user(request):
                 
                 # Prepare response data
                 response_data = {
-                    "message": "User registered successfully",
                     "user": {
                         "id": user.id,
                         "email": user.email,
@@ -56,7 +56,7 @@ def register_user(request):
                     }
                 }
                 
-                return Response(response_data, status=status.HTTP_201_CREATED)
+                return api_created(request, data=response_data, message="User registered successfully")
         except IntegrityError as e:
             logger.error(f"IntegrityError during registration: {str(e)}")
             error_msg = str(e)
@@ -77,7 +77,13 @@ def register_user(request):
     
     # Log validation errors
     logger.debug(f"Validation errors: {serializer.errors}")
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    return api_error(
+        request,
+        code='VALIDATION_ERROR',
+        message='Validation failed',
+        details=serializer.errors,
+        status_code=status.HTTP_400_BAD_REQUEST
+    )
 
 @api_view(['GET', 'PUT'])
 @permission_classes([IsAuthenticated])
@@ -87,14 +93,20 @@ def user_profile(request):
     
     if request.method == 'GET':
         serializer = UserProfileSerializer(user)
-        return Response(serializer.data)
+        return api_success(request, data=serializer.data)
     
     elif request.method == 'PUT':
         serializer = UserProfileSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return api_success(request, data=serializer.data)
+        return api_error(
+            request,
+            code='VALIDATION_ERROR',
+            message='Validation failed',
+            details=serializer.errors,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -111,14 +123,14 @@ def register_seller(request):
 def password_reset_request(request):
     """Request password reset"""
     # This will be implemented with serializers
-    return Response({"message": "Password reset email sent successfully"}, status=status.HTTP_200_OK)
+    return api_success(request, message="Password reset email sent successfully")
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def password_reset_confirm(request):
     """Confirm password reset"""
     # This will be implemented with serializers
-    return Response({"message": "Password reset successfully"}, status=status.HTTP_200_OK)
+    return api_success(request, message="Password reset successfully")
 
 class LoginView(ObtainAuthToken):
     """
@@ -130,7 +142,7 @@ class LoginView(ObtainAuthToken):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         token, created = Token.objects.get_or_create(user=user)
-        return Response({
+        return api_success(request, data={
             'token': token.key,
             'user_id': user.pk,
             'email': user.email,
@@ -147,9 +159,14 @@ def logout(request):
     """
     try:
         request.user.auth_token.delete()
-        return Response({"message": "Successfully logged out."}, status=status.HTTP_200_OK)
+        return api_success(request, message="Successfully logged out.")
     except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return api_error(
+            request,
+            code='INTERNAL_ERROR',
+            message=str(e),
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 class SellerApplicationView(APIView):
     """View for handling seller applications (artist or store)"""

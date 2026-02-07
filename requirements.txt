@@ -15,11 +15,7 @@ cryptography==43.0.3
 # Database Drivers
 # ==========================================
 mysqlclient==2.2.7
-PyMySQL==1.1.1
-
-# ==========================================
-# Image Processing
-# ==========================================
+pymysql
 pillow==11.2.1
 
 # ==========================================
@@ -32,21 +28,9 @@ python-dotenv==1.0.1
 # ==========================================
 channels==4.0.0
 channels-redis==4.2.0
-redis==5.2.1
-
-# ==========================================
-# Push Notifications
-# ==========================================
-requests==2.32.3
-firebase-admin==6.5.0
-
-# ==========================================
-# Production Servers
-# ==========================================
-gunicorn==23.0.0
-uvicorn[standard]==0.34.0
-
-# ==========================================
-# Monitoring and Health Checks
-# ==========================================
-django-health-check==3.18.3
+django-redis==5.4.0
+celery==5.3.6
+# Testing
+pytest-django==4.5.2
+# Push notification dependencies
+requests>=2.25.1

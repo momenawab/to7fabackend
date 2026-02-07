@@ -509,7 +509,7 @@ def update_store_priority(request, store_id):
         
         store.homepage_priority = priority
         store.save()
-        
+
         # Log admin activity
         AdminActivity.objects.create(
             admin=request.user,
@@ -517,7 +517,7 @@ def update_store_priority(request, store_id):
             description=f"Updated store priority: {store.store_name} -> {priority}",
             ip_address=request.META.get('REMOTE_ADDR')
         )
-        
+
         return Response({
             'success': True,
             'priority': store.homepage_priority,
@@ -527,4 +527,117 @@ def update_store_priority(request, store_id):
         return Response({
             'success': False,
             'message': 'Store not found'
-        }, status=status.HTTP_404_NOT_FOUND) 
+        }, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_otp(request):
+    """
+    Send OTP to user's mobile number for verification.
+    Subject to 60-second cooldown between requests.
+    """
+    from .serializers import SendOTPSerializer
+    from .services.verification import send_otp as send_otp_service
+
+    serializer = SendOTPSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'error': 'VALIDATION_ERROR',
+            'message': 'Invalid request data',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    mobile_number = serializer.validated_data['mobile_number']
+    result = send_otp_service(request.user, mobile_number)
+
+    if result.get('success'):
+        return Response(result, status=status.HTTP_200_OK)
+    else:
+        error_code = result.get('error')
+        if error_code == 'OTP_COOLDOWN':
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+        elif error_code == 'OTP_BLOCKED':
+            return Response(result, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def verify_otp(request):
+    """
+    Verify OTP code and mark mobile as verified.
+    After 3 failed attempts, user is permanently blocked from OTP.
+
+    Optional checkout_data parameter can be provided to automatically
+    create an order after successful verification.
+    """
+    from .serializers import VerifyOTPSerializer
+    from .services.verification import verify_otp as verify_otp_service
+    from .services.verification import (
+        get_pending_checkout,
+        clear_pending_checkout
+    )
+
+    serializer = VerifyOTPSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'error': 'VALIDATION_ERROR',
+            'message': 'Invalid request data',
+            'details': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    otp_code = serializer.validated_data['otp_code']
+    result = verify_otp_service(request.user, otp_code)
+
+    if result.get('success'):
+        # Check if there's pending checkout data to resume
+        pending_checkout = get_pending_checkout(request.user)
+
+        if pending_checkout:
+            # Clear pending checkout data
+            clear_pending_checkout(request.user)
+
+            # Attempt to create order with pending checkout data
+            try:
+                from orders.views import create_order
+                from django.test import RequestFactory
+
+                # Create a mock request with the pending checkout data
+                factory = RequestFactory()
+                mock_request = factory.post(
+                    '/api/v1/orders/create/',
+                    data=pending_checkout,
+                    content_type='application/json'
+                )
+                mock_request.user = request.user
+
+                # Call create_order directly
+                order_response = create_order(mock_request)
+
+                # If order creation was successful, include order data in response
+                if hasattr(order_response, 'status_code') and order_response.status_code in [200, 201]:
+                    import json
+                    order_data = json.loads(order_response.content)
+                    result['data']['order_created'] = True
+                    result['data']['order'] = order_data.get('data')
+                else:
+                    # Order creation failed, but verification succeeded
+                    result['data']['order_created'] = False
+                    result['data']['order_error'] = 'Failed to create order. Please try checkout again.'
+
+            except Exception as e:
+                logger.error(f"Error creating order after verification: {str(e)}", exc_info=True)
+                result['data']['order_created'] = False
+                result['data']['order_error'] = 'Failed to create order. Please try checkout again.'
+
+        return Response(result, status=status.HTTP_200_OK)
+    else:
+        error_code = result.get('error')
+        if error_code == 'OTP_BLOCKED':
+            return Response(result, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST) 

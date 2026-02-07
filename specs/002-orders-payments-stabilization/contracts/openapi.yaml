@@ -1,0 +1,431 @@
+openapi: 3.0.3
+info:
+  title: To7fa Orders & Payments API
+  description: API contract for order lifecycle, payments, and inventory management
+  version: 2.0.0
+  contact:
+    name: To7fa Backend Team
+
+servers:
+  - url: /api/v1
+    description: API v1
+
+tags:
+  - name: Orders
+    description: Order creation and management
+  - name: Payments
+    description: Payment operations
+  - name: Seller
+    description: Seller-specific order operations
+
+paths:
+  /orders/create/:
+    post:
+      tags: [Orders]
+      summary: Create a new order
+      description: |
+        Creates an order with stock reservation. 
+        - For wallet/online payments: Initial state is `pending_payment`
+        - For COD: Initial state is `cod_pending`
+        - Idempotent: Duplicate idempotency_key returns existing order
+      operationId: createOrder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '200':
+          description: Idempotent response - existing order returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Validation error (insufficient stock, invalid data)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication required
+        '403':
+          description: User locked or unverified
+
+  /orders/{orderId}/:
+    get:
+      tags: [Orders]
+      summary: Get order details
+      operationId: getOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '404':
+          description: Order not found
+
+  /orders/{orderId}/cancel/:
+    post:
+      tags: [Orders]
+      summary: Cancel an order
+      description: |
+        Cancels order and releases stock. 
+        - If payment captured: Triggers refund
+        - If COD: Just releases stock
+        - Only allowed in: pending_payment, paid, cod_pending states
+      operationId: cancelOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Cannot cancel order in current state
+        '403':
+          description: Not order owner
+
+  /orders/{orderId}/acknowledge/:
+    post:
+      tags: [Seller]
+      summary: Seller acknowledges order (→ PROCESSING)
+      description: |
+        Seller confirms they are processing the order.
+        Transitions order from `paid` or `cod_pending` to `processing`.
+      operationId: acknowledgeOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Invalid state transition
+        '403':
+          description: Not seller for this order
+
+  /orders/{orderId}/ship/:
+    post:
+      tags: [Seller]
+      summary: Seller marks order as shipped (→ SHIPPED)
+      description: |
+        Seller confirms order has been dispatched.
+        Transitions from `processing` to `shipped`.
+        For multi-seller orders: Updates seller's line items only.
+      operationId: shipOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tracking_number:
+                  type: string
+                  description: Optional shipping tracking number
+      responses:
+        '200':
+          description: Order marked as shipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Invalid state transition
+        '403':
+          description: Not seller for this order
+
+  /orders/{orderId}/deliver/:
+    post:
+      tags: [Orders]
+      summary: Confirm order delivery (→ DELIVERED)
+      description: |
+        Confirms order has been delivered to customer.
+        Transitions from `shipped` to `delivered`.
+        For COD orders: This implicitly confirms payment collection.
+      operationId: deliverOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order marked as delivered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Invalid state transition
+
+  /orders/{orderId}/complete/:
+    post:
+      tags: [Orders]
+      summary: Complete order (→ COMPLETED)
+      description: |
+        Marks order as fully completed.
+        Transitions from `delivered` to `completed`.
+        Commits stock permanently.
+      operationId: completeOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+
+  /orders/{orderId}/refund/:
+    post:
+      tags: [Payments]
+      summary: Process refund for order (→ REFUNDED)
+      description: |
+        Admin-only. Processes full refund for a paid order.
+        Returns funds to customer wallet.
+        Releases stock reservations.
+      operationId: refundOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Refund reason
+      responses:
+        '200':
+          description: Refund processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: Order cannot be refunded
+        '403':
+          description: Admin privileges required
+
+  /orders/states/:
+    get:
+      tags: [Orders]
+      summary: Get valid order states and transitions
+      operationId: getOrderStates
+      responses:
+        '200':
+          description: State machine definition
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  states:
+                    type: array
+                    items:
+                      type: string
+                  transitions:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    OrderCreateRequest:
+      type: object
+      required:
+        - items_data
+        - shipping_address
+        - payment_method
+      properties:
+        items_data:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - product_id
+              - quantity
+            properties:
+              product_id:
+                type: integer
+              quantity:
+                type: integer
+                minimum: 1
+              variant_id:
+                type: integer
+                nullable: true
+        shipping_address:
+          type: string
+        shipping_cost:
+          type: number
+          format: decimal
+          default: 0
+        payment_method:
+          type: string
+          enum: [wallet, cod, instapay, credit_card]
+        idempotency_key:
+          type: string
+          maxLength: 255
+          description: Unique key to prevent duplicate orders
+
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum:
+            - pending_payment
+            - cod_pending
+            - paid
+            - processing
+            - shipped
+            - delivered
+            - completed
+            - cancelled
+            - refunded
+            - failed
+        total_amount:
+          type: number
+          format: decimal
+        shipping_address:
+          type: string
+        shipping_cost:
+          type: number
+          format: decimal
+        payment_method:
+          type: string
+        payment_status:
+          type: boolean
+        payment_timeout_at:
+          type: string
+          format: date-time
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemResponse'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OrderItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        quantity:
+          type: integer
+        price:
+          type: number
+          format: decimal
+        seller_id:
+          type: integer
+        seller_name:
+          type: string
+        variant_id:
+          type: integer
+          nullable: true
+        item_status:
+          type: string
+          enum: [pending, processing, shipped, delivered, completed, cancelled]
+        reservation_status:
+          type: string
+          enum: [reserved, released, committed]
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional error context

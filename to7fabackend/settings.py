@@ -14,14 +14,10 @@ from pathlib import Path
 import os
 from datetime import timedelta
 from dotenv import load_dotenv
+from django.core.exceptions import ImproperlyConfigured
 
 # Load environment variables from .env file
 load_dotenv()
-
-# Force Django to use mysqlclient instead of PyMySQL
-import pymysql
-pymysql.version_info = (1, 4, 6, 'final', 0)
-pymysql.install_as_MySQLdb()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,22 +29,19 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
+# Application will fail fast if SECRET_KEY is not set
 SECRET_KEY = os.getenv('SECRET_KEY')
-if not SECRET_KEY:
-    if ENVIRONMENT == 'production':
-        raise ValueError("SECRET_KEY environment variable is required in production!")
-    else:
-        # Only use fallback in development
-        SECRET_KEY = 'django-insecure-dev-only-key-12345678'
+if SECRET_KEY is None:
+    raise ImproperlyConfigured(
+        "SECRET_KEY environment variable is required. "
+        "Set it in your .env file or environment."
+    )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+# DEBUG defaults to False for production safety
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-# Force DEBUG=False in production
-if ENVIRONMENT == 'production':
-    DEBUG = False
-
-# Parse ALLOWED_HOSTS from environment variable
+# Allowed hosts - comma-separated list from environment variable
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
@@ -61,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'sslserver',
     
     # Third-party apps
     'rest_framework',
@@ -87,10 +81,12 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'custom_auth.middleware.LockEnforcementMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'admin_panel.middleware.AdminPanelMiddleware',
     'admin_panel.middleware.AdminActivityMiddleware',
+    'api.middleware.request_id.RequestIDMiddleware',
 ]
 
 ROOT_URLCONF = 'to7fabackend.urls'
@@ -121,12 +117,12 @@ WSGI_APPLICATION = 'to7fabackend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.mysql'),
-        'NAME': os.getenv('DB_NAME', 'to7fa_db'),
-        'USER': os.getenv('DB_USER', 'django_user'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),  # No default - must be provided!
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '3306'),
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
@@ -134,12 +130,18 @@ DATABASES = {
     }
 }
 
-# Validate database password is set
-if not DATABASES['default']['PASSWORD']:
-    if ENVIRONMENT == 'production':
-        raise ValueError("DB_PASSWORD environment variable is required in production!")
-    else:
-        DATABASES['default']['PASSWORD'] = 'dev_password_123'
+# Validate database configuration
+if not all([
+    DATABASES['default']['NAME'],
+    DATABASES['default']['USER'],
+    DATABASES['default']['PASSWORD'],
+    DATABASES['default']['HOST'],
+    DATABASES['default']['PORT']
+]):
+    raise ImproperlyConfigured(
+        "Database configuration is incomplete. "
+        "Set DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, and DB_PORT in your .env file."
+    )
 
 
 
@@ -152,6 +154,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -188,18 +193,54 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# API Configuration
+API_VERSION = 'v1'
+API_BASE_URL = '/api'
+
+# Response Format Configuration
+USE_STANDARD_RESPONSE_FORMAT = True  # Feature flag for gradual rollout
+ENABLE_REQUEST_ID_TRACKING = True
+
+# Pagination Configuration
+DEFAULT_PAGE_SIZE = 20
+MAX_PAGE_SIZE = 100
+
+# Error Reporting Configuration
+INCLUDE_ERROR_DETAILS = DEBUG  # Only in development
+
 # Rest Framework settings
 REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'api.exceptions.custom_exception_handler',
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
         # SessionAuthentication disabled to avoid CSRF issues with mobile apps
-        'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10
+    'PAGE_SIZE': DEFAULT_PAGE_SIZE,
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+}
+
+# JWT Settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # 1 hour
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),  # 7 days
+    'ROTATE_REFRESH_TOKENS': True,  # Rotate refresh tokens
+    'BLACKLIST_AFTER_ROTATION': True,  # Blacklist old refresh tokens
+    'UPDATE_LAST_LOGIN': True,  # Update last login timestamp
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,  # Use same SECRET_KEY for JWT signing
+    'VERIFYING_KEY': SECRET_KEY,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
 }
 
 # Custom user model
@@ -208,9 +249,17 @@ AUTH_USER_MODEL = 'custom_auth.User'
 # Login URL
 LOGIN_URL = '/dashboard/login/'
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'True') == 'True'
-CORS_ALLOW_CREDENTIALS = os.getenv('CORS_ALLOW_CREDENTIALS', 'True') == 'True'
+# CORS settings - Use environment variable for allowed origins
+# Comma-separated list of allowed origins (e.g., https://to7fa.com,https://www.to7fa.com)
+# Application will fail fast if CORS_ALLOWED_ORIGINS is not set
+cors_origins = os.getenv('CORS_ALLOWED_ORIGINS')
+if cors_origins is None:
+    raise ImproperlyConfigured(
+        "CORS_ALLOWED_ORIGINS environment variable is required. "
+        "Set it in your .env file (comma-separated list of allowed origins)."
+    )
+CORS_ALLOWED_ORIGINS = cors_origins.split(',')
+CORS_ALLOW_CREDENTIALS = True
 
 # Additional CORS settings for proper UTF-8 handling
 CORS_ALLOW_HEADERS = [
@@ -225,14 +274,19 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+# CORS settings for security
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
 # Unicode and encoding settings
 DEFAULT_CHARSET = 'utf-8'
 FILE_CHARSET = 'utf-8'
-
-# Ensure proper Unicode handling in responses
-REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
-    'rest_framework.renderers.JSONRenderer',
-]
 
 # JSON encoder settings for proper Arabic text handling
 import json
@@ -244,21 +298,17 @@ class UnicodeJSONEncoder(DjangoJSONEncoder):
         kwargs['ensure_ascii'] = False
         super().__init__(**kwargs)
 
-# Configure JSON rendering to use Unicode
-REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'] = [
-    'products.renderers.UnicodeJSONRenderer',
-]
-
 # CSRF Settings for Admin Panel
 CSRF_COOKIE_NAME = 'csrftoken'
 CSRF_COOKIE_AGE = 31449600  # 1 year
 CSRF_COOKIE_DOMAIN = None
 CSRF_COOKIE_PATH = '/'
-CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False') == 'True'
+CSRF_COOKIE_SECURE = not DEBUG  # Automatically secure in production (when DEBUG=False)
 CSRF_COOKIE_HTTPONLY = False  # Must be False for JavaScript access
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000').split(',')
+csrf_origins = os.getenv('CSRF_TRUSTED_ORIGINS')
+CSRF_TRUSTED_ORIGINS = csrf_origins.split(',') if csrf_origins else []
 CSRF_USE_SESSIONS = False
 CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 
@@ -275,35 +325,74 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Cache configuration for rate limiting (DRF throttles require cache backend)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'KEY_PREFIX': 'to7fa_throttle',
+        'TIMEOUT': 300,
+    }
+}
+
+# Security Headers - Enable in production (when DEBUG=False)
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+
+# HSTS headers - Only enabled in production (when DEBUG=False)
+# HSTS should NOT be enabled in development as it breaks HTTP access
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+else:
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+
+# These security headers are safe in both development and production
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_X_FRAME_OPTIONS = 'DENY'
+
+# Email Settings
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@to7fa.com')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:8000')
+
+# Email Backend Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+EMAIL_TIMEOUT = 30
+
 # Push Notification Settings
-FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID', '')
+FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID')
 FCM_SERVER_KEY = None  # Using service account instead
 FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, os.getenv('FCM_SERVICE_ACCOUNT_FILE', 'firebase-service-account.json'))
 
 # APNs Settings (iOS) - Add these when you have Apple Developer credentials
-APNS_KEY_ID = os.getenv('APNS_KEY_ID', '')
-APNS_TEAM_ID = os.getenv('APNS_TEAM_ID', '')
+APNS_KEY_ID = os.getenv('APNS_KEY_ID', '')  # Your APNs Key ID
+APNS_TEAM_ID = os.getenv('APNS_TEAM_ID', '')  # Your Apple Team ID
 APNS_BUNDLE_ID = os.getenv('APNS_BUNDLE_ID', 'com.to7fa.app')
-APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')
-APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True') == 'True'
+APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')  # Path to your APNs .p8 key file
+APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True').lower() == 'true'  # False for production
 
-# Production Security Settings
-if ENVIRONMENT == 'production' or not DEBUG:
-    # Force HTTPS (but exempt health check endpoints)
-    SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'True') == 'True'
-    SECURE_REDIRECT_EXEMPT = [r'^health/$', r'^readiness/$', r'^liveness/$']  # Health checks exempt from SSL redirect
-    SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'True') == 'True'
-    CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'True') == 'True'
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/2')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/2')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Africa/Cairo'
+CELERY_ENABLE_UTC = True
 
-    # HSTS Settings
-    SECURE_HSTS_SECONDS = 31536000  # 1 year
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-
-    # Security Headers
-    X_FRAME_OPTIONS = 'DENY'
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_BROWSER_XSS_FILTER = True
-
-    # Proxy configuration (for EC2 behind load balancer)
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# Celery Beat Schedule for periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    'check-payment-timeouts': {
+        'task': 'orders.tasks.check_payment_timeouts',
+        'schedule': 60.0,  # Every 60 seconds (1 minute)
+    },
+}
