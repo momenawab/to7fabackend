@@ -26,8 +26,9 @@ from support.contact_views import (
 from rest_framework_simplejwt.views import TokenRefreshView
 
 # API v1 URL patterns
+# Note: This file is included under 'api/v1/' in the main urls.py,
+# so we don't add another 'v1/' prefix here
 urlpatterns = [
-    path('v1/', include([
         # Products endpoints (function-based views)
         path('products/', product_views.product_list, name='product-list'),
         path('products/<int:pk>/', product_views.product_detail, name='product-detail'),
@@ -190,5 +191,4 @@ urlpatterns = [
         path('support/contact/stats/', ContactStatsView.as_view(), name='support-contact-stats'),
         path('support/user/contacts/', UserContactListView.as_view(), name='support-user-contacts'),
         path('support/tickets/create/', support_views.create_ticket, name='support-ticket-create'),
-    ])),
 ]

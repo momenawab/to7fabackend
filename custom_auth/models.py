@@ -62,6 +62,25 @@ class User(AbstractUser):
     failed_login_attempts = models.PositiveIntegerField(default=0)
     last_failed_login = models.DateTimeField(blank=True, null=True)
     locked_until = models.DateTimeField(blank=True, null=True)
+    
+    # Mobile verification fields (T007)
+    is_mobile_verified = models.BooleanField(default=False)
+    mobile_verified_at = models.DateTimeField(blank=True, null=True)
+    
+    # Lock (BAN) fields (T008)
+    is_locked = models.BooleanField(default=False)
+    locked_at = models.DateTimeField(blank=True, null=True)
+    locked_reason = models.TextField(blank=True, null=True)
+    locked_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='locked_users')
+    
+    # Block (business restriction) fields (T009)
+    is_blocked = models.BooleanField(default=False)
+    blocked_capabilities = models.JSONField(default=list, blank=True)
+    blocked_reason = models.TextField(blank=True, null=True)
+    
+    # OTP verification fields (T010)
+    otp_failed_attempts = models.PositiveIntegerField(default=0)
+    otp_blocked_at = models.DateTimeField(blank=True, null=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -70,6 +89,26 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+    def save(self, *args, **kwargs):
+        """
+        Override save to reset mobile verification when phone number changes.
+        """
+        # Check if this is an update and phone_number is changing
+        if self.pk is not None:
+            try:
+                old_user = User.objects.get(pk=self.pk)
+                if old_user.phone_number != self.phone_number:
+                    # Phone number changed, reset verification
+                    self.is_mobile_verified = False
+                    self.mobile_verified_at = None
+                    self.otp_failed_attempts = 0
+                    self.otp_blocked_at = None
+            except User.DoesNotExist:
+                # New user, no reset needed
+                pass
+
+        super().save(*args, **kwargs)
 
 
 class Customer(models.Model):
@@ -184,5 +223,79 @@ class SellerApplication(models.Model):
     class Meta:
         ordering = ['-created_at']
     
+    def save(self, *args, **kwargs):
+        """
+        Override save to update user block status based on application status.
+        - Pending: Block SELL capability
+        - Approved: Unblock user and set user_type
+        - Rejected: Block SELL capability
+        """
+        # Check if this is an update and status is changing
+        if self.pk is not None:
+            try:
+                old_application = SellerApplication.objects.get(pk=self.pk)
+                old_status = old_application.status
+                new_status = self.status
+
+                # Update user based on status change
+                if old_status != new_status:
+                    if new_status == 'approved':
+                        # Approved: Unblock user and set user_type
+                        self.user.is_blocked = False
+                        self.user.blocked_capabilities = []
+                        self.user.blocked_reason = None
+                        self.user.user_type = self.seller_type
+                        self.user.save(update_fields=['is_blocked', 'blocked_capabilities', 'blocked_reason', 'user_type'])
+                    elif new_status == 'pending':
+                        # Pending: Block SELL capability
+                        self.user.is_blocked = True
+                        self.user.blocked_capabilities = ['SELL']
+                        self.user.blocked_reason = 'Seller application pending approval'
+                        self.user.save(update_fields=['is_blocked', 'blocked_capabilities', 'blocked_reason'])
+                    elif new_status == 'rejected':
+                        # Rejected: Block SELL capability
+                        self.user.is_blocked = True
+                        self.user.blocked_capabilities = ['SELL']
+                        self.user.blocked_reason = self.rejection_reason or 'Seller application rejected'
+                        self.user.save(update_fields=['is_blocked', 'blocked_capabilities', 'blocked_reason'])
+            except SellerApplication.DoesNotExist:
+                # New application, set initial block status
+                if self.status == 'pending':
+                    self.user.is_blocked = True
+                    self.user.blocked_capabilities = ['SELL']
+                    self.user.blocked_reason = 'Seller application pending approval'
+                    self.user.save(update_fields=['is_blocked', 'blocked_capabilities', 'blocked_reason'])
+        else:
+            # New application, set initial block status
+            if self.status == 'pending':
+                self.user.is_blocked = True
+                self.user.blocked_capabilities = ['SELL']
+                self.user.blocked_reason = 'Seller application pending approval'
+                self.user.save(update_fields=['is_blocked', 'blocked_capabilities', 'blocked_reason'])
+
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.seller_type.title()} Application: {self.business_name} ({self.user.email}) - {self.status}"
+
+
+class OTPVerification(models.Model):
+    """Model for tracking OTP verification requests"""
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='otp_verifications')
+    mobile_number = models.CharField(max_length=20)
+    otp_hash = models.CharField(max_length=128)  # PBKDF2 hash of OTP
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    attempt_count = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'used']),
+            models.Index(fields=['expires_at']),
+        ]
+    
+    def __str__(self):
+        return f"OTP for {self.mobile_number} - {'Used' if self.used else 'Active'}"

@@ -28,62 +28,120 @@ logger = logging.getLogger(__name__)
 class OrderStateMachine:
     """
     Enforces strict order state transitions.
-    
-    VALID TRANSITIONS:
-    - PENDING -> PAID (payment captured)
-    - PENDING -> CANCELLED (user cancelled, payment timeout)
-    - PAID -> SHIPPED (seller shipped)
-    - PAID -> CANCELLED (refund required)
-    - SHIPPED -> COMPLETED (delivery confirmed)
-    - CANCELLED -> (no transitions allowed)
-    - COMPLETED -> (no transitions allowed)
+
+    VALID TRANSITIONS (Extended):
+    - pending_payment -> paid (payment captured)
+    - pending_payment -> cancelled (user cancelled, payment timeout)
+    - pending_payment -> failed (payment failed)
+    - cod_pending -> processing (seller acknowledged)
+    - cod_pending -> cancelled (user cancelled)
+    - paid -> processing (seller acknowledged)
+    - paid -> cancelled (refund required)
+    - paid -> refunded (refund processed)
+    - processing -> shipped (order dispatched)
+    - processing -> cancelled (refund required)
+    - processing -> refunded (refund processed)
+    - shipped -> delivered (delivery confirmed)
+    - shipped -> refunded (return/dispute refund)
+    - delivered -> completed (order fulfilled)
+    - delivered -> refunded (return/dispute refund)
+    - Terminal states (no transitions): completed, cancelled, refunded, failed
     """
-    
+
     VALID_TRANSITIONS = {
-        'pending': ['paid', 'cancelled'],
-        'paid': ['shipped', 'cancelled'],
-        'shipped': ['completed'],
+        'pending_payment': ['paid', 'cancelled', 'failed'],
+        'cod_pending': ['processing', 'cancelled'],
+        'paid': ['processing', 'cancelled', 'refunded'],
+        'processing': ['shipped', 'cancelled', 'refunded'],
+        'shipped': ['delivered', 'refunded'],
+        'delivered': ['completed', 'refunded'],
         'cancelled': [],
         'completed': [],
+        'refunded': [],
+        'failed': [],
     }
-    
+
     @classmethod
     def validate_transition(cls, current_status: str, new_status: str) -> bool:
         """
         Validate if a state transition is allowed.
-        
+
         Args:
             current_status: Current order status
             new_status: Desired new status
-            
+
         Returns:
             True if transition is valid, False otherwise
-            
+
         Raises:
             ValueError: If transition is invalid
         """
         if current_status == new_status:
             return True  # No-op transition is allowed
-            
+
         valid_next_states = cls.VALID_TRANSITIONS.get(current_status, [])
-        
+
         if new_status not in valid_next_states:
             raise ValueError(
                 f"Invalid state transition from '{current_status}' to '{new_status}'. "
                 f"Valid transitions: {valid_next_states}"
             )
-        
+
         return True
-    
+
+    @classmethod
+    def is_terminal(cls, status: str) -> bool:
+        """
+        Check if a state is terminal (cannot transition further).
+
+        Args:
+            status: Order status to check
+
+        Returns:
+            True if status is terminal, False otherwise
+        """
+        return status in ['completed', 'cancelled', 'refunded', 'failed']
+
+    @classmethod
+    def get_initial_state(cls, payment_method: str) -> str:
+        """
+        Get the initial order state based on payment method.
+
+        Args:
+            payment_method: Payment method (cod, wallet, instapay, credit_card)
+
+        Returns:
+            Initial order status string
+        """
+        if payment_method == 'cod':
+            return 'cod_pending'
+        return 'pending_payment'
+
     @classmethod
     def can_cancel(cls, status: str) -> bool:
-        """Check if order can be cancelled"""
-        return status in ['pending', 'paid']
-    
+        """
+        Check if order can be cancelled.
+
+        Args:
+            status: Current order status
+
+        Returns:
+            True if order can be cancelled, False otherwise
+        """
+        return status in ['pending_payment', 'cod_pending', 'paid', 'processing']
+
     @classmethod
     def requires_refund(cls, status: str) -> bool:
-        """Check if cancelling this status requires refund"""
-        return status == 'paid'
+        """
+        Check if cancelling this status requires refund.
+
+        Args:
+            status: Current order status
+
+        Returns:
+            True if refund is required, False otherwise
+        """
+        return status in ['paid', 'processing', 'shipped', 'delivered']
 
 
 class StockLockManager:
@@ -245,6 +303,39 @@ class StockLockManager:
             except Product.DoesNotExist:
                 logger.error(f"Product {product_id} not found")
                 return False
+    
+    @staticmethod
+    @transaction.atomic
+    def commit_stock(order_id: int) -> bool:
+        """
+        Commit reserved stock for an order (mark as permanently decremented).
+        
+        This method:
+        1. Updates reservation_status to 'committed' for all order items
+        2. No stock quantity changes (stock already decremented during reservation)
+        
+        Args:
+            order_id: ID of the order to commit stock for
+            
+        Returns:
+            True if stock was successfully committed
+        """
+        from .models import OrderItem
+        
+        try:
+            # Get all order items and update their reservation status
+            order_items = OrderItem.objects.filter(order_id=order_id)
+            
+            for item in order_items:
+                item.reservation_status = 'committed'
+                item.save()
+            
+            logger.info(f"Committed stock for order {order_id} - {order_items.count()} items marked as committed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to commit stock for order {order_id}: {e}")
+            return False
 
 
 class WalletOrderCoordinator:
@@ -441,6 +532,116 @@ class WalletOrderCoordinator:
         logger.info(f"Refunded {payment_tx.amount} to wallet {wallet.id} for order {order_id}")
         return (True, refund_tx, None)
 
+    @staticmethod
+    @transaction.atomic
+    def refund_payment(
+        order_id: int,
+        idempotency_key: str,
+        refund_reason: str = None
+    ) -> Tuple:
+        """
+        Process refund for paid orders (return/dispute scenario).
+        
+        Creates a refund transaction, credits wallet, releases stock,
+        and marks original payment as refunded.
+        
+        This is used for refunds (return/dispute), not for cancellations.
+        
+        Args:
+            order_id: Order ID
+            idempotency_key: Unique key for idempotency
+            refund_reason: Optional reason for refund
+            
+        Returns:
+            Tuple of (success: bool, refund_tx: Transaction, error: str)
+        """
+        from wallet.models import Wallet, Transaction
+        from .models import Order, OrderItem
+        
+        # Get order
+        try:
+            order = Order.objects.select_for_update().get(id=order_id)
+        except Order.DoesNotExist:
+            return (False, None, f"Order {order_id} not found")
+        
+        # Validate order has been paid (not COD or pending)
+        if order.payment_method == 'cod':
+            return (False, None, f"Cannot refund COD order {order_id} - no payment was made")
+        
+        # Get completed payment transaction
+        try:
+            payment_tx = Transaction.objects.select_for_update().get(
+                reference_id=str(order_id),
+                transaction_type='payment',
+                status='completed'
+            )
+        except Transaction.DoesNotExist:
+            return (False, None, f"No completed payment found for order {order_id}")
+        
+        # Check idempotency for refund
+        if Transaction.objects.filter(
+            reference_id=str(order_id),
+            transaction_type='refund',
+            idempotency_key=idempotency_key
+        ).exists():
+            existing_refund = Transaction.objects.get(
+                reference_id=str(order_id),
+                transaction_type='refund',
+                idempotency_key=idempotency_key
+            )
+            return (True, existing_refund, None)
+        
+        # Get wallet
+        wallet = Wallet.objects.select_for_update().get(id=payment_tx.wallet.id)
+        
+        # Mark original payment as refunded
+        payment_tx.status = 'refunded'
+        payment_tx.save()
+        
+        # Create refund transaction
+        refund_tx = Transaction.objects.create(
+            wallet=wallet,
+            amount=payment_tx.amount,
+            transaction_type='refund',
+            reference_id=str(order_id),
+            description=refund_reason or f"Refund for order #{order_id}",
+            status='completed',
+            balance_before=wallet.balance,
+            balance_after=wallet.balance + payment_tx.amount,
+            idempotency_key=idempotency_key
+        )
+        
+        # Update wallet balance
+        wallet.balance += payment_tx.amount
+        wallet.save()
+        
+        # Release stock for all items and update reservation_status
+        for item in OrderItem.objects.filter(order_id=order_id):
+            # Get variant_id from OrderItem
+            variant_id = item.variant_id
+            
+            # Release stock
+            StockLockManager.release_stock(
+                product_id=item.product.id,
+                quantity=item.quantity,
+                variant_id=variant_id
+            )
+            
+            # Update reservation status to released
+            item.reservation_status = 'released'
+            item.save()
+        
+        # Update order status to 'refunded'
+        order.status = 'refunded'
+        order.save()
+        
+        logger.info(
+            f"Refunded {payment_tx.amount} to wallet {wallet.id} for order {order_id}. "
+            f"Reason: {refund_reason or 'Not specified'}. "
+            f"Stock released for {OrderItem.objects.filter(order_id=order_id).count()} items."
+        )
+        return (True, refund_tx, None)
+
 
 class AtomicOrderCreator:
     """
@@ -472,9 +673,12 @@ class AtomicOrderCreator:
         2. Locks all products involved
         3. Checks stock availability AFTER locks
         4. Reserves stock atomically
-        5. Creates order with PENDING status
-        6. Optionally reserves wallet payment
-        7. All-or-nothing: rolls back on any failure
+        5. Determines initial state based on payment method
+        6. Calculates payment timeout for non-COD orders
+        7. Creates order with appropriate initial status
+        8. Creates order items
+        9. Optionally reserves wallet payment
+        10. All-or-nothing: rolls back on any failure
         
         Args:
             user: User object
@@ -623,29 +827,41 @@ class AtomicOrderCreator:
                 except Product.DoesNotExist:
                     raise ValueError(f"Product {item['product'].id} not found")
         
-        # Step 4: Create order
+        # Step 4: Determine initial state based on payment method
+        initial_status = OrderStateMachine.get_initial_state(payment_method)
+        
+        # Step 5: Calculate payment timeout for non-COD orders
+        payment_timeout_at = None
+        if payment_method != 'cod':
+            from django.utils import timezone
+            from datetime import timedelta
+            payment_timeout_at = timezone.now() + timedelta(minutes=15)
+        
+        # Step 6: Create order
         order = Order.objects.create(
             user=user,
             total_amount=total_amount,
             shipping_address=shipping_address,
             shipping_cost=shipping_cost,
             payment_method=payment_method,
-            status='pending',
+            status=initial_status,
             payment_status=False,
-            idempotency_key=idempotency_key
+            idempotency_key=idempotency_key,
+            payment_timeout_at=payment_timeout_at
         )
         
-        # Step 5: Create order items
+        # Step 7: Create order items
         for item in validated_items:
             OrderItem.objects.create(
                 order=order,
                 product=item['product'],
                 quantity=item['quantity'],
                 price=item['price'],
-                seller=item['product'].seller
+                seller=item['product'].seller,
+                reservation_status='reserved'
             )
         
-        # Step 6: Reserve wallet payment if requested
+        # Step 8: Reserve wallet payment if requested
         payment_tx = None
         if use_wallet_payment:
             try:
@@ -671,21 +887,22 @@ class AtomicOrderCreator:
     
     @staticmethod
     @transaction.atomic
-    def cancel_order(order_id: int, user) -> Tuple:
+    def cancel_order(order_id: int, user=None, reason: str = None) -> Tuple:
         """
         Cancel an order atomically with proper rollback.
         
         This method:
-        1. Validates order belongs to user
+        1. Validates order belongs to user (if user provided)
         2. Validates order can be cancelled
         3. Releases all reserved stock
-        4. Refunds payment if applicable
+        4. Refunds payment if order was paid (not for COD orders)
         5. Updates order status to CANCELLED
         6. All-or-nothing: rolls back on any failure
         
         Args:
             order_id: Order ID to cancel
-            user: User requesting cancellation
+            user: User requesting cancellation (None for system-initiated)
+            reason: Optional reason for cancellation
             
         Returns:
             Tuple of (success: bool, order: Order, error: str)
@@ -698,42 +915,150 @@ class AtomicOrderCreator:
         except Order.DoesNotExist:
             return (False, None, f"Order {order_id} not found")
         
-        # Validate ownership
-        if order.user != user:
+        # Validate ownership (skip for system-initiated cancellations)
+        if user is not None and order.user != user:
             return (False, None, "You don't have permission to cancel this order")
         
         # Validate state
         if not OrderStateMachine.can_cancel(order.status):
             return (False, None, f"Cannot cancel order with status '{order.status}'")
         
-        # Release stock for all items
+        # Release stock for all items and update reservation_status
         for item in order.items.all():
-            # Determine variant_id from item
-            variant_id = None
-            # Note: You'll need to add variant_id field to OrderItem model
-            # For now, we'll use product stock only
+            # Get variant_id from OrderItem
+            variant_id = item.variant_id
             
+            # Release stock
             StockLockManager.release_stock(
                 product_id=item.product.id,
                 quantity=item.quantity,
                 variant_id=variant_id
             )
+            
+            # Update reservation status to released
+            item.reservation_status = 'released'
+            item.save()
         
-        # Refund payment if order was paid
+        # Refund payment if order was paid (not COD orders)
         if order.status == 'paid':
+            refund_reason = reason or f"Order #{order_id} cancelled by user"
             success, refund_tx, error = WalletOrderCoordinator.release_payment(
                 order_id=order_id,
                 idempotency_key=order.idempotency_key or f"cancel_{order.id}",
-                refund_reason=f"Order #{order_id} cancelled by user"
+                refund_reason=refund_reason
             )
             
             if not success:
                 # This shouldn't happen, but log it
                 logger.error(f"Failed to refund payment for order {order_id}: {error}")
+        elif order.payment_method == 'cod':
+            # COD orders don't require refund - no payment was made
+            logger.info(f"COD order {order_id} cancelled - no refund needed")
         
         # Update order status
         order.status = 'cancelled'
         order.save()
         
-        logger.info(f"Cancelled order {order_id} by user {user.id}")
+        log_message = f"Cancelled order {order_id}"
+        if user is not None:
+            log_message += f" by user {user.id}"
+        if reason:
+            log_message += f". Reason: {reason}"
+        logger.info(log_message)
         return (True, order, None)
+    
+    @staticmethod
+    @transaction.atomic
+    def confirm_cod_delivery(order_id: int) -> Tuple:
+        """
+        Confirm COD order delivery and mark as paid.
+        
+        For COD orders, delivery confirms payment collection.
+        This method:
+        1. Validates order is a COD order in 'delivered' status
+        2. Commits stock (marks reservation_status as 'committed')
+        3. Sets payment_status to True
+        4. Transitions order to 'completed'
+        
+        Args:
+            order_id: Order ID to confirm delivery for
+            
+        Returns:
+            Tuple of (success: bool, order: Order, error: str)
+        """
+        from .models import Order
+        
+        # Get order with lock
+        try:
+            order = Order.objects.select_for_update().get(id=order_id)
+        except Order.DoesNotExist:
+            return (False, None, f"Order {order_id} not found")
+        
+        # Validate order is COD and in delivered status
+        if order.payment_method != 'cod':
+            return (False, None, f"Order {order_id} is not a COD order")
+        
+        if order.status != 'delivered':
+            return (False, None, f"Order {order_id} must be in 'delivered' status to confirm payment")
+        
+        # Commit stock (mark reservation_status as 'committed')
+        StockLockManager.commit_stock(order_id=order_id)
+        
+        # Mark as paid
+        order.payment_status = True
+        order.status = 'completed'
+        order.save()
+        
+        logger.info(f"Confirmed COD delivery for order {order_id}, marked as paid and completed")
+        return (True, order, None)
+
+    @staticmethod
+    @transaction.atomic
+    def update_order_status_from_items(order_id: int) -> Tuple:
+        """
+        Update order status based on aggregated item statuses.
+
+        This method:
+        1. Gets the order with lock
+        2. Aggregates status from all item statuses
+        3. Validates the transition is allowed
+        4. Updates the order status
+
+        Args:
+            order_id: Order ID to update
+
+        Returns:
+            Tuple of (success: bool, order: Order, error: str)
+        """
+        from .models import Order
+        from .services.multi_seller import aggregate_order_status
+
+        try:
+            # Get order with lock
+            order = Order.objects.select_for_update().get(id=order_id)
+
+            # Get aggregated status from items
+            new_status = aggregate_order_status(order)
+
+            # Validate transition
+            OrderStateMachine.validate_transition(order.status, new_status)
+
+            # Update order status
+            order.status = new_status
+            order.save()
+
+            logger.info(
+                f"Updated order {order_id} status from '{order.status}' to '{new_status}' "
+                f"based on item aggregation"
+            )
+
+            return (True, order, None)
+
+        except Order.DoesNotExist:
+            return (False, None, f"Order {order_id} not found")
+        except ValueError as e:
+            # Invalid state transition
+            return (False, None, str(e))
+        except Exception as e:
+            logger.error(f"Failed to update order {order_id} status from items: {e}")
+            return (False, None, f"Failed to update order status: {str(e)}")

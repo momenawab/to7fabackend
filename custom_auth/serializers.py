@@ -84,14 +84,18 @@ class UserSerializer(serializers.ModelSerializer):
     blocked_by_email = serializers.SerializerMethodField()
     blocked_status = serializers.SerializerMethodField()
     unblocked_by_email = serializers.SerializerMethodField()
+    user_state = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['id', 'email', 'first_name', 'last_name', 'user_type', 
                   'is_active', 'blocked_at', 'blocked_by', 'blocked_by_email',
                   'block_reason', 'unblocked_at', 'unblocked_by', 'unblocked_by_email',
-                  'blocked_status', 'date_joined']
-        read_only_fields = ['id', 'email', 'blocked_at', 'blocked_by', 'unblocked_at', 'unblocked_by']
+                  'blocked_status', 'date_joined',
+                  'is_mobile_verified', 'is_locked', 'is_blocked', 'blocked_capabilities',
+                  'user_state']
+        read_only_fields = ['id', 'email', 'blocked_at', 'blocked_by', 'unblocked_at', 'unblocked_by',
+                          'is_mobile_verified', 'is_locked', 'is_blocked', 'blocked_capabilities']
     
     def get_blocked_by_email(self, obj):
         if obj.blocked_by:
@@ -106,4 +110,29 @@ class UserSerializer(serializers.ModelSerializer):
     def get_blocked_status(self, obj):
         if not obj.is_active and obj.blocked_at:
             return "Blocked"
-        return "Active" 
+        return "Active"
+    
+    def get_user_state(self, obj):
+        """Get derived user state."""
+        from .services.user_state import get_user_state
+        return get_user_state(obj)
+
+
+class SendOTPSerializer(serializers.Serializer):
+    """Serializer for sending OTP to mobile number."""
+    mobile_number = serializers.CharField(
+        max_length=20,
+        required=True,
+        help_text="Mobile number to verify"
+    )
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    """Serializer for verifying OTP code."""
+    otp_code = serializers.RegexField(
+        regex=r'^\d{6}$',
+        max_length=6,
+        min_length=6,
+        required=True,
+        help_text="6-digit OTP code"
+    ) 

@@ -10,5 +10,8 @@ cryptography
 channels==4.0.0
 channels-redis==4.2.0
 django-redis==5.4.0
+celery==5.3.6
+# Testing
+pytest-django==4.5.2
 # Push notification dependencies
 requests>=2.25.1

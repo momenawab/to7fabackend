@@ -79,6 +79,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'custom_auth.middleware.LockEnforcementMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'admin_panel.middleware.AdminPanelMiddleware',
@@ -327,9 +328,6 @@ CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
         'KEY_PREFIX': 'to7fa_throttle',
         'TIMEOUT': 300,
     }
@@ -379,3 +377,20 @@ APNS_TEAM_ID = os.getenv('APNS_TEAM_ID', '')  # Your Apple Team ID
 APNS_BUNDLE_ID = os.getenv('APNS_BUNDLE_ID', 'com.to7fa.app')
 APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')  # Path to your APNs .p8 key file
 APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True').lower() == 'true'  # False for production
+
+# Celery Configuration
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/2')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/2')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Africa/Cairo'
+CELERY_ENABLE_UTC = True
+
+# Celery Beat Schedule for periodic tasks
+CELERY_BEAT_SCHEDULE = {
+    'check-payment-timeouts': {
+        'task': 'orders.tasks.check_payment_timeouts',
+        'schedule': 60.0,  # Every 60 seconds (1 minute)
+    },
+}

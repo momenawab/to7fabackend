@@ -13,8 +13,10 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = ('id', 'product_id', 'product', 'quantity', 'price', 'seller', 
-                  'commission_rate', 'commission_amount', 'variant_id')
-        read_only_fields = ('price', 'seller', 'commission_rate', 'commission_amount')
+                  'commission_rate', 'commission_amount', 'variant_id', 'item_status', 
+                  'reservation_status')
+        read_only_fields = ('price', 'seller', 'commission_rate', 'commission_amount', 
+                          'item_status', 'reservation_status')
     
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -53,9 +55,10 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ('id', 'user', 'total_amount', 'status', 'shipping_address', 'shipping_cost', 
-                 'payment_method', 'payment_status', 'created_at', 'updated_at', 'items', 'items_data',
-                 'idempotency_key', 'use_wallet_payment')
-        read_only_fields = ('user', 'total_amount', 'status', 'payment_status', 'created_at', 'updated_at')
+                 'payment_method', 'payment_status', 'payment_timeout_at', 'created_at', 'updated_at', 
+                 'items', 'items_data', 'idempotency_key', 'use_wallet_payment')
+        read_only_fields = ('user', 'total_amount', 'status', 'payment_status', 'payment_timeout_at', 
+                          'created_at', 'updated_at')
     
     def validate_items_data(self, value):
         """Validate items data structure"""

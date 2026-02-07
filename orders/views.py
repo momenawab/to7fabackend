@@ -16,6 +16,7 @@ from django.db import transaction
 from django.db.models import Q
 from decimal import Decimal
 import logging
+from custom_auth.services.verification import verification_required
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ def order_detail(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@verification_required
 def create_order(request):
     """
     Create a new order atomically.
@@ -461,6 +463,491 @@ def order_states(request):
             for value, label in Order.STATUS_CHOICES
         ],
         'valid_transitions': OrderStateMachine.VALID_TRANSITIONS,
-        'cancellable_states': ['pending', 'paid'],
+        'cancellable_states': ['pending_payment', 'paid', 'cod_pending'],
         'refund_required_states': ['paid']
     })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def acknowledge_order(request, pk):
+    """
+    Seller acknowledges order (→ PROCESSING).
+
+    **OpenAPI Documentation**
+
+    **Endpoint**: `POST /api/orders/<int:pk>/acknowledge/`
+
+    **Authentication**: Required (Seller only: artist or store user type)
+
+    **Description**: 
+    - Validates user is a seller
+    - Validates seller owns items in order
+    - Transitions order from 'paid' or 'cod_pending' to 'processing'
+    - Uses OrderStateMachine to validate transitions
+
+    **Valid Transitions**:
+    - paid → processing
+    - cod_pending → processing
+
+    **Request Body**: Empty (no parameters required)
+
+    **Response** (200 OK):
+    ```json
+    {
+        "success": true,
+        "data": {
+            "id": 1001,
+            "user": 1,
+            "total_amount": "115.50",
+            "status": "processing",
+            "shipping_address": "123 Main St, City, Country",
+            "shipping_cost": "15.50",
+            "payment_method": "wallet",
+            "payment_status": true,
+            "payment_timeout_at": null,
+            "created_at": "2025-12-31T23:00:00Z",
+            "updated_at": "2025-12-31T23:30:00Z",
+            "items": [...]
+        }
+    }
+    ```
+
+    **Error Responses**:
+    - 403 Forbidden: User is not a seller or doesn't own items in order
+    - 400 Bad Request: Invalid state transition
+    """
+    # Check if user is a seller
+    if request.user.user_type not in ['artist', 'store']:
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Only sellers can acknowledge orders",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if order exists and contains items sold by this seller
+    order = get_object_or_404(Order, pk=pk)
+    if not OrderItem.objects.filter(order=order, seller=request.user).exists():
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="You don't have permission to acknowledge this order",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Validate state transition
+    try:
+        OrderStateMachine.validate_transition(order.status, 'processing')
+    except ValueError as e:
+        return api_error(
+            request,
+            code='INVALID_TRANSITION',
+            message=str(e),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Update order status with lock
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(id=pk)
+        locked_order.status = 'processing'
+        locked_order.save()
+        logger.info(f"Order {pk} acknowledged by seller {request.user.id}")
+    
+    return api_success(request, data=OrderDetailSerializer(locked_order, context={'request': request}).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def ship_order(request, pk):
+    """
+    Seller marks order as shipped (→ SHIPPED).
+
+    **OpenAPI Documentation**
+
+    **Endpoint**: `POST /api/orders/<int:pk>/ship/`
+
+    **Authentication**: Required (Seller only: artist or store user type)
+
+    **Description**: 
+    - Validates user is a seller
+    - Validates seller owns items in order
+    - Transitions order from 'processing' to 'shipped'
+    - Optionally stores tracking number
+    - For multi-seller orders: Updates seller's line items only
+
+    **Valid Transitions**:
+    - processing → shipped
+
+    **Request Body**:
+    ```json
+    {
+        "tracking_number": "TRK123456789"
+    }
+    ```
+
+    **Response** (200 OK):
+    ```json
+    {
+        "success": true,
+        "data": {
+            "id": 1001,
+            "user": 1,
+            "total_amount": "115.50",
+            "status": "shipped",
+            "shipping_address": "123 Main St, City, Country",
+            "shipping_cost": "15.50",
+            "payment_method": "wallet",
+            "payment_status": true,
+            "payment_timeout_at": null,
+            "created_at": "2025-12-31T23:00:00Z",
+            "updated_at": "2025-12-31T23:45:00Z",
+            "items": [...]
+        }
+    }
+    ```
+
+    **Error Responses**:
+    - 403 Forbidden: User is not a seller or doesn't own items in order
+    - 400 Bad Request: Invalid state transition
+    """
+    # Check if user is a seller
+    if request.user.user_type not in ['artist', 'store']:
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="Only sellers can ship orders",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Check if order exists and contains items sold by this seller
+    order = get_object_or_404(Order, pk=pk)
+    if not OrderItem.objects.filter(order=order, seller=request.user).exists():
+        return api_error(
+            request,
+            code='PERMISSION_DENIED',
+            message="You don't have permission to ship this order",
+            status_code=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Validate state transition
+    try:
+        OrderStateMachine.validate_transition(order.status, 'shipped')
+    except ValueError as e:
+        return api_error(
+            request,
+            code='INVALID_TRANSITION',
+            message=str(e),
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get tracking number from request
+    tracking_number = request.data.get('tracking_number')
+    
+    # Update order status with lock
+    with transaction.atomic():
+        locked_order = Order.objects.select_for_update().get(id=pk)
+        locked_order.status = 'shipped'
+        locked_order.save()
+        
+        # Update order items with tracking number if provided
+        if tracking_number:
+            OrderItem.objects.filter(
+                order=locked_order,
+                seller=request.user
+            ).update(tracking_number=tracking_number)
+        
+        logger.info(f"Order {pk} shipped by seller {request.user.id}, tracking: {tracking_number}")
+    
+    return api_success(request, data=OrderDetailSerializer(locked_order, context={'request': request}).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def deliver_order(request, pk):
+    """
+    Confirm order delivery (→ DELIVERED).
+
+    **OpenAPI Documentation**
+
+    **Endpoint**: `POST /api/orders/<int:pk>/deliver/`
+
+    **Authentication**: Required (Order owner only)
+
+    **Description**: 
+    - Validates order belongs to user
+    - Transitions order from 'shipped' to 'delivered'
+    - For COD orders: This implicitly confirms payment collection
+
+    **Valid Transitions**:
+    - shipped → delivered
+
+    **Request Body**: Empty (no parameters required)
+
+    **Response** (200 OK):
+    ```json
+    {
+        "success": true,
+        "data": {
+            "id": 1001,
+            "user": 1,
+            "total_amount": "115.50",
+            "status": "delivered",
+            "shipping_address": "123 Main St, City, Country",
+            "shipping_cost": "15.50",
+            "payment_method": "wallet",
+            "payment_status": true,
+            "payment_timeout_at": null,
+            "created_at": "2025-12-31T23:00:00Z",
+            "updated_at": "2026-01-02T10:00:00Z",
+            "items": [...]
+        }
+    }
+    ```
+
+    **Error Responses**:
+    - 403 Forbidden: User is not the order owner
+    - 400 Bad Request: Invalid state transition
+    - 500 Internal Server Error: Unexpected error
+    """
+    try:
+        order = get_object_or_404(Order, pk=pk)
+        
+        # Validate ownership
+        if order.user != request.user:
+            return api_error(
+                request,
+                code='PERMISSION_DENIED',
+                message="You don't have permission to confirm delivery for this order",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate state transition
+        try:
+            OrderStateMachine.validate_transition(order.status, 'delivered')
+        except ValueError as e:
+            return api_error(
+                request,
+                code='INVALID_TRANSITION',
+                message=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update order status with lock
+        with transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(id=pk)
+            locked_order.status = 'delivered'
+            locked_order.save()
+            logger.info(f"Order {pk} marked as delivered by user {request.user.id}")
+        
+        return api_success(request, data=OrderDetailSerializer(locked_order, context={'request': request}).data)
+        
+    except Exception as e:
+        logger.error(f"Error confirming delivery for order {pk}: {str(e)}", exc_info=True)
+        return api_error(
+            request,
+            code='INTERNAL_ERROR',
+            message="Failed to confirm delivery. Please try again.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_order(request, pk):
+    """
+    Complete order (→ COMPLETED).
+
+    **OpenAPI Documentation**
+
+    **Endpoint**: `POST /api/orders/<int:pk>/complete/`
+
+    **Authentication**: Required (Order owner only)
+
+    **Description**: 
+    - Validates order belongs to user
+    - Transitions order from 'delivered' to 'completed'
+    - Commits stock permanently (reservation_status → 'committed')
+
+    **Valid Transitions**:
+    - delivered → completed
+
+    **Request Body**: Empty (no parameters required)
+
+    **Response** (200 OK):
+    ```json
+    {
+        "success": true,
+        "data": {
+            "id": 1001,
+            "user": 1,
+            "total_amount": "115.50",
+            "status": "completed",
+            "shipping_address": "123 Main St, City, Country",
+            "shipping_cost": "15.50",
+            "payment_method": "wallet",
+            "payment_status": true,
+            "payment_timeout_at": null,
+            "created_at": "2025-12-31T23:00:00Z",
+            "updated_at": "2026-01-03T15:00:00Z",
+            "items": [...]
+        }
+    }
+    ```
+
+    **Error Responses**:
+    - 403 Forbidden: User is not the order owner
+    - 400 Bad Request: Invalid state transition
+    - 500 Internal Server Error: Unexpected error
+    """
+    try:
+        order = get_object_or_404(Order, pk=pk)
+        
+        # Validate ownership
+        if order.user != request.user:
+            return api_error(
+                request,
+                code='PERMISSION_DENIED',
+                message="You don't have permission to complete this order",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validate state transition
+        try:
+            OrderStateMachine.validate_transition(order.status, 'completed')
+        except ValueError as e:
+            return api_error(
+                request,
+                code='INVALID_TRANSITION',
+                message=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update order status with lock and commit stock
+        with transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(id=pk)
+            locked_order.status = 'completed'
+            locked_order.save()
+            
+            # Commit stock permanently
+            StockLockManager.commit_stock(order_id=pk)
+            
+            logger.info(f"Order {pk} marked as completed by user {request.user.id}")
+        
+        return api_success(request, data=OrderDetailSerializer(locked_order, context={'request': request}).data)
+        
+    except Exception as e:
+        logger.error(f"Error completing order {pk}: {str(e)}", exc_info=True)
+        return api_error(
+            request,
+            code='INTERNAL_ERROR',
+            message="Failed to complete order. Please try again.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def refund_order(request, pk):
+    """
+    Admin-only: Process refund for order (→ REFUNDED).
+
+    **OpenAPI Documentation**
+
+    **Endpoint**: `POST /api/orders/<int:pk>/refund/`
+
+    **Authentication**: Required (Admin only)
+
+    **Description**: 
+    - Validates user is admin
+    - Creates refund transaction
+    - Credits wallet
+    - Releases stock reservations (reservation_status → 'released')
+    - Transitions order to 'refunded'
+
+    **Valid Transitions**:
+    - paid → refunded
+    - processing → refunded
+    - shipped → refunded
+    - delivered → refunded
+
+    **Request Body**:
+    ```json
+    {
+        "reason": "Customer requested refund"
+    }
+    ```
+
+    **Response** (200 OK):
+    ```json
+    {
+        "success": true,
+        "data": {
+            "id": 1001,
+            "user": 1,
+            "total_amount": "115.50",
+            "status": "refunded",
+            "shipping_address": "123 Main St, City, Country",
+            "shipping_cost": "15.50",
+            "payment_method": "wallet",
+            "payment_status": false,
+            "payment_timeout_at": null,
+            "created_at": "2025-12-31T23:00:00Z",
+            "updated_at": "2026-01-04T12:00:00Z",
+            "items": [...]
+        }
+    }
+    ```
+
+    **Error Responses**:
+    - 403 Forbidden: User is not an admin
+    - 400 Bad Request: Invalid state transition or refund error
+    - 500 Internal Server Error: Unexpected error
+    """
+    try:
+        order = get_object_or_404(Order, pk=pk)
+        
+        # Validate state transition
+        try:
+            OrderStateMachine.validate_transition(order.status, 'refunded')
+        except ValueError as e:
+            return api_error(
+                request,
+                code='INVALID_TRANSITION',
+                message=str(e),
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get refund reason
+        refund_reason = request.data.get('reason', 'Admin refund')
+        
+        # Process refund atomically
+        idempotency_key = f"refund_{order.id}_{request.user.id}"
+        success, refund_tx, error = WalletOrderCoordinator.refund_payment(
+            order_id=pk,
+            idempotency_key=idempotency_key,
+            refund_reason=refund_reason
+        )
+        
+        if not success:
+            return api_error(
+                request,
+                code='REFUND_ERROR',
+                message=error,
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Refresh order to get updated status
+        order.refresh_from_db()
+        
+        logger.info(f"Order {pk} refunded by admin {request.user.id}, reason: {refund_reason}")
+        return api_success(request, data=OrderDetailSerializer(order, context={'request': request}).data)
+        
+    except Exception as e:
+        logger.error(f"Error refunding order {pk}: {str(e)}", exc_info=True)
+        return api_error(
+            request,
+            code='INTERNAL_ERROR',
+            message="Failed to process refund. Please try again.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

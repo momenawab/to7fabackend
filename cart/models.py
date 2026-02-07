@@ -5,12 +5,23 @@ from decimal import Decimal
 
 class Cart(models.Model):
     """Shopping cart model"""
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='cart')
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='cart', null=True, blank=True)
+    session_id = models.CharField(max_length=36, null=True, blank=True, db_index=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(user__isnull=False) | models.Q(session_id__isnull=False),
+                name='cart_user_or_session_required'
+            )
+        ]
+    
     def __str__(self):
-        return f"Cart for {self.user.email}"
+        if self.user:
+            return f"Cart for {self.user.email}"
+        return f"Guest cart (session: {self.session_id})"
     
     @property
     def total_items(self):

@@ -31,7 +31,9 @@ urlpatterns = [
     path('api/auth/password-reset/confirm/', jwt_views.confirm_password_reset, name='password_reset_confirm'),
     path('api/auth/email-verification/request/', jwt_views.request_email_verification, name='email_verification_request'),
     path('api/auth/email-verification/verify/', jwt_views.verify_email, name='email_verification_verify'),
-    
+    path('api/auth/send-otp/', api_views.send_otp, name='send_otp'),
+    path('api/auth/verify-otp/', api_views.verify_otp, name='verify_otp'),
+
     # Artist and Store endpoints for admin content management
     path('api/artists/top/', api_views.top_artists, name='top_artists'),
     path('api/artists/featured/', api_views.featured_artists, name='featured_artists'),
