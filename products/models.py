@@ -1,11 +1,33 @@
+import warnings
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
 from django.db.models import Q
+from django.db.models.query import QuerySet
 from decimal import Decimal
 from django.utils.translation import gettext_lazy as _
 
 # Create your models here.
+
+
+class ProductQuerySet(QuerySet):
+    """
+    Custom QuerySet for Product model with common filters.
+
+    Spec 004 C.4: Public visibility REQUIRES BOTH is_active=True AND approval_status='approved'
+    """
+
+    def approved(self):
+        """
+        Filter products that are both active AND approved.
+
+        Spec 004 C.4: Public visibility requires is_active=True AND approval_status='approved'
+        This is the canonical filter for all public-facing product queries.
+
+        Returns:
+            QuerySet: Filtered products ready for public display
+        """
+        return self.filter(is_active=True, approval_status='approved')
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -100,6 +122,18 @@ class ProductCategoryVariantOption(models.Model):
     
     @property
     def is_in_stock(self):
+        """
+        Check if this variant is in stock.
+
+        .. DEPRECATED:: Spec 004 C.1
+            ProductVariant is deprecated. Use ProductCategoryVariantOption.is_in_stock instead.
+        """
+        warnings.warn(
+            f"ProductVariant (id={self.id}) is_in_stock is DEPRECATED per Spec 004 C.1. "
+            f"Use ProductCategoryVariantOption.is_in_stock instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.stock_count > 0 and self.is_active
     
     @property
@@ -155,7 +189,12 @@ class Product(models.Model):
     offers_requested_at = models.DateTimeField(null=True, blank=True)
     
     # Combination variant stock storage (for frontend UX combinations like "29_27")
-    combination_stocks = models.JSONField(default=dict, blank=True, help_text="Stock quantities for variant combinations like {'29_27': 10}")
+    # .. DEPRECATED:: Spec 004 C.1 - This field is deprecated and ignored for stock operations
+    combination_stocks = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="DEPRECATED: Stock quantities for variant combinations. Use ProductCategoryVariantOption.stock_count instead."
+    )
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -175,12 +214,12 @@ class Product(models.Model):
         if self.seller.user_type == 'artist':
             try:
                 return f"Artist: {self.seller.first_name} {self.seller.last_name}"
-            except:
+            except Exception:
                 return f"Artist: {self.seller.email}"
         elif self.seller.user_type == 'store':
             try:
                 return f"Store: {self.seller.store_profile.store_name}"
-            except:
+            except Exception:
                 return f"Store: {self.seller.email}"
         return self.seller.email
     
@@ -192,16 +231,17 @@ class Product(models.Model):
     
     @property
     def stock(self):
-        """Returns stock - either from combination stocks, selected variants, or direct product stock"""
+        """
+        Returns stock - from ProductCategoryVariantOption (canonical) or direct product stock.
+
+        .. DEPRECATED:: combination_stocks usage (Spec 004 C.1, C.6)
+            The combination_stocks JSONField is DEPRECATED and ignored.
+            Only ProductCategoryVariantOption.stock_count is used for variant products.
+        """
         if self.has_variants:
-            # Check if we have combination stock overrides
-            if self.combination_stocks and len(self.combination_stocks) > 0:
-                # Sum all combination stocks
-                total_combination_stock = sum(int(stock) for stock in self.combination_stocks.values())
-                return total_combination_stock
-            else:
-                # Fallback to individual variant stock
-                return sum(variant.stock_count for variant in self.selected_variants.filter(is_active=True))
+            # Spec 004 C.2: ProductCategoryVariantOption.stock_count is the canonical stock field
+            # combination_stocks is ignored per Spec 004 C.1
+            return sum(variant.stock_count for variant in self.selected_variants.filter(is_active=True))
         else:
             # For products without variants, use direct stock
             return self.stock_quantity
@@ -294,6 +334,46 @@ class Product(models.Model):
         if not self.supports_ar:
             return []
         return self.ar_settings.get_available_frame_combinations()
+
+    def clean(self):
+        """
+        Validate product data before saving.
+
+        Enforces Spec 004 invariants:
+        - combination_stocks cannot be set to non-empty values (deprecated per Spec 004 C.1)
+        """
+        from django.core.exceptions import ValidationError
+        import warnings
+
+        super().clean()
+
+        # Spec 004 C.1: combination_stocks is deprecated and should not be written to
+        # Log deprecation warning if combination_stocks has data
+        if self.combination_stocks and len(self.combination_stocks) > 0:
+            warnings.warn(
+                "Product.combination_stocks is DEPRECATED per Spec 004 C.1. "
+                "Use ProductCategoryVariantOption.stock_count for variant stock. "
+                "This field will be removed in a future release.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            # Note: We don't raise ValidationError to allow existing data to load
+            # but new writes should be avoided
+
+        # Spec 004 INV-013: Setting approval_status='approved' REQUIRES is_active=True
+        if self.approval_status == 'approved' and not self.is_active:
+            raise ValidationError(
+                "Product must be active (is_active=True) to be approved. "
+                "See Spec 004 INV-013."
+            )
+
+    class Meta:
+        # Use ProductQuerySet as the custom manager
+        # Spec 004 C.4: approved() filter provides canonical public visibility
+        pass
+
+    # Custom manager - defined outside Meta class (Django requirement)
+    objects = ProductQuerySet.as_manager()
 
 
 class ProductImage(models.Model):
@@ -576,7 +656,19 @@ class CategoryAttribute(models.Model):
 
 
 class ProductVariant(models.Model):
-    """Individual product variants with specific category variant combinations"""
+    """
+    Individual product variants with specific category variant combinations.
+
+    .. DEPRECATED:: Spec 004 C.1
+        This model is DEPRECATED. Use ProductCategoryVariantOption instead.
+
+        The canonical variant system is ProductCategoryVariantOption which stores
+        stock_count and price_adjustment for variant products. This model is maintained
+        for backward compatibility with existing orders only.
+
+        Migration Path: Data will be migrated to ProductCategoryVariantOption in a future release.
+        Do not use this model for new features.
+    """
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
     sku = models.CharField(max_length=100, unique=True, blank=True)  # Auto-generated SKU
     stock_count = models.PositiveIntegerField(default=0)
@@ -594,6 +686,18 @@ class ProductVariant(models.Model):
     
     @property
     def final_price(self):
+        """
+        Calculate final price including extra prices from variant options.
+
+        .. DEPRECATED:: Spec 004 C.1
+            ProductVariant is deprecated. Use ProductCategoryVariantOption.final_price instead.
+        """
+        warnings.warn(
+            f"ProductVariant (id={self.id}) final_price is DEPRECATED per Spec 004 C.1. "
+            f"Use ProductCategoryVariantOption.final_price instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         # Calculate final price including extra prices from variant options
         base_price = self.product.base_price + self.price_adjustment
         extra_price = sum(option.extra_price for option in self.variant_options.all())
@@ -601,6 +705,18 @@ class ProductVariant(models.Model):
     
     @property
     def is_in_stock(self):
+        """
+        Check if this variant is in stock.
+
+        .. DEPRECATED:: Spec 004 C.1
+            ProductVariant is deprecated. Use ProductCategoryVariantOption.is_in_stock instead.
+        """
+        warnings.warn(
+            f"ProductVariant (id={self.id}) is_in_stock is DEPRECATED per Spec 004 C.1. "
+            f"Use ProductCategoryVariantOption.is_in_stock instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self.stock_count > 0
     
     @property

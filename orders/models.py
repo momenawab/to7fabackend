@@ -66,13 +66,18 @@ class Order(models.Model):
 class OrderItem(models.Model):
     """
     Order item with variant support.
-    
+
     Tracks individual products in an order, including:
     - Variant information for proper stock management
     - Price at time of purchase
     - Commission calculation
     - Per-item fulfillment status
     - Stock reservation tracking
+
+    Spec 004 C.3: variant_id ALWAYS references ProductCategoryVariantOption.id
+    - variant_id IS NULL = non-variant product
+    - variant_id IS NOT NULL = ProductCategoryVariantOption.id (canonical variant system)
+    - Legacy orders may have variant_ids from deprecated ProductVariant system
     """
     ITEM_STATUS_CHOICES = (
         ('pending', 'Pending'),           # Awaiting seller action
@@ -103,8 +108,13 @@ class OrderItem(models.Model):
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
 
     # Variant support for proper stock management
-    variant_id = models.PositiveIntegerField(null=True, blank=True,
-                                     help_text="ID of product variant ordered")
+    # Spec 004 C.3: variant_id references ProductCategoryVariantOption.id (canonical)
+    # Migration required for legacy orders with ProductVariant variant_ids
+    variant_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="ProductCategoryVariantOption.id for variant products (Spec 004 C.3 canonical reference)"
+    )
 
     # Per-item fulfillment status
     item_status = models.CharField(
@@ -135,8 +145,11 @@ class OrderItem(models.Model):
     
     def save(self, *args, **kwargs):
         # Calculate commission amount before saving
+        # Convert to Decimal to handle float inputs from tests
         if not self.commission_amount:
-            self.commission_amount = (self.price * self.quantity) * (self.commission_rate / Decimal('100'))
+            price = Decimal(str(self.price)) if not isinstance(self.price, Decimal) else self.price
+            commission_rate = Decimal(str(self.commission_rate)) if not isinstance(self.commission_rate, Decimal) else self.commission_rate
+            self.commission_amount = (price * Decimal(self.quantity)) * (commission_rate / Decimal('100'))
         super().save(*args, **kwargs)
         
     @property
@@ -144,11 +157,11 @@ class OrderItem(models.Model):
         if self.seller.user_type == 'artist':
             try:
                 return f"Artist: {self.seller.first_name} {self.seller.last_name}"
-            except:
+            except Exception:
                 return f"Artist: {self.seller.email}"
         elif self.seller.user_type == 'store':
             try:
                 return f"Store: {self.seller.store_profile.store_name}"
-            except:
+            except Exception:
                 return f"Store: {self.seller.email}"
         return self.seller.email

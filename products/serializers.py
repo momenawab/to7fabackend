@@ -94,6 +94,14 @@ class ProductCategoryVariantSelectionSerializer(serializers.ModelSerializer):
                  'final_price', 'is_active', 'variant_type_name', 'variant_option_value', 'stock_status')
 
 class ProductSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Product model.
+
+    Spec 004 Compliance Notes:
+    - selected_variants: Returns data from ProductCategoryVariantOption (canonical)
+    - combination_stocks: DEPRECATED per Spec 004 C.1, shown for Flutter compatibility only
+    - stock: Returns sum of ProductCategoryVariantOption.stock_count for variant products
+    """
     category_name = serializers.ReadOnlyField(source='category.name')
     seller_name = serializers.ReadOnlyField()
     images = ProductImageSerializer(many=True, read_only=True)

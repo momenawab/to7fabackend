@@ -55,7 +55,9 @@ def cart_detail(request):
 @permission_classes([AllowAny])
 def add_to_cart(request):
     """
-    Add a product to cart (supports both authenticated and guest users)
+    Add a product to cart (supports both authenticated and guest users).
+
+    Spec 004 C.4, INV-011: Cart operations MUST validate approval_status='approved'
     """
     serializer = AddToCartSerializer(data=request.data)
     if serializer.is_valid():
@@ -63,28 +65,39 @@ def add_to_cart(request):
         quantity = serializer.validated_data['quantity']
         selected_variants = serializer.validated_data.get('selected_variants')
         variant_id = serializer.validated_data.get('variant_id')
-        
+
         # Get product
         product = get_object_or_404(Product, id=product_id, is_active=True)
-        
+
+        # Spec 004 INV-011: Unapproved products cannot be added to cart
+        if product.approval_status != 'approved':
+            return Response({
+                "error": "PRODUCT_NOT_APPROVED",
+                "message": "Product must be approved before adding to cart",
+                "details": {
+                    "product_id": product_id,
+                    "approval_status": product.approval_status
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # Get or create cart based on authentication or session_id
         cart, created = get_or_create_cart(request)
-        
+
         try:
             # Add product to cart with variant information
             cart_item = cart.add_item(
-                product=product, 
+                product=product,
                 quantity=quantity,
                 selected_variants=selected_variants,
                 variant_id=variant_id
             )
-            
+
             # Return updated cart
             cart_serializer = CartSerializer(cart, context={'request': request})
             return Response(cart_serializer.data, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
+
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

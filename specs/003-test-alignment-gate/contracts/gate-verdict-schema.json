@@ -1,0 +1,212 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://to7fa.com/schemas/gate-verdict-v1.json",
+  "title": "Spec 002 Gate Verdict",
+  "description": "JSON schema for Spec 002 gate verdict determination",
+  "type": "object",
+  "required": [
+    "verdict",
+    "decision_date",
+    "spec_version",
+    "test_results",
+    "criteria_evaluation",
+    "justification"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "CONDITIONAL_PASS", "FAIL"],
+      "description": "Final gate decision"
+    },
+    "decision_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601 date when gate decision was made"
+    },
+    "spec_version": {
+      "type": "string",
+      "description": "Spec version being evaluated (e.g., '002')"
+    },
+    "test_results": {
+      "type": "object",
+      "description": "Summary of test execution results",
+      "required": ["total", "passing", "failing", "skipped"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "description": "Total number of tests"
+        },
+        "passing": {
+          "type": "integer",
+          "description": "Number of passing tests"
+        },
+        "failing": {
+          "type": "integer",
+          "description": "Number of failing tests"
+        },
+        "skipped": {
+          "type": "integer",
+          "description": "Number of skipped tests"
+        },
+        "critical": {
+          "type": "object",
+          "description": "Critical test breakdown",
+          "required": ["total", "passing", "failing"],
+          "properties": {
+            "total": {"type": "integer"},
+            "passing": {"type": "integer"},
+            "failing": {"type": "integer"},
+            "failing_tests": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of failing critical test IDs"
+            }
+          }
+        },
+        "non_critical": {
+          "type": "object",
+          "description": "Non-critical test breakdown",
+          "required": ["total", "passing", "failing"],
+          "properties": {
+            "total": {"type": "integer"},
+            "passing": {"type": "integer"},
+            "failing": {"type": "integer"},
+            "aligned": {"type": "integer"},
+            "deferred": {"type": "integer"}
+          }
+        }
+      }
+    },
+    "criteria_evaluation": {
+      "type": "array",
+      "description": "Evaluation of each gate criterion",
+      "items": {
+        "type": "object",
+        "required": ["criterion_id", "name", "status", "measurement"],
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "description": "Criterion identifier (e.g., 'gc_001')"
+          },
+          "name": {
+            "type": "string",
+            "description": "Criterion name"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PASS", "FAIL"],
+            "description": "Whether this criterion passed"
+          },
+          "measurement": {
+            "type": "string",
+            "description": "Actual measurement (e.g., '35/35 tests (100%)')"
+          },
+          "threshold": {
+            "type": "string",
+            "description": "Required threshold (e.g., '35/35 tests (100%)')"
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "Whether failure blocks the gate"
+          }
+        }
+      }
+    },
+    "classification_summary": {
+      "type": "object",
+      "description": "Summary of test classification",
+      "required": ["critical", "non_critical", "deferred"],
+      "properties": {
+        "critical": {
+          "type": "integer",
+          "description": "Number of critical tests"
+        },
+        "non_critical": {
+          "type": "integer",
+          "description": "Number of non-critical tests"
+        },
+        "deferred": {
+          "type": "integer",
+          "description": "Number of deferred tests"
+        }
+      }
+    },
+    "deferred_debt": {
+      "type": "array",
+      "description": "List of deferred tests with reasons",
+      "items": {
+        "type": "object",
+        "required": ["test_id", "reason"],
+        "properties": {
+          "test_id": {
+            "type": "string",
+            "description": "Test identifier"
+          },
+          "test_name": {
+            "type": "string",
+            "description": "Human-readable test name"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["infrastructure", "implementation_choice", "future_work", "scope"],
+            "description": "Why this test is deferred"
+          },
+          "details": {
+            "type": "string",
+            "description": "Additional details about the deferral"
+          }
+        }
+      }
+    },
+    "blocking_violations": {
+      "type": "array",
+      "description": "List of gate-blocking violations (empty if verdict is PASS)",
+      "items": {
+        "type": "object",
+        "required": ["criterion_id", "violation"],
+        "properties": {
+          "criterion_id": {
+            "type": "string"
+          },
+          "violation": {
+            "type": "string",
+            "description": "Description of the violation"
+          }
+        }
+      }
+    },
+    "justification": {
+      "type": "string",
+      "description": "Detailed explanation of the verdict decision"
+    },
+    "recommendations": {
+      "type": "array",
+      "description": "Recommended next steps",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata about the gate evaluation",
+      "properties": {
+        "evaluated_by": {
+          "type": "string",
+          "description": "Person or system that evaluated the gate"
+        },
+        "evaluation_method": {
+          "type": "string",
+          "description": "How the gate was evaluated (e.g., 'automated', 'manual')"
+        },
+        "baseline_pass_rate": {
+          "type": "string",
+          "description": "Pass rate before alignment (e.g., '54/114 (47%)')"
+        },
+        "final_pass_rate": {
+          "type": "string",
+          "description": "Pass rate after alignment (e.g., '80/114 (70%)')"
+        }
+      }
+    }
+  }
+}

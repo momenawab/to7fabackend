@@ -1,0 +1,158 @@
+openapi: 3.0.0
+info:
+  title: Product Visibility API
+  version: 1.0.0
+  description: API contracts for product visibility and approval enforcement per Spec 004 C.4
+
+paths:
+  /api/v1/products/:
+    get:
+      summary: List public products
+      tags:
+        - Products
+      - Public
+      responses:
+        "200":
+          description: Successful product listing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+
+  /api/v1/products/{id}/:
+    get:
+      summary: Get product details
+      tags:
+        - Products
+      - Public
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetail'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "400":
+          description: Product not approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalError'
+
+components:
+  schemas:
+    ProductSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Product Name"
+        approval_status:
+          type: string
+          enum: [pending, approved, rejected]
+          example: "approved"
+        is_active:
+          type: boolean
+          example: true
+
+    ProductDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        base_price:
+          type: number
+        approval_status:
+          type: string
+          enum: [pending, approved, rejected]
+        is_active:
+          type: boolean
+        has_variants:
+          type: boolean
+        variants:
+          type: array
+          items:
+            $ref: '#/components/schemas/Variant'
+
+    Variant:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        stock_count:
+          type: integer
+        price_adjustment:
+          type: number
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 100
+
+    ApprovalError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "PRODUCT_NOT_APPROVED"
+        message:
+          type: string
+          example: "Product must be approved before this operation"
+        details:
+          type: object
+          properties:
+            product_id:
+              type: integer
+            approval_status:
+              type: string
+
+    BadRequest:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+    NotFound:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "NOT_FOUND"
+        message:
+          type: string

@@ -118,12 +118,17 @@ class Cart(models.Model):
 
 
 class CartItem(models.Model):
-    """Individual item in a cart"""
+    """
+    Individual item in a cart.
+
+    Spec 004 C.6: variant_id is the source of truth for inventory operations.
+    selected_variants is DEPRECATED for display/UI purposes only (not for inventory).
+    """
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
-    selected_variants = models.JSONField(null=True, blank=True, help_text="Selected product variants as key-value pairs")
-    variant_id = models.IntegerField(null=True, blank=True, help_text="Specific variant ID if applicable")
+    selected_variants = models.JSONField(null=True, blank=True, help_text="DEPRECATED: Display only. Use variant_id for inventory (Spec 004 C.6)")
+    variant_id = models.IntegerField(null=True, blank=True, help_text="ProductCategoryVariantOption.id for inventory operations (Spec 004 C.6)")
     added_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

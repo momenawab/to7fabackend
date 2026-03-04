@@ -30,6 +30,15 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "skip_redis: skip tests that require Redis"
     )
+    config.addinivalue_line(
+        "markers", "critical: mark test as critical (gate-blocking business logic)"
+    )
+    config.addinivalue_line(
+        "markers", "non_critical: mark test as non-critical (API contract, implementation details)"
+    )
+    config.addinivalue_line(
+        "markers", "deferred: mark test as deferred (infrastructure dependencies, future work)"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

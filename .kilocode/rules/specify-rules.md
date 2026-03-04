@@ -3,6 +3,8 @@
 Auto-generated from all feature plans. Last updated: 2026-01-15
 
 ## Active Technologies
+- Python 3.14.2 + Django 4.2.13, Django REST Framework 3.16.0, pytest-django 4.5.2 (005-variant-system-implementation)
+- PostgreSQL (005-variant-system-implementation)
 
 - Python 3.9+ (Django 4.2.13) + Django REST Framework 3.16.0, SimpleJWT 5.5.0, django-redis 5.4.0 (001-user-state-logic)
 
@@ -22,6 +24,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.9+ (Django 4.2.13): Follow standard conventions
 
 ## Recent Changes
+- 005-variant-system-implementation: Added Python 3.14.2 + Django 4.2.13, Django REST Framework 3.16.0, pytest-django 4.5.2
 
 - 001-user-state-logic: Added Python 3.9+ (Django 4.2.13) + Django REST Framework 3.16.0, SimpleJWT 5.5.0, django-redis 5.4.0
 

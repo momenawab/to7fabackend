@@ -1,18 +1,17 @@
-from django.shortcuts import render, get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from api.helpers import api_response, api_error, api_success, api_created
+from api.helpers import api_error, api_success, api_created
 from .models import (
     Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct,
     ProductAttribute, ProductAttributeOption, CategoryAttribute, Tag, CategoryVariantType,
-    CategoryVariantOption, DiscountRequest, ProductVariant, ProductVariantOption, SubcategorySectionControl
+    SubcategorySectionControl
 )
 from .serializers import (
     ProductSerializer, ProductDetailSerializer, CategorySerializer, ReviewSerializer,
-    ProductAttributeSerializer, ProductAttributeOptionSerializer, CategoryAttributeSerializer,
+    ProductAttributeOptionSerializer, CategoryAttributeSerializer,
     SubcategorySectionControlSerializer
 )
 from django.db.models import Q, Count
@@ -23,10 +22,16 @@ from custom_auth.services.lock_block import capability_required, CapabilityCode
 @permission_classes([AllowAny])  # GET is public, POST checked via capability_required decorator
 @capability_required(CapabilityCode.SELL)  # Apply block enforcement for product creation
 def product_list(request):
-    """Get all products or create a new product"""
+    """
+    Get all products or create a new product.
+
+    Spec 004 C.4: Public listing only returns approved products.
+    GET requests return only products with is_active=True AND approval_status='approved'.
+    """
     if request.method == 'GET':
-        # Get active products only
-        products = Product.objects.filter(is_active=True).order_by('-created_at')
+        # Spec 004 C.4: Public visibility requires BOTH is_active=True AND approval_status='approved'
+        # Use approved() manager which enforces both conditions
+        products = Product.objects.approved().order_by('-created_at')
 
         # Filter by category if provided
         category_id = request.query_params.get('category')
@@ -53,7 +58,7 @@ def product_list(request):
 
         serializer = ProductSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            product = serializer.save()
+            serializer.save()
             return api_created(request, data=serializer.data, message='Product created successfully')
         return api_error(
             request,
@@ -375,7 +380,7 @@ def seller_products(request):
     elif request.method == 'POST':
         serializer = ProductSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            product = serializer.save()
+            serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1954,7 +1959,7 @@ def seller_offer_requests(request):
     """Manage seller offer requests"""
     from .models import SellerOfferRequest
     
-    if not request.user.user_type in ['artist', 'store']:
+    if request.user.user_type not in ['artist', 'store']:
         return Response({"error": "Only sellers can create offer requests"}, status=status.HTTP_403_FORBIDDEN)
 
     if request.method == 'GET':
@@ -2074,7 +2079,7 @@ def seller_featured_requests(request):
     """Manage seller featured product requests"""
     from .models import SellerFeaturedRequest
     
-    if not request.user.user_type in ['artist', 'store']:
+    if request.user.user_type not in ['artist', 'store']:
         return api_error(
             request,
             code='PERMISSION_DENIED',
