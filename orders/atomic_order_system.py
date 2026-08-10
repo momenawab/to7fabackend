@@ -14,15 +14,56 @@ CORE PRINCIPLES:
 - Wallet operations are atomic with order creation
 - Idempotency keys prevent duplicate operations
 - Explicit rollback on any failure
+
+SPEC 004 COMPLIANCE:
+- ProductCategoryVariantOption is the canonical variant system (Spec 004 C.1, C.2)
+- ProductVariant fallback is deprecated (Spec 004 C.1)
+- variant_id references ProductCategoryVariantOption.id (Spec 004 C.3)
 """
 
 from django.db import transaction
-from django.db.models import Q
 from decimal import Decimal
 from typing import Dict, List, Tuple, Optional
 import logging
+import warnings
 
 logger = logging.getLogger(__name__)
+
+
+class ProductVisibilityError(ValueError):
+    """
+    Exception raised when attempting to order products that are not approved.
+
+    Spec 004 INV-012: Unapproved products cannot be included in an order.
+    """
+    def __init__(self, message: str, unapproved_products: List[Dict] = None):
+        self.unapproved_products = unapproved_products or []
+        super().__init__(message)
+
+
+def _log_deprecated_variant_usage(variant_id: int, context: str = "stock operation"):
+    """
+    Log deprecation warning when ProductVariant is accessed.
+
+    Spec 004 C.1: ProductVariant is deprecated. Use ProductCategoryVariantOption instead.
+
+    Args:
+        variant_id: The ID of the variant being accessed
+        context: Description of the operation triggering the deprecation
+    """
+    warnings.warn(
+        f"ProductVariant (id={variant_id}) is DEPRECATED per Spec 004 C.1. "
+        f"Use ProductCategoryVariantOption for {context}. "
+        f"ProductVariant will be removed in a future release. "
+        f"Variant data should be migrated to ProductCategoryVariantOption.",
+        DeprecationWarning,
+        stacklevel=3
+    )
+    logger.warning(
+        f"Deprecated ProductVariant accessed (id={variant_id}) during {context}. "
+        f"Use ProductCategoryVariantOption instead. "
+        f"See Spec 004 C.1 for details."
+    )
 
 
 class OrderStateMachine:
@@ -200,14 +241,15 @@ class StockLockManager:
                 return True
                 
             except ProductCategoryVariantOption.DoesNotExist:
-                # Try ProductVariant as fallback
+                # Try ProductVariant as fallback (DEPRECATED per Spec 004 C.1)
+                _log_deprecated_variant_usage(variant_id, "stock reservation (fallback)")
                 try:
                     variant = ProductVariant.objects.select_for_update().get(
                         id=variant_id,
                         product_id=product_id,
                         is_active=True
                     )
-                    
+
                     if variant.stock_count < quantity:
                         raise ValueError(
                             f"Insufficient stock for variant. Available: {variant.stock_count}, Requested: {quantity}"
@@ -262,7 +304,8 @@ class StockLockManager:
         from products.models import Product, ProductCategoryVariantOption, ProductVariant
         
         if variant_id:
-            # Variant product stock release
+            # Spec 004 C.3: variant_id references ProductCategoryVariantOption.id (canonical)
+            # Stock restoration uses the stored variant_id to release to the exact variant
             try:
                 variant = ProductCategoryVariantOption.objects.select_for_update().get(
                     id=variant_id,
@@ -270,12 +313,13 @@ class StockLockManager:
                 )
                 variant.stock_count += quantity
                 variant.save()
-                
+
                 logger.info(f"Released {quantity} units of variant {variant_id} for product {product_id}")
                 return True
                 
             except ProductCategoryVariantOption.DoesNotExist:
-                # Try ProductVariant as fallback
+                # Try ProductVariant as fallback (DEPRECATED per Spec 004 C.1)
+                _log_deprecated_variant_usage(variant_id, "stock release (fallback)")
                 try:
                     variant = ProductVariant.objects.select_for_update().get(
                         id=variant_id,
@@ -646,12 +690,16 @@ class WalletOrderCoordinator:
 class AtomicOrderCreator:
     """
     Creates orders atomically with proper locking and idempotency.
-    
+
     This is the main entry point for order creation, ensuring:
     1. No duplicate orders (idempotency)
     2. No overselling (stock locking)
     3. Financial consistency (wallet-order atomicity)
     4. Complete rollback on any failure
+
+    Spec 004 C.3: variant_id ALWAYS references ProductCategoryVariantOption.id
+    - Validates variant_id references ProductCategoryVariantOption
+    - Falls back to ProductVariant for legacy orders (with deprecation warning)
     """
     
     @staticmethod
@@ -704,20 +752,30 @@ class AtomicOrderCreator:
         # Step 2: Validate all items exist and calculate total
         total_amount = Decimal('0')
         validated_items = []
-        
+        unapproved_products = []
+
         for item_data in items_data:
             product_id = item_data['product_id']
             quantity = item_data['quantity']
             variant_id = item_data.get('variant_id')
-            
+
             try:
                 product = Product.objects.get(id=product_id, is_active=True)
             except Product.DoesNotExist:
                 raise ValueError(f"Product {product_id} not found or inactive")
+
+            # Spec 004 INV-012: Unapproved products cannot be in orders
+            # Check approval_status and collect unapproved products
+            if product.approval_status != 'approved':
+                unapproved_products.append({
+                    'product_id': product_id,
+                    'name': product.name,
+                    'approval_status': product.approval_status
+                })
             
             # Calculate price
             if variant_id:
-                # Variant pricing
+                # Variant pricing - Spec 004 C.3: variant_id references ProductCategoryVariantOption.id
                 from products.models import ProductCategoryVariantOption, ProductVariant
                 try:
                     variant = ProductCategoryVariantOption.objects.get(
@@ -727,6 +785,8 @@ class AtomicOrderCreator:
                     )
                     price = variant.final_price
                 except ProductCategoryVariantOption.DoesNotExist:
+                    # Try ProductVariant as fallback for legacy orders (DEPRECATED)
+                    _log_deprecated_variant_usage(variant_id, "order creation (fallback)")
                     try:
                         variant = ProductVariant.objects.get(
                             id=variant_id,
@@ -750,7 +810,15 @@ class AtomicOrderCreator:
                 'price': price,
                 'item_total': item_total
             })
-        
+
+        # Spec 004 INV-012: Hard-fail if any products are not approved
+        if unapproved_products:
+            raise ProductVisibilityError(
+                f"Order contains {len(unapproved_products)} product(s) that are not approved. "
+                "All products must be approved before ordering.",
+                unapproved_products=unapproved_products
+            )
+
         # Add shipping cost
         total_amount += shipping_cost
         
@@ -781,24 +849,25 @@ class AtomicOrderCreator:
                     logger.info(f"Reserved {item['quantity']} units of variant {item['variant_id']} for product {item['product'].id}")
                     
                 except ProductCategoryVariantOption.DoesNotExist:
-                    # Try ProductVariant as fallback
+                    # Try ProductVariant as fallback (DEPRECATED per Spec 004 C.1)
+                    _log_deprecated_variant_usage(item['variant_id'], "order creation stock reservation (fallback)")
                     try:
                         variant = ProductVariant.objects.select_for_update().get(
                             id=item['variant_id'],
                             product_id=item['product'].id,
                             is_active=True
                         )
-                        
+
                         if variant.stock_count < item['quantity']:
                             raise ValueError(
                                 f"Insufficient stock for variant. Available: {variant.stock_count}, Requested: {item['quantity']}"
                             )
-                        
+
                         variant.stock_count -= item['quantity']
                         variant.save()
-                        
+
                         logger.info(f"Reserved {item['quantity']} units of variant {item['variant_id']} for product {item['product'].id}")
-                        
+
                     except ProductVariant.DoesNotExist:
                         raise ValueError(f"Variant {item['variant_id']} not found for product {item['product'].id}")
             else:
@@ -860,9 +929,8 @@ class AtomicOrderCreator:
                 seller=item['product'].seller,
                 reservation_status='reserved'
             )
-        
+
         # Step 8: Reserve wallet payment if requested
-        payment_tx = None
         if use_wallet_payment:
             try:
                 wallet = Wallet.objects.get(user=user)
@@ -873,12 +941,10 @@ class AtomicOrderCreator:
                     idempotency_key=f"payment_{idempotency_key}",
                     description=f"Order #{order.id}"
                 )
-                
+
                 if not success:
                     raise ValueError(f"Payment reservation failed: {error}")
-                
-                payment_tx = tx
-                
+
             except Wallet.DoesNotExist:
                 raise ValueError("Wallet not found for user")
         
@@ -907,7 +973,7 @@ class AtomicOrderCreator:
         Returns:
             Tuple of (success: bool, order: Order, error: str)
         """
-        from .models import Order, OrderItem
+        from .models import Order
         
         # Get order with lock
         try:
