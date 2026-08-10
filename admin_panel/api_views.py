@@ -2803,55 +2803,37 @@ def update_seller_variant_stock(request, product_id, variant_id):
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
 def update_combination_variant_stock(request, product_id):
-    """Update combination variant stock for sellers (e.g., '29_27' for white+20x30cm)"""
-    
-    # Check if user is an approved seller
-    if request.user.user_type not in ['artist', 'store']:
-        return Response({'error': 'Only approved sellers can access this endpoint'}, 
-                       status=status.HTTP_403_FORBIDDEN)
-    
-    try:
-        # Verify product belongs to seller
-        product = Product.objects.get(id=product_id, seller=request.user)
-        
-        combination_id = request.data.get('combination_id')
-        new_stock = request.data.get('stock_count')
-        
-        if not combination_id:
-            return Response({'error': 'combination_id is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if new_stock is None:
-            return Response({'error': 'stock_count is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            new_stock = int(new_stock)
-            if new_stock < 0:
-                raise ValueError("Stock cannot be negative")
-        except ValueError as e:
-            return Response({'error': 'Valid stock quantity is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate combination_id format (should be like "29_27")
-        if '_' not in combination_id:
-            return Response({'error': 'Invalid combination_id format'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Update combination stocks
-        if product.combination_stocks is None:
-            product.combination_stocks = {}
-        
-        product.combination_stocks[combination_id] = new_stock
-        product.save(update_fields=['combination_stocks', 'updated_at'])
-        
-        return Response({
-            'status': 'success',
-            'message': 'Combination variant stock updated successfully',
-            'combination_id': combination_id,
-            'new_stock': new_stock
-        })
-        
-    except Product.DoesNotExist:
-        return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    """Update combination variant stock for sellers (e.g., '29_27' for white+20x30cm)
+
+    Phase 2 fix (BACKEND_AUDIT.md / PHASE2 workstream 5): this endpoint previously wrote
+    only to Product.combination_stocks and returned a false "success" response, while
+    having ZERO effect on real, enforced stock - Product.stock, cart validation, and
+    checkout all read exclusively from ProductCategoryVariantOption.stock_count (the
+    canonical field per Spec 004 C.1/C.2), which this endpoint never touched. A seller
+    using it believed their stock update worked when it silently did nothing.
+
+    Investigated whether to auto-migrate combination_stocks writes onto the canonical
+    model instead: not safely possible. combination_stocks represents a genuinely
+    different, multi-dimensional model (one stock value per COMBINATION of two variant
+    options, e.g. color=29 + size=27), which ProductCategoryVariantOption cannot express
+    (one row per single variant option, no combination support) - and the codebase itself
+    uses at least two incompatible key formats for combination_stocks historically (this
+    endpoint's "opt1_opt2" pairs vs. a plain option_id used elsewhere), so there is no
+    single, provably-correct transformation to write as a data migration.
+
+    This endpoint now fails loudly and explicitly instead of silently no-oping, and
+    points callers at the endpoint that actually updates enforced stock. No data is
+    deleted or migrated by this change - see the report for the full investigation.
+    """
+    return Response({
+        'error': 'ENDPOINT_DEPRECATED',
+        'message': (
+            'Combination-based stock updates are no longer supported. Stock is now '
+            'tracked per variant option via ProductCategoryVariantOption; use '
+            '/api/admin/seller/dashboard/products/<product_id>/variants/<variant_id>/stock/ '
+            '(update_seller_variant_stock) instead.'
+        ),
+    }, status=status.HTTP_410_GONE)
 
 
 @api_view(['PUT'])

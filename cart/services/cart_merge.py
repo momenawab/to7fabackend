@@ -5,7 +5,7 @@ Implements conflict resolution where user cart quantity wins
 
 import logging
 from django.db import transaction
-from ..models import Cart, CartItem
+from ..models import Cart, CartItem, get_available_stock
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,25 @@ def merge_guest_cart(user, session_id):
                     )
                     items_skipped += 1
                 else:
-                    # No duplicate - add guest item to user cart
+                    # No duplicate - add guest item to user cart, but only if the
+                    # selected variant (or product, if no variant) still has enough
+                    # stock. Phase 2 fix: this previously created the CartItem
+                    # unconditionally, with no stock check of any kind.
+                    try:
+                        available_stock = get_available_stock(guest_item.product, guest_item.variant_id)
+                    except ValueError:
+                        available_stock = 0  # variant no longer exists/active
+
+                    if available_stock < guest_item.quantity:
+                        logger.info(
+                            f"Skipping guest item on merge - insufficient stock: "
+                            f"user_id={user.id}, product_id={guest_item.product.id}, "
+                            f"variant_id={guest_item.variant_id}, "
+                            f"requested={guest_item.quantity}, available={available_stock}"
+                        )
+                        items_skipped += 1
+                        continue
+
                     CartItem.objects.create(
                         cart=user_cart,
                         product=guest_item.product,

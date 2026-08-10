@@ -342,7 +342,6 @@ class Product(models.Model):
         Enforces Spec 004 invariants:
         - combination_stocks cannot be set to non-empty values (deprecated per Spec 004 C.1)
         """
-        from django.core.exceptions import ValidationError
         import warnings
 
         super().clean()
@@ -360,12 +359,17 @@ class Product(models.Model):
             # Note: We don't raise ValidationError to allow existing data to load
             # but new writes should be avoided
 
-        # Spec 004 INV-013: Setting approval_status='approved' REQUIRES is_active=True
-        if self.approval_status == 'approved' and not self.is_active:
-            raise ValidationError(
-                "Product must be active (is_active=True) to be approved. "
-                "See Spec 004 INV-013."
-            )
+        # Phase 2 fix (BACKEND_AUDIT.md / PHASE2 workstream 6): removed the
+        # "approval_status='approved' requires is_active=True" check that used to be
+        # here. It contradicted this project's own documented approval workflow
+        # (docs/API_PRODUCT_APPROVAL.md's Visibility Matrix explicitly lists
+        # is_active=False + approval_status='approved' as a legitimate, reachable
+        # state - "Inactive (even if approved)" - e.g. a seller pausing an already-
+        # approved listing without an admin having to re-review it later). Visibility
+        # is correctly enforced at the query level (Product.objects.approved()
+        # requires BOTH conditions); this was a save-time constraint that prevented
+        # the documented state from ever being saved at all via any path that calls
+        # full_clean() (notably the Django admin form).
 
     class Meta:
         # Use ProductQuerySet as the custom manager

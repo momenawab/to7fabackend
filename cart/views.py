@@ -128,7 +128,7 @@ def update_cart_item(request, item_id):
     
     serializer = UpdateCartItemSerializer(
         data=request.data,
-        context={'product': cart_item.product}
+        context={'product': cart_item.product, 'variant_id': cart_item.variant_id}
     )
     
     if serializer.is_valid():

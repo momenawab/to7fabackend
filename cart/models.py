@@ -3,6 +3,32 @@ from django.conf import settings
 from products.models import Product
 from decimal import Decimal
 
+
+def get_available_stock(product, variant_id=None):
+    """
+    Resolve the authoritative available stock for a cart operation.
+
+    Phase 2 fix (BACKEND_AUDIT.md #cart-variant-stock): cart operations previously
+    checked `product.stock` - the SUM across all of a product's variants - even when a
+    specific variant_id was selected. That let a customer add more of one variant than
+    that variant actually had in stock, as long as some OTHER variant's stock made the
+    aggregate look sufficient.
+
+    Spec 004 C.6: variant_id (when present) references ProductCategoryVariantOption.id
+    and is the source of truth for inventory - not the product's aggregate stock.
+    """
+    if variant_id:
+        from products.models import ProductCategoryVariantOption
+        try:
+            variant = ProductCategoryVariantOption.objects.get(
+                id=variant_id, product=product, is_active=True
+            )
+        except ProductCategoryVariantOption.DoesNotExist:
+            raise ValueError(f"Variant {variant_id} not found for this product")
+        return variant.stock_count
+    return product.stock
+
+
 class Cart(models.Model):
     """Shopping cart model"""
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='cart', null=True, blank=True)
@@ -37,10 +63,11 @@ class Cart(models.Model):
         """Add a product to the cart or update quantity if already exists"""
         if quantity <= 0:
             raise ValueError("Quantity must be positive")
-            
-        if product.stock < quantity:
-            raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
-        
+
+        available_stock = get_available_stock(product, variant_id)
+        if available_stock < quantity:
+            raise ValueError(f"Not enough stock available. Only {available_stock} items left.")
+
         # For variant products, check if exact variant combination already exists
         if selected_variants or variant_id:
             existing_items = self.items.filter(
@@ -51,8 +78,8 @@ class Cart(models.Model):
             if existing_items.exists():
                 cart_item = existing_items.first()
                 cart_item.quantity += quantity
-                if cart_item.quantity > product.stock:
-                    raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
+                if cart_item.quantity > available_stock:
+                    raise ValueError(f"Not enough stock available. Only {available_stock} items left.")
                 cart_item.save()
             else:
                 cart_item = CartItem.objects.create(
@@ -71,14 +98,14 @@ class Cart(models.Model):
                 variant_id=None,
                 defaults={'quantity': quantity}
             )
-            
+
             if not created:
                 # Item already exists, update quantity
                 cart_item.quantity += quantity
-                if cart_item.quantity > product.stock:
-                    raise ValueError(f"Not enough stock available. Only {product.stock} items left.")
+                if cart_item.quantity > available_stock:
+                    raise ValueError(f"Not enough stock available. Only {available_stock} items left.")
                 cart_item.save()
-            
+
         self.save()  # Update cart timestamp
         return cart_item
     
@@ -89,10 +116,11 @@ class Cart(models.Model):
             
         try:
             cart_item = self.items.get(id=cart_item_id)
-            
-            if cart_item.product.stock < quantity:
-                raise ValueError(f"Not enough stock available. Only {cart_item.product.stock} items left.")
-                
+
+            available_stock = get_available_stock(cart_item.product, cart_item.variant_id)
+            if available_stock < quantity:
+                raise ValueError(f"Not enough stock available. Only {available_stock} items left.")
+
             cart_item.quantity = quantity
             cart_item.save()
             self.save()  # Update cart timestamp

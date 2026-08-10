@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Cart, CartItem
+from .models import Cart, CartItem, get_available_stock
 from products.models import Product
 
 class ProductMinimalSerializer(serializers.ModelSerializer):
@@ -98,20 +98,27 @@ class CartItemSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validate that there's enough stock"""
+        """Validate that there's enough stock.
+
+        Note: CartItemSerializer is only ever instantiated read-only in this codebase
+        (see CartSerializer/to_representation below), so this validate() is currently
+        unreachable. Fixed anyway for consistency and in case a write path is added later.
+        """
         product_id = data.get('product_id')
         quantity = data.get('quantity', 1)
-        
+        variant_id = data.get('variant_id')
+
         try:
             product = Product.objects.get(id=product_id)
-            if product.stock < quantity:
+            available_stock = get_available_stock(product, variant_id)
+            if available_stock < quantity:
                 raise serializers.ValidationError(
-                    {"quantity": f"Not enough stock available. Only {product.stock} items left."}
+                    {"quantity": f"Not enough stock available. Only {available_stock} items left."}
                 )
         except Product.DoesNotExist:
             # This will be caught by validate_product_id
             pass
-            
+
         return data
 
 
@@ -156,37 +163,42 @@ class AddToCartSerializer(serializers.Serializer):
         """Validate that there's enough stock"""
         product_id = data.get('product_id')
         quantity = data.get('quantity', 1)
-        
+        variant_id = data.get('variant_id')
+
         try:
             product = Product.objects.get(id=product_id)
-            if product.stock < quantity:
+            available_stock = get_available_stock(product, variant_id)
+            if available_stock < quantity:
                 raise serializers.ValidationError(
-                    {"quantity": f"Not enough stock available. Only {product.stock} items left."}
+                    {"quantity": f"Not enough stock available. Only {available_stock} items left."}
                 )
         except Product.DoesNotExist:
             # This will be caught by validate_product_id
             pass
-            
+
         return data
 
 
 class UpdateCartItemSerializer(serializers.Serializer):
     """Serializer for updating cart item quantity"""
     quantity = serializers.IntegerField(min_value=0)
-    
+
     def validate(self, data):
         """Validate that there's enough stock"""
         quantity = data.get('quantity', 0)
-        
+
         # Skip validation if removing item (quantity=0)
         if quantity == 0:
             return data
-            
-        # Get product from context
+
+        # Get product (and variant, if any) from context
         product = self.context.get('product')
-        if product and product.stock < quantity:
-            raise serializers.ValidationError(
-                {"quantity": f"Not enough stock available. Only {product.stock} items left."}
-            )
-            
-        return data 
+        variant_id = self.context.get('variant_id')
+        if product:
+            available_stock = get_available_stock(product, variant_id)
+            if available_stock < quantity:
+                raise serializers.ValidationError(
+                    {"quantity": f"Not enough stock available. Only {available_stock} items left."}
+                )
+
+        return data

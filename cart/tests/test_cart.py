@@ -13,7 +13,10 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
 from cart.models import Cart, CartItem
-from products.models import Product, Category
+from products.models import (
+    Product, Category, CategoryVariantType, CategoryVariantOption,
+    ProductCategoryVariantOption,
+)
 import uuid
 
 User = get_user_model()
@@ -99,6 +102,12 @@ class TestGuestCartOperations(TestCase):
         )
         
         # Create a product
+        # Phase 2 fix (workstream 4 investigation): approval_status was left at its
+        # default ('pending'), which made test_add_item_to_guest_cart_via_api fail
+        # against the pre-existing (unrelated to this workstream) INV-011 approval
+        # check in add_to_cart - invisible until the Phase 2 migration fix let the
+        # test database build at all. Not a workstream 4 change; fixed here since it's
+        # the same fixture.
         self.category = Category.objects.create(
             name='Test Category',
         )
@@ -108,15 +117,16 @@ class TestGuestCartOperations(TestCase):
             stock_quantity=100,
             category=self.category,
             seller=self.seller,
+            approval_status='approved',
         )
-        
+
         # Create guest cart
         self.guest_cart = Cart.objects.create(session_id=self.session_id)
 
     def test_add_item_to_guest_cart(self):
         """Test adding item to guest cart."""
         self.guest_cart.add_item(self.product, quantity=2)
-        
+
         self.assertEqual(self.guest_cart.items.count(), 1)
         cart_item = self.guest_cart.items.first()
         self.assertEqual(cart_item.product, self.product)
@@ -124,18 +134,26 @@ class TestGuestCartOperations(TestCase):
 
     def test_add_item_with_variants(self):
         """Test adding item with variants."""
+        # Phase 2 fix: variant_id must reference a real ProductCategoryVariantOption
+        # now that cart stock validation actually checks it (workstream 4) - a bare
+        # variant_id=1 with no matching row is exactly the bug being fixed.
+        variant_type = CategoryVariantType.objects.create(name='Size', category=self.category)
+        option = CategoryVariantOption.objects.create(variant_type=variant_type, value='Large')
+        product_variant = ProductCategoryVariantOption.objects.create(
+            product=self.product, category_variant_option=option, stock_count=10, is_active=True,
+        )
         variants = {'color': 'red', 'size': 'large'}
         self.guest_cart.add_item(
             self.product,
             quantity=1,
             selected_variants=variants,
-            variant_id=1
+            variant_id=product_variant.id
         )
-        
+
         self.assertEqual(self.guest_cart.items.count(), 1)
         cart_item = self.guest_cart.items.first()
         self.assertEqual(cart_item.selected_variants, variants)
-        self.assertEqual(cart_item.variant_id, 1)
+        self.assertEqual(cart_item.variant_id, product_variant.id)
 
     def test_update_item_quantity(self):
         """Test updating cart item quantity."""
@@ -317,26 +335,33 @@ class TestCartMerge(TestCase):
     def test_merge_with_product_variants(self):
         """Test merging carts with product variants."""
         # Add product with variants to guest cart
+        # Phase 2 fix: variant_id must reference a real ProductCategoryVariantOption
+        # with enough stock now that merge validates it (workstream 4).
+        variant_type = CategoryVariantType.objects.create(name='Size', category=self.category)
+        option = CategoryVariantOption.objects.create(variant_type=variant_type, value='Large')
+        product_variant = ProductCategoryVariantOption.objects.create(
+            product=self.product1, category_variant_option=option, stock_count=10, is_active=True,
+        )
         variants = {'color': 'red', 'size': 'large'}
         self.guest_cart.add_item(
             self.product1,
             quantity=2,
             selected_variants=variants,
-            variant_id=1
+            variant_id=product_variant.id
         )
-        
+
         # Merge
         from cart.services.cart_merge import merge_guest_cart
         result = merge_guest_cart(self.user, self.session_id)
-        
+
         self.assertTrue(result['success'])
         self.assertEqual(result['items_added'], 1)
-        
+
         # Verify user cart has item with variants
         self.assertEqual(self.user_cart.items.count(), 1)
         cart_item = self.user_cart.items.first()
         self.assertEqual(cart_item.selected_variants, variants)
-        self.assertEqual(cart_item.variant_id, 1)
+        self.assertEqual(cart_item.variant_id, product_variant.id)
 
     def test_guest_cart_deleted_after_merge(self):
         """Test that guest cart is deleted after merge."""

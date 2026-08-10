@@ -73,6 +73,12 @@ def product_list(request):
 @permission_classes([AllowAny])  # GET is public, PUT/DELETE requires authentication (handled in view)
 def product_detail(request, pk):
     """Get, update or delete a product"""
+    # Lookup unchanged from before Phase 2 (is_active=True only) - this is shared by the
+    # owner-facing PUT/DELETE branch below, which must still be able to reach the seller's
+    # own pending/rejected product (sellers manage those via seller_product_detail too;
+    # this view's PUT/DELETE branch is currently unreachable via JWT bearer auth anyway -
+    # see PHASE2_CORE_CORRECTNESS_REPORT.md - so this doesn't change real behavior today,
+    # but keeps this lookup correct if that auth bug is fixed later).
     try:
         product = Product.objects.get(pk=pk, is_active=True)
     except Product.DoesNotExist:
@@ -84,6 +90,18 @@ def product_detail(request, pk):
         )
 
     if request.method == 'GET':
+        # Phase 2 fix: was reachable here regardless of approval_status. A rejected/pending
+        # product must not be directly reachable by URL - matches the visibility rule
+        # Product.objects.approved() enforces everywhere else. Returns the identical
+        # NOT_FOUND response as a genuinely missing product, so existence of an unapproved
+        # product isn't leaked by a different error shape.
+        if product.approval_status != 'approved':
+            return api_error(
+                request,
+                code='NOT_FOUND',
+                message='Product not found',
+                status_code=status.HTTP_404_NOT_FOUND
+            )
         serializer = ProductDetailSerializer(product)
         return api_success(request, data=serializer.data)
 
@@ -136,9 +154,10 @@ def product_search(request):
         )
 
     # Search in name and description
-    products = Product.objects.filter(
-        Q(name__icontains=query) | Q(description__icontains=query),
-        is_active=True
+    # Phase 2 fix: was is_active=True only; now matches Product.objects.approved()'s
+    # canonical visibility rule so an unapproved product can't surface via search.
+    products = Product.objects.approved().filter(
+        Q(name__icontains=query) | Q(description__icontains=query)
     ).order_by('-created_at')
 
     # Filter by category if provided
@@ -159,8 +178,11 @@ def product_search(request):
 def product_reviews(request, pk):
     """Get all reviews for a product or add a new review"""
     # Check if product exists
+    # Phase 2 fix: was is_active=True only. Both GET and POST here are pure customer
+    # actions (no owner/admin branch, unlike product_detail), so this can use the
+    # canonical approved() filter directly.
     try:
-        product = Product.objects.get(pk=pk, is_active=True)
+        product = Product.objects.approved().get(pk=pk)
     except Product.DoesNotExist:
         return api_error(
             request,
@@ -275,13 +297,13 @@ def category_detail(request, pk):
             subcategory_ids = [sub.id for sub in subcategories]
 
             # Get products from main category and all its subcategories
-            products = Product.objects.filter(
-                category_id__in=[category.id] + subcategory_ids,
-                is_active=True
+            # Phase 2 fix: was is_active=True only; now matches Product.objects.approved().
+            products = Product.objects.approved().filter(
+                category_id__in=[category.id] + subcategory_ids
             ).order_by('-created_at')
         else:
             # For subcategories: only get products directly assigned to this subcategory
-            products = Product.objects.filter(category=category, is_active=True)
+            products = Product.objects.approved().filter(category=category)
 
         product_serializer = ProductSerializer(products, many=True)
 
@@ -437,12 +459,15 @@ def latest_offers(request):
         })
 
     # Get current active offers
+    # Phase 2 fix: was product__is_active=True only; now also requires
+    # product__approval_status='approved', matching Product.objects.approved().
     now = timezone.now()
     offers = ProductOffer.objects.filter(
         is_active=True,
         start_date__lte=now,
         end_date__gte=now,
-        product__is_active=True
+        product__is_active=True,
+        product__approval_status='approved'
     ).select_related('product', 'product__category').order_by('-created_at')[:min(limit, settings.max_products_per_section)]
 
     # Serialize the products with offer information
@@ -492,10 +517,13 @@ def featured_products(request):
         })
 
     # Get current featured products from FeaturedProduct model
+    # Phase 2 fix: was product__is_active=True only; now also requires
+    # product__approval_status='approved', matching Product.objects.approved().
     now = timezone.now()
     featured_products = FeaturedProduct.objects.filter(
         is_active=True,
-        product__is_active=True
+        product__is_active=True,
+        product__approval_status='approved'
     ).filter(
         Q(featured_until__isnull=True) | Q(featured_until__gte=now)
     ).select_related('product', 'product__category').order_by('priority', '-featured_since')[:min(limit, settings.max_products_per_section)]
@@ -561,8 +589,8 @@ def top_rated_products(request):
     settings = ContentSettings.get_settings()
 
     # Get products with reviews and order by average rating
-    products = Product.objects.filter(
-        is_active=True,
+    # Phase 2 fix: was is_active=True only; now matches Product.objects.approved().
+    products = Product.objects.approved().filter(
         reviews__isnull=False
     ).annotate(
         review_count=Count('reviews')

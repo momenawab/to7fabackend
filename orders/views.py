@@ -10,7 +10,8 @@ from .atomic_order_system import (
     OrderStateMachine,
     AtomicOrderCreator,
     WalletOrderCoordinator,
-    StockLockManager
+    StockLockManager,
+    ProductVisibilityError
 )
 from django.db import transaction
 from django.db.models import Q
@@ -84,6 +85,22 @@ def create_order(request):
         try:
             order = serializer.save()
             return api_created(request, data=OrderDetailSerializer(order, context={'request': request}).data)
+        except ProductVisibilityError as e:
+            # Phase 2 fix (BACKEND_AUDIT.md / PHASE2 workstream 7): ProductVisibilityError
+            # subclasses ValueError, so it was previously swallowed by the generic
+            # `except ValueError` handler below, which only reads str(e) - the
+            # documented unapproved_products payload (docs/API_PRODUCT_APPROVAL.md)
+            # never reached the client. Caught here, before the generic handler,
+            # specifically to surface it via `details`, matching how every other
+            # structured error in this API carries extra data (see serializer.errors
+            # below), rather than introducing a one-off response envelope.
+            return api_error(
+                request,
+                code='PRODUCT_VISIBILITY_ERROR',
+                message=str(e),
+                details={'unapproved_products': e.unapproved_products},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         except ValueError as e:
             # Known business logic errors (insufficient stock, etc.)
             return api_error(

@@ -138,7 +138,15 @@ class ProductSerializer(serializers.ModelSerializer):
                  'price_range', 'stock_status', 'has_variants', 'colors', 'sizes', 'combination_stocks',
                  'featured_request_pending', 'offers_request_pending', 'featured_requested_at', 'offers_requested_at',
                  'is_offer', 'offer_price', 'original_price', 'discount_percentage', 'discount_text', 'display_price')
-        read_only_fields = ('seller',)
+        # approval_status/rejection_reason/is_featured are admin-controlled only (Phase 2 fix:
+        # these were previously seller-writable, letting a seller self-approve or self-feature
+        # their own product via POST/PUT). The legitimate admin approval workflow sets these
+        # directly on the model instance (admin_panel/views.py, admin_panel/api_views.py) and
+        # never goes through this serializer, so this doesn't affect that path.
+        # is_active is intentionally left writable - sellers may legitimately pause/unpause
+        # their own listing, and public visibility already requires approval_status='approved'
+        # independently (see Product.objects.approved()), so this can't be used to bypass approval.
+        read_only_fields = ('seller', 'approval_status', 'rejection_reason', 'is_featured')
     
     def get_stock_status(self, obj):
         """Get stock status for this product"""

@@ -555,26 +555,56 @@ def verify_email(request):
 @permission_classes([IsAuthenticated])
 def logout_view(request):
     """
-    Logout endpoint - JWT tokens are stateless, so this is mainly for client-side cleanup
-    
+    Logout endpoint - blacklists the refresh token so it can't be reused.
+
     Request:
     Headers: Authorization: Bearer <access_token>
-    
+    Body (optional but required to actually invalidate the session):
+    {
+        "refresh": "refresh_token_here"
+    }
+
     Response (Success):
     {
         "message": "Successfully logged out",
         "code": "LOGOUT_SUCCESS"
     }
+
+    Phase 2 fix (BACKEND_AUDIT.md / PHASE2 workstream 9): this previously only logged
+    the logout and told the client to discard its tokens client-side. SIMPLE_JWT already
+    had ROTATE_REFRESH_TOKENS/BLACKLIST_AFTER_ROTATION=True, but
+    rest_framework_simplejwt.token_blacklist wasn't installed, so a stolen refresh token
+    stayed valid for its full 7-day lifetime even after logout. The refresh token is
+    optional here (not a breaking API change for existing clients that don't send one),
+    but logout only actually invalidates the session if it's provided.
     """
-    # JWT tokens are stateless - client should discard tokens
-    # Optionally, add refresh token to blacklist if using SimpleJWT blacklist
-    
+    from rest_framework_simplejwt.tokens import RefreshToken
+    from rest_framework_simplejwt.exceptions import TokenError
+
+    refresh_token = request.data.get('refresh')
+    if refresh_token:
+        try:
+            RefreshToken(refresh_token).blacklist()
+        except TokenError:
+            # Already invalid/expired/blacklisted - logout still succeeds either way,
+            # the end state (this token can't be used) is what the client wants.
+            pass
+    else:
+        logger.warning(
+            f"User {request.user.email} logged out without providing a refresh token - "
+            "their refresh token was NOT invalidated."
+        )
+
     logger.info(f"User {request.user.email} logged out")
-    
+
+    # Phase 2 fix: api_success() has never accepted a `code` kwarg (only api_error()
+    # does - see api/helpers.py) - this call was raising an uncaught TypeError,
+    # turning every logout into a 500 Internal Server Error. Pre-existing, unrelated to
+    # the blacklist fix above, but this workstream can't be verified without it working.
     return api_success(
         request,
         message='Successfully logged out',
-        code='LOGOUT_SUCCESS'
+        data={'code': 'LOGOUT_SUCCESS'}
     )
 
 

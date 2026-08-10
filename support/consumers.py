@@ -5,25 +5,57 @@ from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from django.contrib.auth import get_user_model
-from .models import SupportTicket, SupportMessage
 
 User = get_user_model()
 
+# Phase 2 fix (discovered while testing workstream 10, WebSocket auth): this module
+# used to import SupportTicket and SupportMessage from .models at module level. Neither
+# exists any more - support/models.py was rewritten to the new ContactRequest-based
+# system and re-exports only ContactRequest/ContactNote/ContactStats. That made this
+# entire module fail to import, which means to7fabackend/asgi.py (which imports
+# support.routing, which imports this module) would crash immediately if ever run
+# under a real ASGI server - the whole application, not just this WebSocket route.
+# Nothing currently exercises asgi.py during `manage.py check` or the pytest suite
+# (both use Django's WSGI-style test machinery), which is why this was invisible.
+#
+# check_ticket_access() below still references SupportTicket, which still doesn't
+# exist - porting it to ContactRequest requires deciding what "ticket access" means
+# under the new model, which is a real design decision, not a mechanical rename, and
+# is out of this workstream's scope ("do not rewrite the support system"). The import
+# is deferred into that one method instead of removed, so the module (and therefore
+# asgi.py) imports successfully - fixing the crash - while leaving that one method's
+# already-broken behavior exactly as broken as it already was; nothing currently calls
+# it. See PHASE2_CORE_CORRECTNESS_REPORT.md for the full write-up and Phase 3+ flag.
+
 class SupportConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        """Handle WebSocket connection"""
+        """Handle WebSocket connection.
+
+        Phase 2 fix (BACKEND_AUDIT.md / PHASE2 workstream 10): the JWT used to be read
+        from the query string (?token=...), which URLs commonly end up in proxy/access
+        logs. Read it from the WebSocket subprotocol header (Sec-WebSocket-Protocol)
+        instead - the client connects with `protocols: [<jwt>]`, which lives in a
+        request header, not the logged URL. Chosen over an initial-authentication-
+        message approach to keep this the same synchronous authenticate-then-
+        accept-or-reject flow that was already here (same close code, same shape),
+        rather than introducing a pending/unauthenticated connection state and a
+        timeout for clients that never send an auth message.
+        """
         self.user = None
         self.ticket_groups = set()
-        
-        # Authenticate user using JWT token
-        token = self.scope.get('query_string', b'').decode('utf-8')
-        if token.startswith('token='):
-            token = token[6:]  # Remove 'token=' prefix
+
+        # Authenticate user using JWT token passed as the WebSocket subprotocol.
+        subprotocols = self.scope.get('subprotocols') or []
+        token = subprotocols[0] if subprotocols else None
+        if token:
             self.user = await self.authenticate_user(token)
-        
+
         if self.user and not isinstance(self.user, AnonymousUser):
-            await self.accept()
-            
+            # Echo the subprotocol back - required by the WebSocket handshake spec
+            # when the client offered one; some clients treat its absence as a
+            # rejected handshake even though the connection technically succeeded.
+            await self.accept(subprotocol=token)
+
             # Send connection confirmation
             await self.send(text_data=json.dumps({
                 'type': 'connection_established',
@@ -152,7 +184,15 @@ class SupportConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_ticket_access(self, ticket_id):
-        """Check if user has access to the ticket"""
+        """Check if user has access to the ticket.
+
+        Still broken (pre-existing, not a Phase 2 regression): SupportTicket no
+        longer exists (see the module-level comment above this class). Deferred
+        the import to here so it only fails when this specific method is actually
+        called, rather than crashing the whole module - and by extension asgi.py -
+        at import time.
+        """
+        from .models import SupportTicket
         try:
             ticket = SupportTicket.objects.get(ticket_id=ticket_id)
             # User can access their own tickets or admin can access all tickets

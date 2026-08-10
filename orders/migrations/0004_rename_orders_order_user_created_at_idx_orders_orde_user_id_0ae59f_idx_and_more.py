@@ -6,7 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('orders', '0003_add_order_indexes'),
+        # Phase 2 fix: was '0003_add_order_indexes' directly. Routed through
+        # 0010_add_missing_orderitem_indexes, which creates the three OrderItem indexes
+        # this migration renames (they were never created by any earlier tracked
+        # migration - see 0010 for the full explanation). This migration's own name is
+        # unchanged, so it does not affect already-applied tracking on any existing
+        # database; this only changes what a fresh replay must do first.
+        ('orders', '0010_add_missing_orderitem_indexes'),
     ]
 
     operations = [

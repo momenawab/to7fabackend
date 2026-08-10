@@ -2,8 +2,11 @@ django==4.2.13
 djangorestframework==3.16.0
 djangorestframework-simplejwt==5.5.0
 django-cors-headers==4.7.0
+# mysqlclient provides the MySQLdb module directly (Django's mysql backend imports it by
+# default) - no compatibility shim needed. pymysql (a pure-Python alternative requiring
+# pymysql.install_as_MySQLdb() to masquerade as MySQLdb) was previously also listed here
+# with no code anywhere using it; removed (Phase 2) rather than supporting two drivers.
 mysqlclient==2.2.7
-pymysql
 pillow==11.2.1
 python-dotenv==1.0.1
 cryptography
