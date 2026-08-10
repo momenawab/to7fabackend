@@ -361,8 +361,17 @@ function loadCategories() {
     $.ajax({
         url: '/api/products/admin/categories/',
         method: 'GET',
+        // Pre-Flutter remediation (final backend audit H4): this used to also send
+        // 'Authorization': 'Bearer ' + localStorage.getItem('access_token') - always
+        // literally "Bearer null", since nothing in this session-authenticated admin
+        // dashboard ever populates that localStorage key. An invalid Bearer token
+        // makes DRF's JWT authenticator raise immediately, which stops the
+        // authentication chain before it ever tries the session cookie this browser
+        // actually has - so removing the header (rather than trying to fix the
+        // token) is what lets SessionAuthentication (now added on the Django side)
+        // succeed. The browser's session cookie is sent automatically; the CSRF
+        // token below is the only header this request actually needs.
         headers: {
-            'Authorization': 'Bearer ' + localStorage.getItem('access_token'),
             'X-CSRFToken': $('[name=csrfmiddlewaretoken]').val()
         },
         success: function(response) {

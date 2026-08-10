@@ -3,6 +3,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.authentication import SessionAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from api.helpers import api_error, api_success, api_created
 from .models import (
     Product, Category, Review, Advertisement, ContentSettings, ProductOffer, FeaturedProduct,
@@ -244,7 +246,6 @@ def product_reviews(request, pk):
         )
 
 @api_view(['GET', 'POST'])
-@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, POST requires authentication (handled in view)
 def category_list(request):
     """Get all categories or create a new category"""
@@ -284,7 +285,6 @@ def category_list(request):
         )
 
 @api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, PUT/DELETE requires staff permissions (handled in view)
 def category_detail(request, pk):
     """Get category details, update or delete a category"""
@@ -1284,6 +1284,13 @@ def manage_advertisement_detail(request, ad_id):
 
 @csrf_exempt
 @api_view(['GET'])
+# Pre-Flutter remediation (final backend audit H4): explicit, additive auth - JWT
+# (this project's default, and what Flutter's CategoryService genuinely calls this
+# exact endpoint with - confirmed via lib/core/services/category_service.dart) PLUS
+# SessionAuthentication (what admin_panel/templates/admin_panel/category_management.html's
+# browser session actually has - admin login is Django-session-based, never issues a
+# JWT). Either credential now works; neither caller's existing behavior is broken.
+@authentication_classes([JWTAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def manage_categories(request):
     """Get all categories for admin management with hierarchical structure"""
@@ -1339,6 +1346,8 @@ def manage_categories(request):
 
 @csrf_exempt
 @api_view(['POST'])
+# See manage_categories() above for why both authenticators are listed explicitly.
+@authentication_classes([JWTAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def create_category(request):
     """Create a new category or subcategory"""
@@ -1422,6 +1431,8 @@ def create_category(request):
 
 @csrf_exempt
 @api_view(['GET'])
+# See manage_categories() above for why both authenticators are listed explicitly.
+@authentication_classes([JWTAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def manage_category_detail(request, category_id):
     """Get category details with products and subcategories"""
@@ -1483,6 +1494,8 @@ def manage_category_detail(request, category_id):
 
 @csrf_exempt
 @api_view(['PUT'])
+# See manage_categories() above for why both authenticators are listed explicitly.
+@authentication_classes([JWTAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def update_category(request, category_id):
     """Update category details"""
@@ -1595,6 +1608,8 @@ def update_category(request, category_id):
 
 @csrf_exempt
 @api_view(['DELETE'])
+# See manage_categories() above for why both authenticators are listed explicitly.
+@authentication_classes([JWTAuthentication, SessionAuthentication])
 @permission_classes([IsAuthenticated])
 def delete_category(request, category_id):
     """Delete a category"""
