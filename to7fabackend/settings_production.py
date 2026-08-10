@@ -10,7 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-q2(^inryyn2zv9pky+rr+us=!bn2tph!^m&5bx2hiie)zreg4y')
+# SECRET_KEY is already set (and fail-fast validated) by `from .settings import *` above.
+# Do NOT reassign it here with a fallback default - that would silently defeat the
+# ImproperlyConfigured check in settings.py if the env var is ever missing in production.
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
@@ -28,20 +30,10 @@ ALLOWED_HOSTS = [
 ]
 
 # Database configuration for production
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'to7fa_db'),
-        'USER': os.getenv('DB_USER', 'django_user'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'strongpass'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '3306'),
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-        },
-    }
-}
+# DATABASES is already set (and fail-fast validated) by `from .settings import *` above.
+# Do NOT redefine it here with fallback defaults (previously included a hardcoded
+# 'strongpass' password fallback) - that would silently defeat the ImproperlyConfigured
+# check in settings.py if DB_PASSWORD (or any other DB env var) is ever missing.
 
 # Static files configuration for production
 STATIC_URL = '/static/'

@@ -12,6 +12,10 @@ channels-redis==4.2.0
 django-redis==5.4.0
 celery==5.3.6
 # Testing
+# NOTE: pytest-django==4.5.2 predates pytest 9 by several years; pin pytest to the
+# version this was verified against for reproducibility. Compatibility between the two
+# is unverified and worth a closer look in a later phase.
+pytest==9.1.1
 pytest-django==4.5.2
 # Push notification dependencies
 requests>=2.25.1
