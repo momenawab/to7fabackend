@@ -66,9 +66,15 @@ class TestProductVisibilityEverywhere:
     # --- product_list (already fixed pre-Phase-2, sanity check it still holds) ---
 
     def test_product_list_excludes_unapproved(self):
+        """Pre-Flutter remediation (final audit H5): product_list switched from the
+        api_success() {success, data} envelope to standard DRF pagination
+        ({count, next, previous, results}, matching artist_list's convention) - reads
+        response.json()['results'] now instead of ['data']. Contract-compatible with
+        lib/core/services/product_service.dart's getProducts(), which already parses
+        this exact paginated shape."""
         response = self.client.get('/api/products/')
         assert response.status_code == 200
-        names = [p['name'] for p in response.json()['data']]
+        names = [p['name'] for p in response.json()['results']]
         assert 'Approved Product' in names
         assert 'Pending Product' not in names
         assert 'Rejected Product' not in names

@@ -31,9 +31,43 @@ def product_list(request):
     GET requests return only products with is_active=True AND approval_status='approved'.
     """
     if request.method == 'GET':
-        # Spec 004 C.4: Public visibility requires BOTH is_active=True AND approval_status='approved'
-        # Use approved() manager which enforces both conditions
-        products = Product.objects.approved().order_by('-created_at')
+        # Pre-Flutter remediation (final backend audit H5): this endpoint used to
+        # serialize the entire approved catalog on every request - unbounded
+        # response size, and query count scaled with the TOTAL catalog size, not
+        # with what was actually returned.
+        #
+        # Fixed with the same PageNumberPagination pattern already used by
+        # custom_auth.api_views.artist_list (page/page_size query params,
+        # page_size_query_param='page_size', max_page_size=100, default page_size
+        # from DRF's global PAGE_SIZE setting = 20) rather than api_success()'s
+        # {success, data} envelope - verified before choosing this (not assumed):
+        # lib/core/services/product_service.dart's getProducts() already sends
+        # page/page_size query params and already parses a {results, count, next,
+        # previous} response shape on any non-bare-array response, so this is
+        # contract-compatible with the real Flutter client, not a breaking change.
+        # This is the primary fix: query count (and response size) is now bounded
+        # by page size (<=100), not by total catalog size - see
+        # products/tests/test_product_list_pagination.py's
+        # test_query_count_bounded_by_page_size_not_catalog_size.
+        #
+        # select_related/prefetch_related additionally cut the remaining
+        # per-product query cost from a measured 18/product to 12/product (category,
+        # seller incl. seller.store_profile, images, reviews, and selected_variants'
+        # own .all() are no longer separate per-product queries). The residual
+        # ~12/product comes from Product.has_variants/.stock/.available_variant_types
+        # and ProductSerializer's price_range/stock_status fields, which each run
+        # their own differently-filtered per-product queries (e.g.
+        # self.selected_variants.filter(is_active=True), which doesn't reuse a plain
+        # prefetch_related('selected_variants') cache) or query ProductOffer/
+        # CategoryVariantType directly. Eliminating that further would mean changing
+        # what those model properties/serializer methods query (e.g. annotating in
+        # the queryset or restructuring them to use a baked-in prefetch attribute) -
+        # out of this remediation's scope ("do not redesign the Product model").
+        # Documented rather than chased; not a regression from this fix, and no
+        # longer capable of scaling past what pagination already bounds.
+        products = Product.objects.approved().select_related(
+            'category', 'category__parent', 'seller', 'seller__store_profile',
+        ).prefetch_related('images', 'selected_variants', 'reviews').order_by('-created_at')
 
         # Filter by category if provided
         category_id = request.query_params.get('category')
@@ -45,8 +79,14 @@ def product_list(request):
         if featured and featured.lower() == 'true':
             products = products.filter(is_featured=True)
 
-        serializer = ProductSerializer(products, many=True)
-        return api_success(request, data=serializer.data)
+        from rest_framework.pagination import PageNumberPagination
+
+        paginator = PageNumberPagination()
+        paginator.page_size_query_param = 'page_size'
+        paginator.max_page_size = 100
+        page = paginator.paginate_queryset(products, request)
+        serializer = ProductSerializer(page, many=True, context={'request': request})
+        return paginator.get_paginated_response(serializer.data)
 
     elif request.method == 'POST':
         # Only authenticated users can create products
