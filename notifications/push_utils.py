@@ -3,6 +3,7 @@ Push notification utilities for FCM (Android) and APNs (iOS)
 Supports Firebase Cloud Messaging HTTP v1 API and Apple Push Notification service
 """
 import json
+import os
 import requests
 import logging
 from datetime import datetime
@@ -24,7 +25,14 @@ logger = logging.getLogger(__name__)
 
 # Initialize Firebase Admin SDK
 firebase_app = None
-if FIREBASE_ADMIN_AVAILABLE and hasattr(settings, 'FCM_SERVICE_ACCOUNT_FILE') and settings.FCM_SERVICE_ACCOUNT_FILE:
+# Phase 4 (Part 5): checks the configured path actually exists before attempting to
+# load it as a credential, rather than only checking the setting is a non-empty
+# string (FCM_SERVICE_ACCOUNT_FILE always was one - settings.py gives it a default
+# path even when no such file has been created). Missing-file was already handled
+# safely before this change too (credentials.Certificate() raising was caught by the
+# except below), just via an exception rather than an explicit, easier-to-read check;
+# behavior when the file legitimately exists and is valid is unchanged.
+if FIREBASE_ADMIN_AVAILABLE and getattr(settings, 'FCM_SERVICE_ACCOUNT_FILE', None) and os.path.exists(settings.FCM_SERVICE_ACCOUNT_FILE):
     try:
         if not firebase_admin._apps:
             cred = credentials.Certificate(settings.FCM_SERVICE_ACCOUNT_FILE)
@@ -35,6 +43,13 @@ if FIREBASE_ADMIN_AVAILABLE and hasattr(settings, 'FCM_SERVICE_ACCOUNT_FILE') an
     except Exception as e:
         logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
         firebase_app = None
+elif FIREBASE_ADMIN_AVAILABLE:
+    logger.warning(
+        "Firebase service account file not found at %s - push notifications via FCM "
+        "are disabled until a real service account key is provisioned (see "
+        "PRODUCTION_READINESS.md). This is expected in development/CI.",
+        getattr(settings, 'FCM_SERVICE_ACCOUNT_FILE', None),
+    )
 
 class PushNotificationError(Exception):
     """Custom exception for push notification errors"""

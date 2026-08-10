@@ -4,6 +4,19 @@ Spec 001 Tests: Login Behavior
 Tests derived from:
 - spec-001.md section: Authentication Specification
 - FR-008 through FR-013
+
+Phase 4 (Part 15, test infrastructure): every login test in this file posted a short
+hardcoded email ('locked@example.com', 'verified@example.com', etc.) that never
+matched the actual randomized-suffix email the user was created with just above it
+(e.g. 'locked_b3a703b5@example.com') - every login attempt therefore hit a
+nonexistent account and 401'd, regardless of what each test was actually trying to
+verify (lock enforcement, blocked-user handling, response fields...). This looked
+like a real security defect at first glance (a lock-enforcement test asserting 403
+but getting 401) - it wasn't; every login call was simply targeting the wrong,
+never-created email. Fixed by using the created user's real .email throughout.
+Masked until now by the conftest.py `db` fixture bug (see conftest.py's module
+docstring). test_registration_requires_email_password_mobile is unaffected (it tests
+registration, not login, and never creates a user to match against).
 """
 
 import pytest
@@ -31,7 +44,7 @@ class TestLoginAllowsUnverifiedUsers:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'unverified@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         assert response.status_code == 200
@@ -52,7 +65,7 @@ class TestLoginAllowsUnverifiedUsers:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'user@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         # Login succeeds despite unverified mobile
@@ -76,7 +89,7 @@ class TestLoginBlocksOnlyLockedUsers:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'locked@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         assert response.status_code == 403
@@ -95,7 +108,7 @@ class TestLoginBlocksOnlyLockedUsers:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'blocked@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         assert response.status_code == 200
@@ -113,7 +126,7 @@ class TestLoginBlocksOnlyLockedUsers:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'verified@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         assert response.status_code == 200
@@ -136,7 +149,7 @@ class TestLockEnforcedBeforePasswordValidation:
         # Even with wrong password, lock should be detected first
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'locked@example.com', 'password': 'wrongpassword'},
+            data={'email': user.email, 'password': 'wrongpassword'},
             format='json'
         )
         # Should return 403 (locked) not 401 (wrong password)
@@ -156,7 +169,7 @@ class TestLockEnforcedBeforePasswordValidation:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'locked@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         data = response.json()
@@ -169,14 +182,14 @@ class TestLoginResponseFields:
     def test_login_accepts_email_and_password(self, db):
         """FR-010: Login MUST accept email + password credentials."""
         client = APIClient()
-        User.objects.create_user(
+        user = User.objects.create_user(
             email=f'test_d75fd8de@example.com',
             password='testpass123',
         )
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'test@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         assert response.status_code == 200
@@ -194,7 +207,7 @@ class TestLoginResponseFields:
 
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'test@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         data = response.json()['data']['user']
@@ -237,7 +250,7 @@ class TestRegistrationRequirements:
         # Login works even with unverified email (mobile verification gate is separate)
         response = client.post(
             reverse('jwt_login'),
-            data={'email': 'test@example.com', 'password': 'testpass123'},
+            data={'email': user.email, 'password': 'testpass123'},
             format='json'
         )
         # Implementation-specific: check if email verification gates login

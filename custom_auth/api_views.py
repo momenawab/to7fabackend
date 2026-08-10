@@ -186,25 +186,18 @@ def submit_seller_application(request):
 
 # Phase 3 (Part A workstream 4, artist/store contract gaps): public-facing dict
 # builders shared by every artist/store endpoint below. include_email defaults to
-# False - top_artists/search_artists/top_stores/search_stores (all pre-existing,
-# served AllowAny/no-auth) used to always include the account's email address (and,
-# for stores, tax_id) in the response. "Do not expose private or administrative data"
-# is a Phase 3 Part A acceptance criterion, so the two brand-new endpoints this
-# workstream adds (artist_list/artist_detail/store_list/store_detail - nothing
-# depends on these yet) never include it.
+# False for exactly this reason: email is an admin-only contact field and every
+# endpoint in this section is AllowAny/no-auth.
 #
-# The four pre-existing functions still pass include_email=True, though - verified
-# (grep -rn "artists/top\|artists/search\|stores/top\|stores/search" admin_panel/)
-# that admin_panel/templates/admin_panel/artists_stores.html's own JS
-# (`artist.email`/`store.email`) genuinely renders it for the admin dashboard's use in
-# identifying/contacting artists and stores. Stripping it there would have broken a
-# real, currently-working admin-panel feature - not a hypothetical one, confirmed by
-# reading the template, the same way the Flutter-side check was confirmed rather than
-# assumed. This is a real, currently-unresolved tension (an AllowAny/no-auth public
-# endpoint carrying an admin-only field) worth flagging for Phase 4: the correct fix is
-# a separate authenticated admin endpoint, not preserved here because building one is
-# beyond this workstream's "add list/detail" scope - see
-# PHASE3_API_PAYMENT_REPORT.md for the full writeup.
+# Phase 3 note (resolved in Phase 4 Part 7.3, kept for history): the four
+# pre-existing functions (top_artists/search_artists/top_stores/search_stores)
+# temporarily passed include_email=True because admin_panel/templates/
+# admin_panel/artists_stores.html's JS rendered artist.email/store.email for the
+# admin dashboard, and no authenticated alternative existed yet. That was a real,
+# confirmed AllowAny endpoint leaking an admin-only field. Phase 4 added
+# admin_top_artists()/admin_top_stores() (IsAuthenticated + IsAdminUser) below,
+# repointed the template at them, and switched all four of these back to
+# include_email=False - see PHASE4_PRODUCTION_READINESS_REPORT.md.
 def _public_artist_dict(artist, product_count, include_email=False):
     data = {
         'id': str(artist.user.id),
@@ -279,7 +272,7 @@ def top_artists(request):
         '-created_at'              # Finally by creation date
     )[:min(limit, settings.max_artists_to_show)]
 
-    artist_data = [_public_artist_dict(artist, artist.product_count, include_email=True) for artist in artists]
+    artist_data = [_public_artist_dict(artist, artist.product_count, include_email=False) for artist in artists]
 
     return Response({
         'results': artist_data,
@@ -332,7 +325,7 @@ def top_stores(request):
         '-created_at'              # Finally by creation date
     )[:min(limit, settings.max_stores_to_show)]
     
-    store_data = [_public_store_dict(store, store.product_count, include_email=True) for store in stores]
+    store_data = [_public_store_dict(store, store.product_count, include_email=False) for store in stores]
 
     return Response({
         'results': store_data,
@@ -367,7 +360,7 @@ def search_artists(request):
         is_verified=True
     ).order_by('-created_at')
     
-    artist_data = [_public_artist_dict(artist, None, include_email=True) for artist in artists]
+    artist_data = [_public_artist_dict(artist, None, include_email=False) for artist in artists]
 
     return Response({
         "query": query,
@@ -391,7 +384,7 @@ def search_stores(request):
         is_verified=True
     ).order_by('-created_at')
     
-    store_data = [_public_store_dict(store, None, include_email=True) for store in stores]
+    store_data = [_public_store_dict(store, None, include_email=False) for store in stores]
 
     return Response({
         "query": query,
@@ -643,6 +636,128 @@ def update_store_priority(request, store_id):
             'success': False,
             'message': 'Store not found'
         }, status=status.HTTP_404_NOT_FOUND)
+
+
+
+# Phase 4 (Part 7.3): authenticated admin-only artist/store data.
+#
+# top_artists/search_artists/top_stores/search_stores above are AllowAny/no-auth
+# (Flutter and any anonymous caller can reach them) but used to pass
+# include_email=True so admin_panel/templates/admin_panel/artists_stores.html could
+# render artist.email/store.email in its management table - a public endpoint
+# leaking an admin-only contact field to anyone. That tension was documented in
+# Phase 3 and left unresolved (a dedicated admin endpoint was "beyond scope" then).
+#
+# Fixed here: these two endpoints duplicate top_artists/top_stores' exact
+# query/ordering/gating logic (deliberately not refactored into a shared helper -
+# the public endpoints are working and tested; changing their internals to be
+# reusable risks regressing them for a purely internal admin need) but require
+# IsAuthenticated + IsAdminUser and always include email. The four public functions
+# below have been switched to include_email=False now that this exists. The admin
+# dashboard's JS has been repointed at these two routes.
+#
+# authentication_classes([SessionAuthentication]) - not this project's JWT default.
+# Verified before choosing this: admin_panel is entirely Django-session-authenticated
+# (admin_panel/views.py's login() uses django.contrib.auth.login()/@login_required
+# throughout; there is no JWT issuance anywhere in the admin login flow, and grepping
+# admin_panel/templates/ for `setItem.*access_token` returns zero hits - nothing ever
+# populates the localStorage key category_management.html's own JS reads). A
+# JWT-only-auth admin endpoint would 401 on every real admin dashboard request. Both
+# are GET-only, so DRF/Django's CSRF check (enforced only on unsafe methods) is a
+# no-op here regardless.
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def admin_top_artists(request):
+    """Admin-only equivalent of top_artists(); includes email. See module comment
+    above for why this exists instead of reusing the public endpoint."""
+    from products.models import ContentSettings
+    from django.db.models import Count
+
+    limit = request.query_params.get('limit', 8)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 8
+
+    settings = ContentSettings.get_settings()
+    if not settings.show_top_artists:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Top artists section is currently disabled'
+        })
+
+    artists = Artist.objects.annotate(
+        product_count=Count('user__products', distinct=True)
+    ).filter(
+        Q(is_featured_on_homepage=True) |
+        (Q(is_verified=True) & Q(product_count__gt=0))
+    ).order_by(
+        '-is_featured_on_homepage',
+        'homepage_priority',
+        '-product_count',
+        '-created_at'
+    )[:min(limit, settings.max_artists_to_show)]
+
+    artist_data = [_public_artist_dict(artist, artist.product_count, include_email=True) for artist in artists]
+
+    return Response({
+        'results': artist_data,
+        'count': len(artist_data),
+        'settings': {
+            'max_artists': settings.max_artists_to_show,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
+
+
+@api_view(['GET'])
+@authentication_classes([SessionAuthentication])
+@permission_classes([IsAuthenticated, IsAdminUser])
+def admin_top_stores(request):
+    """Admin-only equivalent of top_stores(); includes email. See module comment
+    above admin_top_artists() for why this exists instead of reusing the public
+    endpoint."""
+    from products.models import ContentSettings
+    from django.db.models import Count
+
+    limit = request.query_params.get('limit', 6)
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 6
+
+    settings = ContentSettings.get_settings()
+    if not settings.show_top_stores:
+        return Response({
+            'results': [],
+            'count': 0,
+            'message': 'Top stores section is currently disabled'
+        })
+
+    stores = Store.objects.annotate(
+        product_count=Count('user__products', distinct=True)
+    ).filter(
+        Q(is_featured_on_homepage=True) |
+        (Q(is_verified=True) & Q(product_count__gt=0))
+    ).order_by(
+        '-is_featured_on_homepage',
+        'homepage_priority',
+        '-product_count',
+        '-created_at'
+    )[:min(limit, settings.max_stores_to_show)]
+
+    store_data = [_public_store_dict(store, store.product_count, include_email=True) for store in stores]
+
+    return Response({
+        'results': store_data,
+        'count': len(store_data),
+        'settings': {
+            'max_stores': settings.max_stores_to_show,
+            'refresh_interval': settings.content_refresh_interval
+        }
+    })
 
 
 @api_view(['POST'])

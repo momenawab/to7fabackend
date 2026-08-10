@@ -38,39 +38,68 @@ def seller_b(db):
 
 @pytest.fixture
 def product_from_seller_a(seller_a, db):
-    """Create a product from seller A."""
-    from products.models import Product
+    """Create a product from seller A.
+
+    Phase 4 (Part 15, test infrastructure): category and approval_status='approved'
+    added. category is a required FK (Product.objects.create() with no category
+    raised IntegrityError); approval_status is required by Phase 2's visibility
+    enforcement (Product.objects.approved()), which rejects orders containing
+    unapproved products - this fixture defaulted to 'pending'. Both were masked until
+    now by the conftest.py `db` fixture bug (see conftest.py's module docstring).
+    """
+    from products.models import Product, Category
     import uuid
-    
+
+    category = Category.objects.create(
+        name=f'Test Category A {str(uuid.uuid4())[:8]}',
+        description='Category for seller A products',
+    )
     return Product.objects.create(
         seller=seller_a,
         name=f'Product A {str(uuid.uuid4())[:8]}',
         description='Product from seller A',
         base_price=Decimal('100.00'),
         stock_quantity=50,
-        is_active=True
+        category=category,
+        is_active=True,
+        approval_status='approved',
     )
 
 
 @pytest.fixture
 def product_from_seller_b(seller_b, db):
-    """Create a product from seller B."""
-    from products.models import Product
+    """Create a product from seller B. See product_from_seller_a above for why
+    category and approval_status='approved' are required here too."""
+    from products.models import Product, Category
     import uuid
-    
+
+    category = Category.objects.create(
+        name=f'Test Category B {str(uuid.uuid4())[:8]}',
+        description='Category for seller B products',
+    )
     return Product.objects.create(
         seller=seller_b,
         name=f'Product B {str(uuid.uuid4())[:8]}',
         description='Product from seller B',
         base_price=Decimal('75.00'),
         stock_quantity=75,
-        is_active=True
+        category=category,
+        is_active=True,
+        approval_status='approved',
     )
 
 
 @pytest.fixture
 def multi_seller_order(user, product_from_seller_a, product_from_seller_b, db):
-    """Create an order with items from two different sellers."""
+    """Create an order with items from two different sellers.
+
+    Phase 4 (Part 15, test infrastructure): seller=seller_a/seller_b used to reference
+    the module-level pytest fixture *functions* directly (never requested as fixture
+    parameters here), not resolved User instances - `ValueError: ... must be a "User"
+    instance`. Fixed by using the already-correct seller each product fixture set
+    (product_from_seller_a.seller), rather than adding seller_a/seller_b as redundant
+    extra fixture parameters. Masked until now by the conftest.py `db` fixture bug.
+    """
     order = Order.objects.create(
         user=user,
         total_amount=Decimal('175.00'),
@@ -81,28 +110,28 @@ def multi_seller_order(user, product_from_seller_a, product_from_seller_b, db):
         payment_status=True,
         idempotency_key='test_multi_seller_123'
     )
-    
+
     # Create items from both sellers
     OrderItem.objects.create(
         order=order,
         product=product_from_seller_a,
         quantity=1,
         price=Decimal('100.00'),
-        seller=seller_a,
+        seller=product_from_seller_a.seller,
         item_status='pending',
         reservation_status='reserved'
     )
-    
+
     OrderItem.objects.create(
         order=order,
         product=product_from_seller_b,
         quantity=1,
         price=Decimal('75.00'),
-        seller=seller_b,
+        seller=product_from_seller_b.seller,
         item_status='pending',
         reservation_status='reserved'
     )
-    
+
     return order
 
 

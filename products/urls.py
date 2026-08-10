@@ -38,10 +38,11 @@ urlpatterns = [
     path('admin/attributes/<str:attribute_type>/options/', views.get_attribute_options, name='get_attribute_options'),
     path('admin/categories/<int:category_id>/attributes/', views.get_category_attributes, name='get_category_attributes'),
     path('admin/categories/<int:category_id>/attributes/update/', views.update_category_attributes, name='update_category_attributes'),
-    
-    # Debug endpoint for Arabic encoding
-    path('debug/arabic/', views.debug_arabic_encoding, name='debug_arabic_encoding'),
-    
+
+    # Phase 4 (Part 7.2): debug/arabic/ (debug_arabic_encoding) removed - unauthenticated
+    # data leak of unapproved product names/descriptions, dead debug scaffolding with no
+    # real use. See products/views.py's removal comment for the full writeup.
+
     # Product wizard endpoints
     path('categories/', views.categories_for_product_wizard, name='categories_for_wizard'),
     path('categories/<int:category_id>/variants/', views.category_variants, name='category_variants'),

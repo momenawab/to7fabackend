@@ -14,6 +14,16 @@ channels==4.0.0
 channels-redis==4.2.0
 django-redis==5.4.0
 celery==5.3.6
+# Phase 4 (Part 4, production ASGI server): this project has used Channels
+# (ASGI_APPLICATION, CHANNEL_LAYERS) since before this phase, but no ASGI server
+# capable of actually running it in production was ever declared - `manage.py
+# runserver` is WSGI/dev-only and support/consumers.py's WebSocket route would have
+# no real server to run under. Daphne is the reference ASGI server maintained by the
+# Django Channels project itself (same maintainers as `channels`/`channels-redis`
+# above), so it's the natural choice over introducing a second, differently-maintained
+# stack (e.g. uvicorn+gunicorn) for a single-process deployment - one server, not
+# competing options. See PRODUCTION_READINESS.md for the actual run command.
+daphne==4.1.2
 # Testing
 # NOTE: pytest-django==4.5.2 predates pytest 9 by several years; pin pytest to the
 # version this was verified against for reproducibility. Compatibility between the two
@@ -22,3 +32,12 @@ pytest==9.1.1
 pytest-django==4.5.2
 # Push notification dependencies
 requests>=2.25.1
+# Phase 4 (Part 5, Firebase/APNs production readiness): notifications/push_utils.py
+# already guards its Firebase Admin SDK import in a try/except (FIREBASE_ADMIN_AVAILABLE)
+# specifically so its absence doesn't break anything else - but that meant push
+# notifications were unconditionally non-functional rather than "functional once
+# configured", since the package was never actually installed. No Firebase service
+# account credentials exist in this repo or environment (firebase-service-account.json
+# is gitignored and was never created) - installing the package makes the code path
+# real without inventing or committing any credential.
+firebase-admin==6.5.0

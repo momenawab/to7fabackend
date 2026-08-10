@@ -2,6 +2,15 @@
 Integration tests for order lifecycle endpoints.
 
 Tests for new API endpoints: acknowledge, ship, deliver, complete, refund.
+
+Phase 4 (Part 15, test infrastructure): every request in this file used to target
+/api/v1/order/<id>/... - singular "order", a URL that never existed under any
+contract (the real v1 pattern is plural "orders/", and even pluralized, v1 never
+routes acknowledge/ship/deliver/refund at all - Phase 3 deliberately kept those
+legacy-only, see PHASE3_API_PAYMENT_REPORT.md's canonical-contract decision). Every
+one of these tests was masked by the "Database access not allowed" fixture bug until
+that was fixed this phase, so this was never caught. Repointed at the real, working
+legacy prefix (/api/orders/...), which has every one of these actions.
 """
 
 import pytest
@@ -93,7 +102,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Acknowledge order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/acknowledge/')
+        response = self.client.post(f'/api/orders/{self.order.id}/acknowledge/')
         
         # Assert successful response
         self.assertEqual(response.status_code, 200)
@@ -119,7 +128,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Attempt to acknowledge order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/acknowledge/')
+        response = self.client.post(f'/api/orders/{self.order.id}/acknowledge/')
         
         # Assert 403 Forbidden
         self.assertEqual(response.status_code, 403)
@@ -144,7 +153,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Attempt to acknowledge order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/acknowledge/')
+        response = self.client.post(f'/api/orders/{self.order.id}/acknowledge/')
         
         # Assert 400 Bad Request
         self.assertEqual(response.status_code, 400)
@@ -166,7 +175,7 @@ class OrderLifecycleTests(TestCase):
         
         # Ship order with tracking number
         response = self.client.post(
-            f'/api/v1/order/{self.order.id}/ship/',
+            f'/api/orders/{self.order.id}/ship/',
             {'tracking_number': 'TRACK123456'},
             format='json'
         )
@@ -199,7 +208,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Attempt to ship order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/ship/')
+        response = self.client.post(f'/api/orders/{self.order.id}/ship/')
         
         # Assert 403 Forbidden
         self.assertEqual(response.status_code, 403)
@@ -220,7 +229,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Deliver order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/deliver/')
+        response = self.client.post(f'/api/orders/{self.order.id}/deliver/')
         
         # Assert successful response
         self.assertEqual(response.status_code, 200)
@@ -250,7 +259,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Attempt to deliver order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/deliver/')
+        response = self.client.post(f'/api/orders/{self.order.id}/deliver/')
         
         # Assert 400 Bad Request
         self.assertEqual(response.status_code, 400)
@@ -271,7 +280,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Complete order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/complete/')
+        response = self.client.post(f'/api/orders/{self.order.id}/complete/')
         
         # Assert successful response
         self.assertEqual(response.status_code, 200)
@@ -301,7 +310,7 @@ class OrderLifecycleTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Attempt to complete order
-        response = self.client.post(f'/api/v1/order/{self.order.id}/complete/')
+        response = self.client.post(f'/api/orders/{self.order.id}/complete/')
         
         # Assert 400 Bad Request
         self.assertEqual(response.status_code, 400)
@@ -323,7 +332,7 @@ class OrderLifecycleTests(TestCase):
         
         # Refund order with reason
         response = self.client.post(
-            f'/api/v1/order/{self.order.id}/refund/',
+            f'/api/orders/{self.order.id}/refund/',
             {'reason': 'Customer requested refund'},
             format='json'
         )
@@ -353,7 +362,7 @@ class OrderLifecycleTests(TestCase):
         
         # Attempt to refund order
         response = self.client.post(
-            f'/api/v1/order/{self.order.id}/refund/',
+            f'/api/orders/{self.order.id}/refund/',
             {'reason': 'Customer requested refund'},
             format='json'
         )
@@ -378,7 +387,7 @@ class OrderLifecycleTests(TestCase):
         
         # Attempt to refund order
         response = self.client.post(
-            f'/api/v1/order/{self.order.id}/refund/',
+            f'/api/orders/{self.order.id}/refund/',
             {'reason': 'Test refund'},
             format='json'
         )
@@ -415,7 +424,7 @@ class OrderStatesEndpointTests(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
         
         # Get order states
-        response = self.client.get('/api/v1/order/states/')
+        response = self.client.get('/api/orders/states/')
         
         # Assert successful response
         self.assertEqual(response.status_code, 200)

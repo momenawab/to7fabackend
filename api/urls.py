@@ -64,10 +64,10 @@ urlpatterns = [
         path('admin/attributes/<str:attribute_type>/options/', product_views.get_attribute_options, name='attribute-options'),
         path('admin/categories/<int:category_id>/attributes/', product_views.get_category_attributes, name='category-attributes'),
         path('admin/categories/<int:category_id>/attributes/update/', product_views.update_category_attributes, name='update-category-attributes'),
-        
-        # Debug endpoint
-        path('debug/arabic/', product_views.debug_arabic_encoding, name='debug-arabic'),
-        
+
+        # Phase 4 (Part 7.2): debug/arabic/ (debug_arabic_encoding) removed - see
+        # products/views.py's removal comment for the full writeup.
+
         # Orders endpoints
         path('orders/', order_views.order_list, name='order-list'),
         path('orders/<int:pk>/', order_views.order_detail, name='order-detail'),

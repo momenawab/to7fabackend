@@ -69,16 +69,28 @@ def product_list(request):
         )
 
 @api_view(['GET', 'PUT', 'DELETE'])
-@authentication_classes([])
 @permission_classes([AllowAny])  # GET is public, PUT/DELETE requires authentication (handled in view)
 def product_detail(request, pk):
-    """Get, update or delete a product"""
+    """Get, update or delete a product
+
+    Phase 4 (Part 7.1) fix: `@authentication_classes([])` used to sit above this view,
+    which strips every authenticator (including JWTAuthentication, this project's only
+    configured one - SessionAuthentication is deliberately disabled project-wide "to
+    avoid CSRF issues with mobile apps") from the request entirely. With no
+    authenticator able to run, DRF's request.user is unconditionally AnonymousUser
+    regardless of any Bearer token sent - so the PUT/DELETE branch below's
+    `if not request.user.is_authenticated` check always fired, making product mutation
+    unreachable for every seller via the real mobile client, permanently (see
+    PHASE2_CORE_CORRECTNESS_REPORT.md, which found and documented this without fixing
+    it, correctly out of Phase 2's scope). Removed - this view now goes through the
+    normal DEFAULT_AUTHENTICATION_CLASSES (JWT), same as every other authenticated
+    endpoint in this codebase; permission_classes stays AllowAny so GET remains public
+    and PUT/DELETE keep doing their own explicit ownership check below (not just
+    "authenticated", but "authenticated as this product's own seller").
+    """
     # Lookup unchanged from before Phase 2 (is_active=True only) - this is shared by the
     # owner-facing PUT/DELETE branch below, which must still be able to reach the seller's
-    # own pending/rejected product (sellers manage those via seller_product_detail too;
-    # this view's PUT/DELETE branch is currently unreachable via JWT bearer auth anyway -
-    # see PHASE2_CORE_CORRECTNESS_REPORT.md - so this doesn't change real behavior today,
-    # but keeps this lookup correct if that auth bug is fixed later).
+    # own pending/rejected product (sellers manage those via seller_product_detail too).
     try:
         product = Product.objects.get(pk=pk, is_active=True)
     except Product.DoesNotExist:
@@ -1745,51 +1757,19 @@ def update_category_attributes(request, category_id):
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-@api_view(['GET'])
-@permission_classes([AllowAny])
-def debug_arabic_encoding(request):
-    """Debug endpoint to test Arabic encoding"""
-    try:
-        # Test Arabic strings
-        test_data = {
-            'categories': [],
-            'products': [],
-            'test_strings': {
-                'arabic_greeting': 'مرحبا بك في تحفة',
-                'arabic_numbers': '١٢٣٤٥٦٧٨٩٠',
-                'mixed_text': 'Welcome مرحبا',
-                'product_name': 'لوحة فنية جميلة',
-                'description': 'هذا منتج رائع بوصف عربي طويل يحتوي على كلمات متنوعة'
-            }
-        }
-
-        # Get some real categories
-        categories = Category.objects.all()[:3]
-        for cat in categories:
-            test_data['categories'].append({
-                'id': cat.id,
-                'name': cat.name,
-                'description': cat.description,
-                'name_length': len(cat.name),
-                'contains_arabic': bool(cat.name and any('\u0600' <= c <= '\u06FF' for c in cat.name))
-            })
-
-        # Get some real products
-        products = Product.objects.all()[:3]
-        for prod in products:
-            test_data['products'].append({
-                'id': prod.id,
-                'name': prod.name,
-                'description': prod.description[:100] if prod.description else '',
-                'name_length': len(prod.name),
-                'contains_arabic': bool(prod.name and any('\u0600' <= c <= '\u06FF' for c in prod.name))
-            })
-
-        return Response(test_data)
-    except Exception as e:
-        return Response({
-            'error': f'Debug endpoint failed: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+# Phase 4 (Part 7.2) fix: debug_arabic_encoding used to live here - a public
+# (AllowAny), unauthenticated GET endpoint that returned the name/description of up
+# to 3 real Category rows and 3 real Product rows via Product.objects.all()[:3], with
+# no approval/visibility filtering at all - unlike every real product-listing endpoint
+# in this codebase (Product.objects.approved()), so it could leak an unapproved or
+# rejected product's name and description to anyone. Confirmed dead: grepped
+# lib/ (Flutter) and admin_panel/templates/ for any reference - zero hits anywhere.
+# It tested nothing beyond "does Python correctly print Arabic strings", which Python's
+# own Unicode handling already guarantees - no legitimate ongoing internal use case,
+# so removed entirely (view + both URL registrations) rather than protected behind
+# auth, per this workstream's explicit "remove if dead/debug-only" option. See
+# products/tests/test_debug_endpoint_removed.py for the regression test proving both
+# the legacy and v1 routes are gone.
 
 
 # New Product Wizard API Endpoints

@@ -1,9 +1,27 @@
 """
 Pytest configuration for Django project.
+
+Phase 4 (Part 15, test infrastructure): this file used to define its own `db` fixture
+(a hand-rolled `TestCase()._pre_setup()`/`_post_teardown()` wrapper) that shadowed
+pytest-django's real, built-in `db` fixture of the same name. pytest-django's actual
+database-access blocker is only lifted by its OWN db/transactional_db fixture
+machinery; the hand-rolled replacement never called into that machinery, so any test
+using plain `db` (directly or via the `@pytest.mark.django_db` marker, which is the
+overwhelming majority of this suite) could fail with
+`RuntimeError: Database access not allowed, use the "django_db" mark...` depending on
+what had already run earlier in the same session and incidentally left the blocker
+lifted. This was the root cause of ~150 of the ~230 non-passing tests recorded at the
+end of Phase 3 (PHASE3_API_PAYMENT_REPORT.md's baseline). The custom fixture is
+removed entirely below; pytest-django's own `db` fixture (provided by the
+pytest-django plugin, needs no import or registration here) is used instead, and every
+fixture in this file that took `db` as a dependency is unaffected - the fixture name is
+unchanged, only which implementation answers it. See
+PHASE4_PRODUCTION_READINESS_REPORT.md for the full investigation and before/after
+numbers.
 """
 import os
 import pytest
-from decimal import Decimal 
+from decimal import Decimal
 
 # Set Django settings module BEFORE any Django imports
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'to7fabackend.settings')
@@ -76,22 +94,6 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_redis)
 
 
-@pytest.fixture(scope='function')
-def db(request):
-    """
-    Provide database access for tests with proper cleanup.
-    Uses Django TestCase behavior for database transactions.
-    """
-    from django.test import TestCase
-    
-    # Create a mock test case to leverage Django's database handling
-    tc = TestCase()
-    tc._pre_setup()
-    
-    yield True
-    
-    # Cleanup after test
-    tc._post_teardown()
 
 
 @pytest.fixture
@@ -128,7 +130,14 @@ def authenticated_client(api_client, user):
 
 @pytest.fixture
 def product(user, db):
-    """Create a test product for order tests."""
+    """Create a test product for order tests.
+
+    Phase 4: approval_status='approved' added - Phase 2's visibility enforcement
+    (Product.objects.approved()) correctly rejects orders containing unapproved
+    products, and this fixture's products were pending by default, so every order
+    test using it failed with ProductVisibilityError once the `db` fixture bug
+    (above) stopped masking it.
+    """
     from products.models import Product, Category
     import uuid
     
@@ -153,7 +162,8 @@ def product(user, db):
         base_price=Decimal('100.00'),
         stock_quantity=50,
         category=category,
-        is_active=True
+        is_active=True,
+        approval_status='approved'
     )
     
     return product
@@ -161,8 +171,15 @@ def product(user, db):
 
 @pytest.fixture
 def product_with_stock(db):
-    """Create a test product with stock for order tests."""
-    from products.models import Product
+    """Create a test product with stock for order tests. See `product` above for why
+    approval_status='approved' is required here too.
+
+    Phase 4 (Part 15, test infrastructure): also fixes the same missing-Category-
+    import NameError as another_product below - each of these three fixtures does its
+    own local import rather than sharing one at module scope, and this one had the
+    same gap.
+    """
+    from products.models import Product, Category
     from django.contrib.auth import get_user_model
     import uuid
     
@@ -189,7 +206,8 @@ def product_with_stock(db):
         base_price=Decimal('50.00'),
         stock_quantity=100,
         category=category,
-        is_active=True
+        is_active=True,
+        approval_status='approved'
     )
     
     return product
@@ -197,8 +215,15 @@ def product_with_stock(db):
 
 @pytest.fixture
 def another_product(db):
-    """Create another test product for multi-item tests."""
-    from products.models import Product
+    """Create another test product for multi-item tests. See `product` above for why
+    approval_status='approved' is required here too.
+
+    Phase 4 (Part 15, test infrastructure): also fixes `NameError: name 'Category' is
+    not defined` - Category was used below without ever being imported in this
+    fixture (product/product_with_stock import it from products.models; this one
+    never did). Masked until now by the conftest.py `db` fixture bug.
+    """
+    from products.models import Product, Category
     from django.contrib.auth import get_user_model
     import uuid
     
@@ -225,7 +250,8 @@ def another_product(db):
         base_price=Decimal('75.00'),
         stock_quantity=200,
         category=category,
-        is_active=True
+        is_active=True,
+        approval_status='approved'
     )
     
     return product

@@ -26,10 +26,17 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
 
+from .health import health_check
+
 urlpatterns = [
     # Redirect root URL to admin panel login
     path('', RedirectView.as_view(pattern_name='admin_panel:login', permanent=False)),
-    
+
+    # Phase 4 (Part 14): minimal, public-safe health check (app/DB/cache). Not a
+    # versioned client-facing resource, so it lives at the root rather than under
+    # api/urls.py's frozen v1 contract. See to7fabackend/health.py.
+    path('health/', health_check, name='health_check'),
+
     # Django admin
     path('admin/', admin.site.urls),
     

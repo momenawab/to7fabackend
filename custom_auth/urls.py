@@ -55,6 +55,12 @@ urlpatterns = [
     path('api/stores/<int:store_id>/', api_views.store_detail, name='store_detail'),
     
     # Admin endpoints for managing featured status and priority
+    # Phase 4 (Part 7.3): authenticated admin equivalents of api/artists/top/ and
+    # api/stores/top/, carrying email now that those public routes no longer do.
+    # Placed before the <int:artist_id>/... routes below for clarity; 'top' can never
+    # collide with an <int:...> segment either way.
+    path('api/admin/artists/top/', api_views.admin_top_artists, name='admin_top_artists'),
+    path('api/admin/stores/top/', api_views.admin_top_stores, name='admin_top_stores'),
     path('api/admin/artists/<int:artist_id>/toggle-featured/', api_views.toggle_artist_featured, name='toggle_artist_featured'),
     path('api/admin/artists/<int:artist_id>/update-priority/', api_views.update_artist_priority, name='update_artist_priority'),
     path('api/admin/stores/<int:store_id>/toggle-featured/', api_views.toggle_store_featured, name='toggle_store_featured'),

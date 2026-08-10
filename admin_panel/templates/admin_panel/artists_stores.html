@@ -540,7 +540,7 @@
             </tr>
         `);
 
-        fetch('/api/auth/api/artists/top/')
+        fetch('/api/auth/api/admin/artists/top/')
             .then(response => response.json())
             .then(data => {
                 renderArtistsTable(data.results);
@@ -697,7 +697,7 @@
             </tr>
         `);
 
-        fetch('/api/auth/api/stores/top/')
+        fetch('/api/auth/api/admin/stores/top/')
             .then(response => response.json())
             .then(data => {
                 renderStoresTable(data.results);
@@ -861,7 +861,7 @@
             </div>
         `);
 
-        fetch('/api/auth/api/artists/top/')
+        fetch('/api/auth/api/admin/artists/top/')
             .then(response => response.json())
             .then(data => {
                 const maxArtists = parseInt($('#maxArtists').val());
@@ -907,7 +907,7 @@
             </div>
         `);
 
-        fetch('/api/auth/api/stores/top/')
+        fetch('/api/auth/api/admin/stores/top/')
             .then(response => response.json())
             .then(data => {
                 const maxStores = parseInt($('#maxStores').val());

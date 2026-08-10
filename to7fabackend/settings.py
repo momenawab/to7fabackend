@@ -39,7 +39,22 @@ if SECRET_KEY is None:
 # DEBUG defaults to False for production safety
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 
-# Allowed hosts - comma-separated list from environment variable
+# Phase 4 (Part 2, environment separation): informational only - nothing in this
+# codebase branches on DJANGO_ENV's value. The actual separation mechanism is (a)
+# DJANGO_SETTINGS_MODULE choosing settings.py (development) vs settings_production.py
+# (staging/production), and (b) different .env values per environment (different
+# DB_*, ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS, REDIS_URL, etc. - see
+# PRODUCTION_READINESS.md). Staging and production intentionally share
+# settings_production.py rather than getting a third settings file: the difference
+# between them is which values are in each environment's .env, not different code
+# paths - a settings_staging.py with logic no one has run would be exactly the kind
+# of speculative infrastructure this phase avoids adding. DJANGO_ENV exists so
+# health checks / logs can report which environment is actually running.
+DJANGO_ENV = os.getenv('DJANGO_ENV', 'development')
+
+# Allowed hosts - comma-separated list from environment variable. No production
+# domain is hardcoded here (none has been provided) - set ALLOWED_HOSTS in each
+# environment's .env instead. See PRODUCTION_READINESS.md.
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
@@ -313,12 +328,27 @@ CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
 # Channels configuration for WebSocket support
 ASGI_APPLICATION = 'to7fabackend.asgi.application'
 
+# Phase 4 (Part 3, Redis production configuration): every Redis-backed component
+# (Channels, cache/throttling, Celery) used to hardcode 127.0.0.1:6379 directly,
+# meaning a production deployment with a real Redis host (a managed service, a
+# separate container, etc.) required a source change, not a config change. REDIS_URL
+# is now the single base env var all three derive from - override it in production to
+# point everywhere at once, or override CHANNELS_REDIS_URL/CACHE_REDIS_URL/
+# CELERY_BROKER_URL/CELERY_RESULT_BACKEND individually if a deployment genuinely needs
+# per-service Redis instances/databases. The default (redis://127.0.0.1:6379,
+# databases 0/1/2 respectively) is unchanged from before this phase, so local
+# development needs no new configuration. Not switching to django-redis for CACHES
+# here - django.core.cache.backends.redis.RedisCache (native, Django 4.2+) was already
+# in use and works fine; django-redis is in requirements.txt for admin_panel's direct
+# use elsewhere, not swapped in here to avoid an unrelated behavior change.
+REDIS_URL = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379')
+
 # Channel layers for real-time messaging
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [os.getenv('CHANNELS_REDIS_URL', f'{REDIS_URL}/0')],
         },
     },
 }
@@ -327,7 +357,7 @@ CHANNEL_LAYERS = {
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'LOCATION': os.getenv('CACHE_REDIS_URL', f'{REDIS_URL}/1'),
         'KEY_PREFIX': 'to7fa_throttle',
         'TIMEOUT': 300,
     }
@@ -337,9 +367,18 @@ CACHES = {
 SECURE_SSL_REDIRECT = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 
-# HSTS headers - Only enabled in production (when DEBUG=False)
-# HSTS should NOT be enabled in development as it breaks HTTP access
-if not DEBUG:
+# Phase 4 (Part 1, HSTS): previously tied directly to `not DEBUG`, meaning HSTS would
+# turn on the moment a deployment set DEBUG=False - even before HTTPS/SSL termination
+# was actually configured in front of it. That's a real risk specific to HSTS (unlike
+# SECURE_SSL_REDIRECT, which just redirects and is trivially reversible): browsers
+# cache HSTS for SECURE_HSTS_SECONDS and will refuse to load the site over plain HTTP
+# for that entire window even after the setting is reverted, so enabling it against a
+# deployment that isn't actually HTTPS-ready yet can lock users out. Gated behind its
+# own explicit env var - operators turn it on only once HTTPS is verified working end
+# to end, independently of when DEBUG gets set to False. Defaults to disabled
+# (deferred) until that's confirmed for this deployment - see PRODUCTION_READINESS.md.
+SECURE_HSTS_ENABLED = os.getenv('SECURE_HSTS_ENABLED', 'False').lower() == 'true'
+if SECURE_HSTS_ENABLED:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
@@ -369,7 +408,15 @@ EMAIL_TIMEOUT = 30
 # Push Notification Settings
 FCM_PROJECT_ID = os.getenv('FCM_PROJECT_ID')
 FCM_SERVER_KEY = None  # Using service account instead
-FCM_SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, 'firebase-service-account.json')
+# Phase 4 (Part 5): was hardcoded to BASE_DIR/firebase-service-account.json - now
+# overridable via env (e.g. a deployment that mounts the service account key at a
+# fixed secret path outside the repo checkout), same default filename/location as
+# before for local development. The file itself must never be committed (already
+# gitignored) - see PRODUCTION_READINESS.md for how it's expected to reach a real
+# deployment (out-of-band secret provisioning, not this repo).
+FCM_SERVICE_ACCOUNT_FILE = os.getenv(
+    'FCM_SERVICE_ACCOUNT_FILE', os.path.join(BASE_DIR, 'firebase-service-account.json')
+)
 
 # APNs Settings (iOS) - Add these when you have Apple Developer credentials
 APNS_KEY_ID = os.getenv('APNS_KEY_ID', '')  # Your APNs Key ID
@@ -378,9 +425,11 @@ APNS_BUNDLE_ID = os.getenv('APNS_BUNDLE_ID', 'com.to7fa.app')
 APNS_KEY_FILE = os.getenv('APNS_KEY_FILE', '')  # Path to your APNs .p8 key file
 APNS_USE_SANDBOX = os.getenv('APNS_USE_SANDBOX', 'True').lower() == 'true'  # False for production
 
-# Celery Configuration
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://127.0.0.1:6379/2')
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://127.0.0.1:6379/2')
+# Celery Configuration - derives from REDIS_URL by default (see Part 3 note above);
+# CELERY_BROKER_URL/CELERY_RESULT_BACKEND can still be overridden independently if a
+# deployment needs Celery on a different Redis instance than cache/channels.
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', f'{REDIS_URL}/2')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', f'{REDIS_URL}/2')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

@@ -6,6 +6,16 @@ Tests that login endpoint returns user state fields:
 - is_locked
 - is_blocked
 - blocked_capabilities
+
+Phase 4 (Part 15, test infrastructure): every test in TestLoginUserState logged in
+with the hardcoded literal 'test@example.com', but setUp() creates the user as
+'test_c18df539@example.com' - a different address that was never actually assigned
+via any interpolation despite the f-string. Every login attempt therefore hit a
+nonexistent account and 401'd (or, depending on run order, hit the login rate limiter
+first and 429'd) before ever reaching the state-field assertions this file exists to
+test. Fixed by using self.user.email throughout. Masked until now by the conftest.py
+`db` fixture bug (see conftest.py's module docstring) - previously this whole class
+errored at fixture setup before its assertions could even run.
 """
 
 from django.test import TestCase
@@ -38,7 +48,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -55,7 +65,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -72,7 +82,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -89,7 +99,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -109,7 +119,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -129,7 +139,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -148,7 +158,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -166,7 +176,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -186,7 +196,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'testpass123',
             },
             format='json',
@@ -198,7 +208,7 @@ class TestLoginUserState(TestCase):
         response = self.client.post(
             reverse('jwt_login'),
             data={
-                'email': 'test@example.com',
+                'email': self.user.email,
                 'password': 'wrongpassword',
             },
             format='json',
