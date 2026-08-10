@@ -184,6 +184,65 @@ def submit_seller_application(request):
 
 # Artist and Store endpoints for admin content management
 
+# Phase 3 (Part A workstream 4, artist/store contract gaps): public-facing dict
+# builders shared by every artist/store endpoint below. include_email defaults to
+# False - top_artists/search_artists/top_stores/search_stores (all pre-existing,
+# served AllowAny/no-auth) used to always include the account's email address (and,
+# for stores, tax_id) in the response. "Do not expose private or administrative data"
+# is a Phase 3 Part A acceptance criterion, so the two brand-new endpoints this
+# workstream adds (artist_list/artist_detail/store_list/store_detail - nothing
+# depends on these yet) never include it.
+#
+# The four pre-existing functions still pass include_email=True, though - verified
+# (grep -rn "artists/top\|artists/search\|stores/top\|stores/search" admin_panel/)
+# that admin_panel/templates/admin_panel/artists_stores.html's own JS
+# (`artist.email`/`store.email`) genuinely renders it for the admin dashboard's use in
+# identifying/contacting artists and stores. Stripping it there would have broken a
+# real, currently-working admin-panel feature - not a hypothetical one, confirmed by
+# reading the template, the same way the Flutter-side check was confirmed rather than
+# assumed. This is a real, currently-unresolved tension (an AllowAny/no-auth public
+# endpoint carrying an admin-only field) worth flagging for Phase 4: the correct fix is
+# a separate authenticated admin endpoint, not preserved here because building one is
+# beyond this workstream's "add list/detail" scope - see
+# PHASE3_API_PAYMENT_REPORT.md for the full writeup.
+def _public_artist_dict(artist, product_count, include_email=False):
+    data = {
+        'id': str(artist.user.id),
+        'name': f"{artist.user.first_name} {artist.user.last_name}".strip() or artist.user.email.split('@')[0],
+        'specialty': artist.specialty,
+        'bio': artist.bio,
+        'profilePicture': artist.profile_picture.url if artist.profile_picture else None,
+        'isVerified': artist.is_verified,
+        'isFeatured': artist.is_featured_on_homepage,
+        'priority': artist.homepage_priority,
+        'productCount': product_count,
+        'socialMedia': artist.social_media,
+        'joinedAt': artist.created_at.isoformat(),
+    }
+    if include_email:
+        data['email'] = artist.user.email
+    return data
+
+
+def _public_store_dict(store, product_count, include_email=False):
+    data = {
+        'id': str(store.user.id),
+        'name': store.store_name,
+        'logo': store.logo.url if store.logo else None,
+        'hasPhysicalStore': store.has_physical_store,
+        'physicalAddress': store.physical_address,
+        'isVerified': store.is_verified,
+        'isFeatured': store.is_featured_on_homepage,
+        'priority': store.homepage_priority,
+        'productCount': product_count,
+        'socialMedia': store.social_media,
+        'joinedAt': store.created_at.isoformat(),
+    }
+    if include_email:
+        data['email'] = store.user.email
+    return data
+
+
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -191,13 +250,13 @@ def top_artists(request):
     """Get top/featured artists"""
     from products.models import ContentSettings
     from django.db.models import Count
-    
+
     limit = request.query_params.get('limit', 8)
     try:
         limit = int(limit)
     except (ValueError, TypeError):
         limit = 8
-    
+
     # Get settings to check if this section should be shown
     settings = ContentSettings.get_settings()
     if not settings.show_top_artists:
@@ -206,12 +265,12 @@ def top_artists(request):
             'count': 0,
             'message': 'Top artists section is currently disabled'
         })
-    
+
     # Get artists - prioritize featured ones, then by verification and product count
     artists = Artist.objects.annotate(
         product_count=Count('user__products', distinct=True)
     ).filter(
-        Q(is_featured_on_homepage=True) | 
+        Q(is_featured_on_homepage=True) |
         (Q(is_verified=True) & Q(product_count__gt=0))
     ).order_by(
         '-is_featured_on_homepage',  # Featured first
@@ -219,24 +278,9 @@ def top_artists(request):
         '-product_count',           # Then by product count
         '-created_at'              # Finally by creation date
     )[:min(limit, settings.max_artists_to_show)]
-    
-    artist_data = []
-    for artist in artists:
-        artist_data.append({
-            'id': str(artist.user.id),
-            'name': f"{artist.user.first_name} {artist.user.last_name}".strip() or artist.user.email.split('@')[0],
-            'email': artist.user.email,
-            'specialty': artist.specialty,
-            'bio': artist.bio,
-            'profilePicture': artist.profile_picture.url if artist.profile_picture else None,
-            'isVerified': artist.is_verified,
-            'isFeatured': artist.is_featured_on_homepage,
-            'priority': artist.homepage_priority,
-            'productCount': artist.product_count,
-            'socialMedia': artist.social_media,
-            'joinedAt': artist.created_at.isoformat()
-        })
-    
+
+    artist_data = [_public_artist_dict(artist, artist.product_count, include_email=True) for artist in artists]
+
     return Response({
         'results': artist_data,
         'count': len(artist_data),
@@ -288,24 +332,8 @@ def top_stores(request):
         '-created_at'              # Finally by creation date
     )[:min(limit, settings.max_stores_to_show)]
     
-    store_data = []
-    for store in stores:
-        store_data.append({
-            'id': str(store.user.id),
-            'name': store.store_name,
-            'email': store.user.email,
-            'logo': store.logo.url if store.logo else None,
-            'taxId': store.tax_id,
-            'hasPhysicalStore': store.has_physical_store,
-            'physicalAddress': store.physical_address,
-            'isVerified': store.is_verified,
-            'isFeatured': store.is_featured_on_homepage,
-            'priority': store.homepage_priority,
-            'productCount': store.product_count,
-            'socialMedia': store.social_media,
-            'joinedAt': store.created_at.isoformat()
-        })
-    
+    store_data = [_public_store_dict(store, store.product_count, include_email=True) for store in stores]
+
     return Response({
         'results': store_data,
         'count': len(store_data),
@@ -339,20 +367,8 @@ def search_artists(request):
         is_verified=True
     ).order_by('-created_at')
     
-    artist_data = []
-    for artist in artists:
-        artist_data.append({
-            'id': str(artist.user.id),
-            'name': f"{artist.user.first_name} {artist.user.last_name}".strip() or artist.user.email.split('@')[0],
-            'email': artist.user.email,
-            'specialty': artist.specialty,
-            'bio': artist.bio,
-            'profilePicture': artist.profile_picture.url if artist.profile_picture else None,
-            'isVerified': artist.is_verified,
-            'socialMedia': artist.social_media,
-            'joinedAt': artist.created_at.isoformat()
-        })
-    
+    artist_data = [_public_artist_dict(artist, None, include_email=True) for artist in artists]
+
     return Response({
         "query": query,
         "results_count": len(artist_data),
@@ -375,25 +391,124 @@ def search_stores(request):
         is_verified=True
     ).order_by('-created_at')
     
-    store_data = []
-    for store in stores:
-        store_data.append({
-            'id': str(store.user.id),
-            'name': store.store_name,
-            'email': store.user.email,
-            'logo': store.logo.url if store.logo else None,
-            'hasPhysicalStore': store.has_physical_store,
-            'physicalAddress': store.physical_address,
-            'isVerified': store.is_verified,
-            'socialMedia': store.social_media,
-            'joinedAt': store.created_at.isoformat()
-        })
-    
+    store_data = [_public_store_dict(store, None, include_email=True) for store in stores]
+
     return Response({
         "query": query,
         "results_count": len(store_data),
         "results": store_data
     })
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def artist_list(request):
+    """Public, paginated artist list. Phase 3 addition (Part A workstream 4) - Flutter's
+    ArtistService.getArtists()/searchArtists() (lib/core/services/artist_service.dart)
+    call this exact bare endpoint with page/page_size/featured/search query params;
+    only top/featured/search-with-required-q existed before, this was a confirmed 404.
+
+    Only verified artists are listed (matches search_artists' existing is_verified=True
+    filter) - an unverified/pending seller profile is not something the public browse
+    surface should show.
+    """
+    from django.db.models import Count
+    from rest_framework.pagination import PageNumberPagination
+
+    artists = Artist.objects.annotate(
+        product_count=Count('user__products', distinct=True)
+    ).filter(is_verified=True)
+
+    featured = request.query_params.get('featured')
+    if featured is not None:
+        artists = artists.filter(is_featured_on_homepage=(featured.lower() == 'true'))
+
+    search = request.query_params.get('search') or request.query_params.get('q')
+    if search:
+        artists = artists.filter(
+            Q(user__first_name__icontains=search) |
+            Q(user__last_name__icontains=search) |
+            Q(specialty__icontains=search)
+        )
+
+    artists = artists.order_by('-is_featured_on_homepage', 'homepage_priority', '-created_at')
+
+    paginator = PageNumberPagination()
+    paginator.page_size_query_param = 'page_size'
+    paginator.max_page_size = 100
+    page = paginator.paginate_queryset(artists, request)
+    data = [_public_artist_dict(artist, artist.product_count) for artist in page]
+    return paginator.get_paginated_response(data)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def artist_detail(request, artist_id):
+    """Public artist detail by user id. Phase 3 addition (Part A workstream 4) -
+    Flutter's ArtistService.getArtistById() calls this exact route; it was a confirmed
+    404 before (only top/featured/search existed)."""
+    from django.db.models import Count
+
+    try:
+        artist = Artist.objects.annotate(
+            product_count=Count('user__products', distinct=True)
+        ).get(user_id=artist_id, is_verified=True)
+    except Artist.DoesNotExist:
+        return Response({'message': 'Artist not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(_public_artist_dict(artist, artist.product_count))
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def store_list(request):
+    """Public, paginated store list. Phase 3 addition (Part A workstream 4) - mirrors
+    artist_list(); Flutter's StoreService calls the equivalent bare store endpoint the
+    same way."""
+    from django.db.models import Count
+    from rest_framework.pagination import PageNumberPagination
+
+    stores = Store.objects.annotate(
+        product_count=Count('user__products', distinct=True)
+    ).filter(is_verified=True)
+
+    featured = request.query_params.get('featured')
+    if featured is not None:
+        stores = stores.filter(is_featured_on_homepage=(featured.lower() == 'true'))
+
+    search = request.query_params.get('search') or request.query_params.get('q')
+    if search:
+        stores = stores.filter(store_name__icontains=search)
+
+    stores = stores.order_by('-is_featured_on_homepage', 'homepage_priority', '-created_at')
+
+    paginator = PageNumberPagination()
+    paginator.page_size_query_param = 'page_size'
+    paginator.max_page_size = 100
+    page = paginator.paginate_queryset(stores, request)
+    data = [_public_store_dict(store, store.product_count) for store in page]
+    return paginator.get_paginated_response(data)
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def store_detail(request, store_id):
+    """Public store detail by user id. Phase 3 addition (Part A workstream 4) - mirrors
+    artist_detail()."""
+    from django.db.models import Count
+
+    try:
+        store = Store.objects.annotate(
+            product_count=Count('user__products', distinct=True)
+        ).get(user_id=store_id, is_verified=True)
+    except Store.DoesNotExist:
+        return Response({'message': 'Store not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(_public_store_dict(store, store.product_count))
+
 
 # Admin API endpoints for featured status management
 

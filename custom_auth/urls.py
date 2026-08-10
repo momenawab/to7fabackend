@@ -41,6 +41,18 @@ urlpatterns = [
     path('api/stores/top/', api_views.top_stores, name='top_stores'),
     path('api/stores/featured/', api_views.featured_stores, name='featured_stores'),
     path('api/stores/search/', api_views.search_stores, name='search_stores'),
+
+    # Phase 3 (Part A workstream 4): public artist/store list + detail. These were
+    # confirmed 404s - Flutter's ArtistService/StoreService (lib/core/services/
+    # artist_service.dart, store_service.dart) call the bare '.../artists/' and
+    # '.../artists/<id>/' routes at this exact prefix (getArtists/getArtistById), and
+    # only top/featured/search existed. Placed after top/featured/search: those are
+    # static-string segments so the <int:...> detail route below can never shadow
+    # them, but keeping list/detail last matches the order they were added in.
+    path('api/artists/', api_views.artist_list, name='artist_list'),
+    path('api/artists/<int:artist_id>/', api_views.artist_detail, name='artist_detail'),
+    path('api/stores/', api_views.store_list, name='store_list'),
+    path('api/stores/<int:store_id>/', api_views.store_detail, name='store_detail'),
     
     # Admin endpoints for managing featured status and priority
     path('api/admin/artists/<int:artist_id>/toggle-featured/', api_views.toggle_artist_featured, name='toggle_artist_featured'),

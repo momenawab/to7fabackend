@@ -50,8 +50,18 @@ urlpatterns = [
     # ============================================================================
     
     # Legacy authentication endpoints (deprecated - use /api/v1/auth/ instead)
+    # Phase 3 (API Contract Part A workstream 7, route sprawl): the second mount at
+    # 'custom_auth/' (an internal Django app name leaking into the URL) is removed -
+    # confirmed dead via `grep -rn custom_auth/ lib/ admin_panel/templates/` (Flutter
+    # and the admin templates) with zero hits. The 'api/auth/' mount stays exactly as
+    # is, including the ugly-but-live double nesting this produces for JWT routes
+    # (custom_auth/urls.py itself defines paths starting with 'api/auth/...', so JWT
+    # login is genuinely reachable at /api/auth/api/auth/login/) - Flutter's own code
+    # comment in lib/core/config/api_config.dart ("JWT login at
+    # /api/auth/api/auth/login/") confirms this is real, currently-used production
+    # traffic, not dead duplication safe to collapse without a coordinated Flutter
+    # change (out of scope - backend-only phase, no Flutter changes).
     path('api/auth/', include('custom_auth.urls')),
-    path('custom_auth/', include('custom_auth.urls')),
     
     # Legacy app-specific endpoints (deprecated - use /api/v1/ instead)
     path('api/products/', include('products.urls')),

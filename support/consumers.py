@@ -8,24 +8,41 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-# Phase 2 fix (discovered while testing workstream 10, WebSocket auth): this module
-# used to import SupportTicket and SupportMessage from .models at module level. Neither
-# exists any more - support/models.py was rewritten to the new ContactRequest-based
-# system and re-exports only ContactRequest/ContactNote/ContactStats. That made this
-# entire module fail to import, which means to7fabackend/asgi.py (which imports
-# support.routing, which imports this module) would crash immediately if ever run
-# under a real ASGI server - the whole application, not just this WebSocket route.
-# Nothing currently exercises asgi.py during `manage.py check` or the pytest suite
-# (both use Django's WSGI-style test machinery), which is why this was invisible.
+# Phase 2 fix (workstream 10, WebSocket auth): this module used to import SupportTicket
+# and SupportMessage from .models at module level. Neither exists any more -
+# support/models.py was rewritten to the new ContactRequest-based system and re-exports
+# only ContactRequest/ContactNote/ContactStats. That made this entire module fail to
+# import, which means to7fabackend/asgi.py (which imports support.routing, which
+# imports this module) would crash immediately if ever run under a real ASGI server -
+# the whole application, not just this WebSocket route. Phase 2 stopped the crash by
+# deferring the import into check_ticket_access() only.
 #
-# check_ticket_access() below still references SupportTicket, which still doesn't
-# exist - porting it to ContactRequest requires deciding what "ticket access" means
-# under the new model, which is a real design decision, not a mechanical rename, and
-# is out of this workstream's scope ("do not rewrite the support system"). The import
-# is deferred into that one method instead of removed, so the module (and therefore
-# asgi.py) imports successfully - fixing the crash - while leaving that one method's
-# already-broken behavior exactly as broken as it already was; nothing currently calls
-# it. See PHASE2_CORE_CORRECTNESS_REPORT.md for the full write-up and Phase 3+ flag.
+# Phase 3 fix: check_ticket_access() is now ported to ContactRequest for real (see
+# below), keyed on contact_number (the identifier support/views.create_ticket already
+# returns to clients as "ticket_id" - there was never a separate ticket ID scheme).
+
+
+def extract_token_and_subprotocol(subprotocols):
+    """Parse the WebSocket subprotocol list into (token, subprotocol_to_echo).
+
+    Pulled out of connect() as a plain function so the parsing logic itself is
+    unit-testable without an ASGI test harness (see support/tests/test_websocket_auth.py
+    for why channels.testing/daphne aren't available here).
+
+    Handles the two shapes actually in play:
+    - ('authorization', <token>): what the real Flutter client sends
+      (lib/core/services/websocket_service.dart: `protocols: ['authorization', token]`).
+    - (<token>,): a bare single-value list, kept for any other client using the
+      simpler scheme this consumer originally documented.
+    Anything else (empty, or 2+ elements not starting with 'authorization') yields no
+    token, so connect() closes the connection as unauthorized.
+    """
+    if len(subprotocols) >= 2 and subprotocols[0].lower() == 'authorization':
+        return subprotocols[1], subprotocols[0]
+    elif len(subprotocols) == 1:
+        return subprotocols[0], subprotocols[0]
+    return None, (subprotocols[0] if subprotocols else None)
+
 
 class SupportConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -40,13 +57,25 @@ class SupportConsumer(AsyncWebsocketConsumer):
         accept-or-reject flow that was already here (same close code, same shape),
         rather than introducing a pending/unauthenticated connection state and a
         timeout for clients that never send an auth message.
+
+        Phase 3 fix: Phase 2 assumed a single-element subprotocol list
+        (`[<jwt>]`), but the actual Flutter client
+        (lib/core/services/websocket_service.dart) connects with
+        `protocols: ['authorization', token]` - a fixed label plus the token, two
+        elements. Reading `subprotocols[0]` therefore grabbed the literal string
+        "authorization", never the token, and every real connection from the app
+        would have been rejected as unauthorized. Now handles both shapes: a
+        ('authorization', <token>) pair (what the app actually sends) or a bare
+        single-element [<token>] list (kept for any other/future client using the
+        simpler scheme this was originally documented as).
         """
         self.user = None
         self.ticket_groups = set()
 
         # Authenticate user using JWT token passed as the WebSocket subprotocol.
         subprotocols = self.scope.get('subprotocols') or []
-        token = subprotocols[0] if subprotocols else None
+        token, offered_subprotocol = extract_token_and_subprotocol(subprotocols)
+
         if token:
             self.user = await self.authenticate_user(token)
 
@@ -54,7 +83,10 @@ class SupportConsumer(AsyncWebsocketConsumer):
             # Echo the subprotocol back - required by the WebSocket handshake spec
             # when the client offered one; some clients treat its absence as a
             # rejected handshake even though the connection technically succeeded.
-            await self.accept(subprotocol=token)
+            # Must echo one of the values the client actually offered (RFC 6455
+            # 4.2.2), not the raw token - in the ('authorization', token) shape the
+            # token itself was never an offered subprotocol value.
+            await self.accept(subprotocol=offered_subprotocol)
 
             # Send connection confirmation
             await self.send(text_data=json.dumps({
@@ -186,19 +218,33 @@ class SupportConsumer(AsyncWebsocketConsumer):
     def check_ticket_access(self, ticket_id):
         """Check if user has access to the ticket.
 
-        Still broken (pre-existing, not a Phase 2 regression): SupportTicket no
-        longer exists (see the module-level comment above this class). Deferred
-        the import to here so it only fails when this specific method is actually
-        called, rather than crashing the whole module - and by extension asgi.py -
-        at import time.
+        Phase 3 fix: ported to the real model. There is no SupportTicket any more -
+        support/views.create_ticket (the only place "ticket_id" was ever handed to a
+        client) creates a ContactRequest and returns its `contact_number` as
+        "ticket_id". So `ticket_id` here IS a ContactRequest.contact_number; join
+        groups are named accordingly in join_ticket()/leave_ticket().
+
+        Access rule mirrors the REST API's own authorization exactly rather than
+        inventing a new one:
+        - Staff: always allowed (matches ContactDetailView's permission_classes =
+          [IsAdminUser], the only REST endpoint that reads a single contact today).
+        - Regular authenticated user: allowed only if they are the ContactRequest's
+          own `user` FK (matches the one identity-safe branch of
+          UserContactListView's queryset). Deliberately does NOT also match by phone
+          number or name the way UserContactListView's *list* filter does - that
+          fuzzy matching is fine for "which of my own submissions show up in my
+          list" but is not an identity check, and would let one user read another's
+          support conversation by guessing/spoofing a phone number. Using it here
+          would be a real authorization bug, not just a stricter rule.
         """
-        from .models import SupportTicket
-        try:
-            ticket = SupportTicket.objects.get(ticket_id=ticket_id)
-            # User can access their own tickets or admin can access all tickets
-            return ticket.user == self.user or (hasattr(self.user, 'is_staff') and self.user.is_staff)
-        except SupportTicket.DoesNotExist:
+        from .contact_models import ContactRequest
+        if self.user is None or isinstance(self.user, AnonymousUser):
             return False
+        if getattr(self.user, 'is_staff', False):
+            return True
+        return ContactRequest.objects.filter(
+            contact_number=ticket_id, user=self.user
+        ).exists()
 
 # Utility function to send real-time updates
 def send_ticket_update(ticket_id, message_data=None, update_type='message'):

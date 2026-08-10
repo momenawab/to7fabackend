@@ -12,12 +12,12 @@ cannot be exercised end-to-end in this environment without adding a new dependen
 which is out of Phase 2 scope (no production deployment / dependency changes beyond
 what a workstream specifically requires).
 
-What IS tested here, directly and without any ASGI harness: authenticate_user(), the
-actual security-relevant unit both the old (query-string) and new (subprotocol) code
-paths share - it's a plain method taking a token string and returning a user, with no
-dependency on how the token reached the consumer. This proves the auth logic itself is
-correct; only the transport-level "where does the token come from" wiring in connect()
-is not covered by an automated test.
+What IS tested here, directly and without any ASGI harness: authenticate_user() (token
+-> user resolution), extract_token_and_subprotocol() (subprotocol-list -> token
+parsing, pulled out of connect() specifically so it's unit-testable), and
+check_ticket_access() (contact_number -> access decision). Together these cover every
+piece of connect()'s authorization logic except the literal accept()/close() ASGI
+calls, which do need a real handshake to exercise.
 """
 import pytest
 from asgiref.sync import async_to_sync
@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from support.consumers import SupportConsumer
+from support.consumers import SupportConsumer, extract_token_and_subprotocol
 
 User = get_user_model()
 
@@ -88,3 +88,132 @@ class TestSupportConsumerTokenSource:
         source = inspect.getsource(SupportConsumer.connect)
         assert "query_string" not in source
         assert "scope.get('subprotocols'" in source or 'scope.get("subprotocols"' in source
+
+
+class TestExtractTokenAndSubprotocol:
+    """Phase 3 regression: Phase 2's connect() assumed a single-element subprotocol
+    list (`[<jwt>]`). The real Flutter client
+    (lib/core/services/websocket_service.dart) actually connects with
+    `protocols: ['authorization', token]` - two elements, a fixed label first. Reading
+    subprotocols[0] therefore grabbed the literal string "authorization" and never the
+    token, so every real connection from the app would have failed authentication.
+    Pulled the parsing into extract_token_and_subprotocol() specifically so this bug
+    class is unit-testable without an ASGI harness."""
+
+    def test_authorization_pair_extracts_second_element_as_token(self):
+        token, echoed = extract_token_and_subprotocol(['authorization', 'the-jwt'])
+        assert token == 'the-jwt'
+        assert echoed == 'authorization'
+
+    def test_authorization_pair_is_case_insensitive(self):
+        token, echoed = extract_token_and_subprotocol(['Authorization', 'the-jwt'])
+        assert token == 'the-jwt'
+
+    def test_bare_single_token_still_supported(self):
+        token, echoed = extract_token_and_subprotocol(['the-jwt'])
+        assert token == 'the-jwt'
+        assert echoed == 'the-jwt'
+
+    def test_empty_subprotocols_yields_no_token(self):
+        token, echoed = extract_token_and_subprotocol([])
+        assert token is None
+        assert echoed is None
+
+    def test_two_elements_not_starting_with_authorization_yields_no_token(self):
+        """Not a scheme this consumer understands - must not silently treat either
+        element as a token."""
+        token, echoed = extract_token_and_subprotocol(['some-other-scheme', 'value'])
+        assert token is None
+
+
+@pytest.fixture
+def other_user(transactional_db):
+    return User.objects.create_user(
+        email='ws_auth_other@test.com',
+        password='testpass123',
+        user_type='customer',
+    )
+
+
+@pytest.fixture
+def staff_user(transactional_db):
+    return User.objects.create_user(
+        email='ws_auth_staff@test.com',
+        password='testpass123',
+        user_type='customer',
+        is_staff=True,
+    )
+
+
+@pytest.fixture
+def contact_request(transactional_db, user):
+    from support.contact_models import ContactRequest
+    return ContactRequest.objects.create(
+        user=user, name='Test User', phone='+201000000000',
+        subject='Help', message='Something is broken',
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+class TestCheckTicketAccess:
+    """Phase 3 regression: check_ticket_access() ported from the dead SupportTicket
+    model to the real ContactRequest model, keyed on contact_number. Mirrors the REST
+    API's own authorization (ContactDetailView is IsAdminUser-only; a regular user may
+    only ever read their own via the `user` FK - see the method's docstring for why
+    UserContactListView's fuzzy phone/name list-filter is deliberately NOT reused here
+    for a single-record access decision)."""
+
+    def test_owner_has_access(self, user, contact_request):
+        consumer = SupportConsumer()
+        consumer.user = user
+
+        result = async_to_sync(consumer.check_ticket_access)(contact_request.contact_number)
+
+        assert result is True
+
+    def test_other_authenticated_user_denied(self, other_user, contact_request):
+        consumer = SupportConsumer()
+        consumer.user = other_user
+
+        result = async_to_sync(consumer.check_ticket_access)(contact_request.contact_number)
+
+        assert result is False
+
+    def test_staff_has_access_to_any_contact(self, staff_user, contact_request):
+        consumer = SupportConsumer()
+        consumer.user = staff_user
+
+        result = async_to_sync(consumer.check_ticket_access)(contact_request.contact_number)
+
+        assert result is True
+
+    def test_anonymous_user_denied(self, contact_request):
+        consumer = SupportConsumer()
+        consumer.user = AnonymousUser()
+
+        result = async_to_sync(consumer.check_ticket_access)(contact_request.contact_number)
+
+        assert result is False
+
+    def test_nonexistent_contact_number_denied(self, user):
+        consumer = SupportConsumer()
+        consumer.user = user
+
+        result = async_to_sync(consumer.check_ticket_access)('00000000')
+
+        assert result is False
+
+
+class TestAsgiImportSucceeds:
+    """Phase 2's headline discovery: to7fabackend/asgi.py used to crash on import
+    because this module (transitively imported via support.routing) imported
+    SupportTicket/SupportMessage, which don't exist. Phase 2 stopped the crash by
+    deferring that import; Phase 3 removes it entirely (check_ticket_access no longer
+    needs it). This test is the actual regression guard for "ASGI starts successfully"
+    - it doesn't need daphne or a running server, just a successful import, which is
+    exactly what was broken."""
+
+    def test_asgi_module_imports_without_error(self):
+        import importlib
+        import to7fabackend.asgi
+        importlib.reload(to7fabackend.asgi)
